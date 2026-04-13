@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<link rel="manifest" href="/manifest.webmanifest">
+		<meta name="mobile-web-app-capable" content="yes">
+		<meta name="theme-color" content="#6e58ff" />
+		<title>작품 정보</title>
+		<script src="/common.js"></script>
+		<script src="/accessible.js"></script>
+		<link rel="stylesheet" href="/item.css">
+	</head>
+	<body>
+		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
+		<div id="top-actions">
+			<a id="back" href="/">← 검색</a>
+		</div>
+		<div id="item-header">
+			<div id="item-thumb" class="skel"></div>
+			<div id="item-info">
+				<div id="item-name" class="skel"></div>
+				<div id="item-meta" class="skel"></div>
+				<div id="item-desc" class="skel"></div>
+			</div>
+		</div>
+
+		<div id="series-bar"></div>
+
+		<div id="tabs">
+			<button class="tab active" data-tab="episodes">에피소드</button>
+			<button class="tab" data-tab="reviews">리뷰</button>
+		</div>
+
+		<div id="tab-episodes">
+			<div class="sort-bar" id="ep-sort">
+				<button class="sort-btn active" data-sort="oldest">
+					오래된 순
+				</button>
+				<button class="sort-btn" data-sort="newest">최신 순</button>
+				<button class="sort-btn-inline" id="btn-load-all-thumbs" type="button">썸네일 모두 로드</button>
+			</div>
+			<div id="episodes"></div>
+		</div>
+		<div id="tab-reviews" style="display: none">
+			<div id="item-stats"></div>
+			<div class="sort-bar" id="rev-sort">
+				<button class="sort-btn active" data-sorting="like">
+					좋아요 순
+				</button>
+				<button class="sort-btn" data-sorting="newest">최신 순</button>
+			</div>
+			<div id="reviews"></div>
+		</div>
+
+		<script src="/item.js"></script>
+	</body>
+</html>

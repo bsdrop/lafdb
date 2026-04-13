@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="UTF-8" />
+		<title>라트펠 - 애니 스트리밍</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<meta property="og:title" content="라트펠 - 애니 스트리밍" />
+		<meta	name="description" content="세상의 모든 애니메이션을 고화질로 무제한 스트리밍하세요. 추억의 애니부터 분기별 신작까지 무제한 스트리밍 가능한 곳은 오직 라트펠." />
+		<meta property="og:description" content="세상의 모든 애니메이션을 고화질로 무제한 스트리밍하세요. 추억의 애니부터 분기별 신작까지 무제한 스트리밍 가능한 곳은 오직 라트펠." />
+		<meta property="og:type" content="website" />
+		<meta name="theme-color" content="#6e58ff" />
+		<link rel="manifest" href="/manifest.webmanifest">
+		<meta name="mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+		<script src="/common.js"></script>
+		<script src="/accessible.js"></script>
+		<link rel="stylesheet" href="/index.css">
+	</head>
+	<body>
+		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
+		<!-- ── Settings overlay + panel ── -->
+		<div id="settings-overlay"></div>
+		<div
+			id="settings-panel"
+			role="dialog"
+			aria-modal="true"
+			aria-label="설정"
+		>
+			<div id="settings-header">
+				<h2>⚙ 설정</h2>
+				<button id="btn-close-settings" aria-label="닫기">✕</button>
+			</div>
+			<div id="settings-body">
+				<!-- 통계 & 개인정보 -->
+				<div class="s-section">
+					<div class="s-section-label">통계 &amp; 개인정보</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">익명 방문 통계 수집</div>
+							<div class="s-row-sub">
+								페이지 속도·환경 데이터
+							</div>
+						</div>
+						<label class="s-toggle" aria-label="통계 수집 토글">
+							<input type="checkbox" id="toggle-telemetry" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">무엇을 수집하나요?</div>
+							<div class="s-row-sub">
+								수집 항목 및 처리 방식 보기
+							</div>
+						</div>
+						<button class="s-btn" id="btn-tm-info">자세히 보기</button>
+					</div>
+				</div>
+
+				<!-- 플레이어 -->
+				<div class="s-section">
+					<div class="s-section-label">플레이어</div>
+
+					<div class="s-row" id="quality-pref-row">
+						<div>
+							<div class="s-row-label">기본 화질</div>
+							<div class="s-row-sub" id="quality-pref-sub">스트리밍 시작 시 선호 화질</div>
+						</div>
+						<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+							<div class="s-pills" id="sel-quality-pref" role="group" aria-label="기본 화질 선택">
+								<label class="s-pill"><input type="radio" name="qual-pref" value="1080">1080p</label>
+								<label class="s-pill"><input type="radio" name="qual-pref" value="720">720p</label>
+								<label class="s-pill"><input type="radio" name="qual-pref" value="480">480p</label>
+							</div>
+							<button class="s-btn s-btn-icon" id="btn-quality-adv" aria-label="비트레이트 설정" title="비트레이트 직접 지정">⋮</button>
+						</div>
+					</div>
+					<div id="quality-adv-panel" style="display:none">
+						<div class="qual-adv-inner">
+							<div class="qual-adv-title">비트레이트 목표</div>
+							<div class="qual-adv-desc">가장 가까운 화질이 자동으로 선택됩니다. 화질 버튼을 선택하시면 비트레이트 모드는 해제됩니다. 다만, 항상 정확한 것은 아닙니다.</div>
+							<div class="qual-adv-row">
+								<input type="number" id="qual-bps-input" class="qual-bps-input" min="100" max="20000" step="100" placeholder="kbps 입력…">
+								<span class="qual-bps-unit">kbps</span>
+							</div>
+							<div class="qual-adv-presets">
+								<button class="qual-preset" data-bps="1000">1000</button>
+								<button class="qual-preset" data-bps="2000">2000</button>
+								<button class="qual-preset" data-bps="4000">4000</button>
+								<button class="qual-preset" data-bps="8000">8000</button>
+							</div>
+						</div>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">자동 재생</div>
+							<div class="s-row-sub">에피소드 종료 후 다음 화 자동 시작</div>
+						</div>
+						<label class="s-toggle" aria-label="자동 재생 토글">
+							<input type="checkbox" id="toggle-autoplay" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">자동 스킵</div>
+							<div class="s-row-sub">오프닝·엔딩 자동으로 건너뜀</div>
+						</div>
+						<label class="s-toggle" aria-label="자동 스킵 토글">
+							<input type="checkbox" id="toggle-autoskip" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">상대 시간 표시</div>
+							<div class="s-row-sub">댓글 시간을 "3분 전"과 같은 형식으로 표시</div>
+						</div>
+						<label class="s-toggle" aria-label="시간 표시 형식 토글">
+							<input type="checkbox" id="toggle-timepref" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">고급 재생 설정</div>
+							<div class="s-row-sub">미리 로드할 시간과 유지 구간을 설정합니다.</div>
+						</div>
+						<button class="s-btn s-btn-icon" id="btn-player-adv" aria-label="고급 설정" title="버퍼 설정">⋮</button>
+					</div>
+					
+					<div id="player-adv-panel" style="display:none">
+						<div class="qual-adv-inner">
+							<div class="qual-adv-title">버퍼 시간 설정 (초)</div>
+							<div class="qual-adv-row">
+								<span class="qual-adv-desc" style="flex:1">미리 로드할 시간</span>
+								<input type="number" id="input-buffer-ahead" class="qual-bps-input" min="18" max="900" step="1" style="width:60px">
+							</div>
+							<div class="qual-adv-row">
+								<span class="qual-adv-desc" style="flex:1">뒤로 유지할 시간</span>
+								<input type="number" id="input-buffer-behind" class="qual-bps-input" min="18" max="900" step="1" style="width:60px">
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- 표시 -->
+				<div class="s-section">
+					<div class="s-section-label">표시</div>
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">화면 밖 항목의 렌더링 줄이기</div>
+							<div class="s-row-sub">
+								컨텐츠 복사 시 오류가 발생할 수 있어요
+							</div>
+						</div>
+						<label class="s-toggle" aria-label="content-visibility 토글">
+							<input type="checkbox" id="toggle-cv" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+				</div>
+
+				<!-- 실험 기능 -->
+				<div class="s-section">
+					<div class="s-section-label">실험 기능</div>
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">오프라인 메타데이터 모드</div>
+							<div class="s-row-sub">
+								네트워크 없이도 검색 가능한 로컬 DB를 사용합니다.
+							</div>
+						</div>
+						<label class="s-toggle" aria-label="오프라인 모드 토글">
+							<input type="checkbox" id="toggle-offline-mode" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+					<div class="s-row">
+						<div style="flex: 1;">
+							<div class="s-row-label">작품 메타데이터 저장</div>
+							<div class="s-row-sub" id="offline-items-subtext">
+								검색 및 자동완성용 작품 목록을 기기에 저장
+							</div>
+						</div>
+						<button class="s-btn" id="btn-sync-items">다운로드</button>
+					</div>
+					<div class="s-row">
+						<div style="flex: 1;">
+							<div class="s-row-label">에피소드 메타데이터 저장</div>
+							<div class="s-row-sub" id="offline-episodes-subtext">
+								제목, 번호, 시간 등의 상세 정보를 함께 저장
+							</div>
+						</div>
+						<button class="s-btn" id="btn-sync-episodes">다운로드</button>
+					</div>
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">썸네일 수동 로드</div>
+							<div class="s-row-sub">
+								이미지를 자동 로드하지 않고 클릭 시에만 불러옴
+							</div>
+						</div>
+						<label class="s-toggle" aria-label="썸네일 수동 로드 토글">
+							<input type="checkbox" id="toggle-manual-thumbs" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">댓글 수동 로드</div>
+							<div class="s-row-sub">
+								댓글과 프로필 이미지를 클릭 시에만 불러옴
+							</div>
+						</div>
+						<label class="s-toggle" aria-label="댓글 수동 로드 토글">
+							<input type="checkbox" id="toggle-manual-comments" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+				</div>
+
+				<!-- 백업 -->
+				<div class="s-section">
+					<div class="s-section-label">백업</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">백업 내보내기</div>
+							<div class="s-row-sub">
+								시청 기록과 설정을 파일로 저장
+							</div>
+						</div>
+						<button class="s-btn" id="btn-export">내보내기</button>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">백업 가져오기</div>
+							<div class="s-row-sub">
+								다른 기기에서 내보낸 백업 파일 불러오기
+							</div>
+						</div>
+						<button class="s-btn" id="btn-import">가져오기</button>
+					</div>
+				</div>
+
+				<div class="s-section">
+					<div class="s-section-label">디버그</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">콘솔 로그 보기</div>
+							<div class="s-row-sub">최근 일부 로그를 확인할 수 있습니다</div>
+						</div>
+						<button class="s-btn" id="btn-open-console-logs">열기</button>
+					</div>
+				</div>
+
+				<!-- 저장된 데이터 -->
+				<div class="s-section">
+					<div class="s-section-label">저장된 데이터</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">시청 기록 관리</div>
+							<div class="s-row-sub">
+								작품별 시청 기록 확인 및 개별 삭제
+							</div>
+						</div>
+						<a class="s-btn" id="btn-history" href="/history.html">열기</a>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">시청 위치 기록</div>
+							<div class="s-row-sub">
+								에피소드별 마지막 재생 위치 정보
+							</div>
+						</div>
+						<button class="s-btn danger" id="btn-clear-watch">
+							삭제
+						</button>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">캐시 초기화</div>
+							<div class="s-row-sub">
+								서비스 워커와 캐시를 삭제하고 최신 버전으로 갱신
+							</div>
+						</div>
+						<button class="s-btn danger" id="btn-clear-cache">
+							초기화
+						</button>
+					</div>
+
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">모든 데이터 삭제</div>
+							<div class="s-row-sub">
+								시청 기록, 설정, 로컬 DB 등을 전부 초기화
+							</div>
+						</div>
+						<button class="s-btn danger" id="btn-clear-all">
+							전체 삭제
+						</button>
+					</div>
+				</div>
+
+				<!-- 소프트웨어 정보 -->
+				<div class="s-section">
+					<div class="s-section-label">소프트웨어 정보</div>
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">오픈소스 라이선스</div>
+							<div class="s-row-sub">
+								이 앱에 사용된 오픈소스 라이선스 고지
+							</div>
+						</div>
+						<button class="s-btn" id="btn-show-notices">보기</button>
+					</div>
+				</div>
+			</div>
+			<div class="s-info">
+				저장된 데이터는 이 기기의 브라우저에만 존재하며 서버로 전송되지
+				않습니다.
+			</div>
+		</div>
+
+		<!-- ── Markdown modal ── -->
+		<div id="md-modal-overlay"></div>
+		<div
+			id="md-modal"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="md-modal-title"
+		>
+			<div id="md-modal-header">
+				<h2 id="md-modal-title">오픈소스 라이선스</h2>
+				<button id="btn-close-md-modal" aria-label="닫기">✕</button>
+			</div>
+			<div id="md-modal-body">
+				<div id="md-modal-content"></div>
+			</div>
+		</div>
+
+		<!-- ── Header ── -->
+		<div id="header">
+			<div id="header-inner">
+				<div id="search-row">
+					<div id="search-wrap">
+						<input
+							id="search"
+							type="search"
+							placeholder="제목 검색..."
+							autocomplete="off"
+							autocorrect="off"
+							spellcheck="false"
+						/>
+						<div id="ac-dropdown"></div>
+					</div>
+					<button id="btn-settings" aria-label="설정">⋮</button>
+				</div>
+				<div id="filters">
+					<div id="filters-track">
+						<div id="sort-chips">
+							<button class="chip active" data-sort="recent">
+								신작순
+							</button>
+							<button class="chip" data-sort="update">업데이트순</button>
+							<button class="chip" data-sort="avg_rating">
+								별점 높은 순
+							</button>
+							<button class="chip" data-sort="cnt_eval">
+								리뷰 많은 순
+							</button>
+						</div>
+						<div id="toggle-chips">
+							<span class="chip-divider" aria-hidden="true">|</span>
+							<button class="chip" data-original="true">독점</button>
+							<button class="chip" data-ending="true">완결</button>
+							<button class="chip" data-hide-no="true">재생 가능</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div id="feed-status" aria-live="polite"></div>
+		<div id="grid"></div>
+		<div id="sentinel"></div>
+
+		<script>
+			window.__refreshCache = async (opts = {}) => {
+				const silent = opts.silent === true;
+				if (!silent && !confirm("캐시를 최신 버전으로 갱신할까요?\n진행 시 페이지가 새로고침됩니다.")) return;
+				
+				try {
+					if (!("serviceWorker" in navigator)) {
+						if (!silent) alert("서비스 워커를 사용할 수 없는 환경입니다.");
+						location.reload();
+						return;
+					}
+
+					const registration = await navigator.serviceWorker.ready;
+					// 1. 최신 SW 스크립트 자체가 있는지 먼저 체크
+					await registration.update();
+
+					const sw = registration.active || navigator.serviceWorker.controller;
+					if (sw) {
+						// 2. SW에게 직접 "앱 쉘 파일들을 새로 다운로드해서 캐시에 넣어라"고 명령
+						const channel = new MessageChannel();
+						const okPromise = new Promise((resolve) => {
+							const timeout = setTimeout(() => resolve(false), 10000); // 10초 대기
+							channel.port1.onmessage = (event) => {
+								clearTimeout(timeout);
+								resolve(!!event.data && event.data.ok);
+							};
+						});
+						sw.postMessage({ type: "refresh-shell" }, [channel.port2]);
+						
+						const ok = await okPromise;
+						if (!ok && !silent) {
+							console.warn("SW shell refresh reported failure, proceeding to hard clear.");
+						}
+					}
+
+					// 3. 만약 위 방법이 실패할 경우를 대비해 기존 방식(해제 및 캐시 삭제)도 병행
+					if ("caches" in window) {
+						const keys = await caches.keys();
+						await Promise.all(keys.map(key => caches.delete(key)));
+					}
+					
+					const registrations = await navigator.serviceWorker.getRegistrations();
+					await Promise.all(registrations.map(r => r.unregister()));
+
+					if (!silent) alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.");
+					location.reload();
+				} catch (err) {
+					console.error("Cache refresh failed:", err);
+					if (!silent) alert("갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+					location.reload();
+				}
+			};
+			document.getElementById("btn-clear-cache")?.addEventListener("click", () => {
+				window.__refreshCache();
+			});
+		</script>
+		<script src="/index.js"></script>
+	</body>
+</html>

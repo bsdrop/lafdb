@@ -1,0 +1,53 @@
+.env
+venv/
+.venv/
+__pycache__/
+.hypothesis/
+node_modules/
+node_modules
+bin/
+bin
+_
+.DS_Store
+.codex
+.claude
+.copilot
+.gemini
+
+# esbuild output
+/public/player.css
+/public/index.css
+/public/item.css
+/public/history.css
+
+/public/player.js
+/public/player-page.js
+/public/common.js
+/public/index.js
+/public/item.js
+/public/history.js
+
+*.map
+
+
+/laftel/mediacloud/*
+!/laftel/go.mod
+# !/laftel/mediacloud/keys/
+*.m4s
+*.aac
+*.mp4
+
+# old / temp
+scripts/
+!/scripts/server.py
+!/scripts/requirements.txt
+old/
+public/_/
+public/sprite.svg
+public/accessible.js
+caddytail.go
+# symbolic link
+public/THIRD-PARTY-NOTICES.md
+# too many files
+laftel/
+laftel

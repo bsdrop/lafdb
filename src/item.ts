@@ -1,0 +1,771 @@
+import { escapeHtml } from "./shared/text";
+import { formatDateTimeKo, formatRelativeTimeKo, formatRuntimeKo } from "./shared/time";
+import { rewriteCdnUrl } from "./shared/cdn";
+import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
+
+if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
+function getRouteParams() {
+	const params = new URLSearchParams(location.hash.slice(1));
+	return {
+		itemId: params.get("id"),
+		targetReviewId: params.get("review"),
+		reviewSorting: params.get("sorting"),
+	};
+}
+
+let { itemId, targetReviewId, reviewSorting } = getRouteParams();
+const manualThumbs =
+	localStorage.getItem("offline_metadata_mode") === "yes" &&
+	localStorage.getItem("manual_thumbnail_load") === "yes";
+
+interface SentinelElement extends HTMLDivElement {
+	_load?: () => void;
+}
+
+function attachManualThumb(el: HTMLElement | null, src: string | null, text = "썸네일 불러오기") {
+	if (!el || !src) return;
+	el.dataset["thumb"] = src;
+	el.textContent = text;
+	el.addEventListener("click", (e: MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const target = e.currentTarget as HTMLElement | null;
+		if (!target) return;
+		if (target.id === "item-thumb") {
+			const img = document.createElement("img");
+			img.id = "item-thumb";
+			img.className = target.className.replace("item-thumb-manual", "").trim();
+			img.src = src;
+			img.alt = "";
+			img.loading = "lazy";
+			img.style.cssText =
+				"width:120px;height:170px;border-radius:10px;object-fit:cover;flex-shrink:0;";
+			target.replaceWith(img);
+			return;
+		}
+		target.classList.remove("ep-thumb-manual");
+		target.textContent = "";
+		const img = document.createElement("img");
+		img.src = src;
+		img.loading = "lazy";
+		img.alt = "";
+		target.appendChild(img);
+	}, { once: true });
+}
+
+// Review state – declared early so the auto-tab click below can use them
+// without hitting a temporal dead zone.
+const REV_PAGE = 20;
+let revOffset = 0,
+	revTotal = Infinity,
+	revLoading = false;
+let revSorting = (targetReviewId && reviewSorting) ? reviewSorting : "like";
+let revDeepLinked = false; // true once the position-seek has been done
+let revHighlighted = false; // true once the target review has been scrolled to
+
+// Apply initial active sort button state
+function syncReviewSortButtons(): void {
+	document.querySelectorAll("#rev-sort .sort-btn").forEach((b) => {
+		b.classList.toggle("active", (b as HTMLElement).dataset["sorting"] === revSorting);
+	});
+}
+syncReviewSortButtons();
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+let reviewsLoaded = false;
+document.querySelectorAll(".tab").forEach((btn) => {
+	btn.addEventListener("click", () => {
+		document
+			.querySelectorAll(".tab")
+			.forEach((t) => t.classList.remove("active"));
+		btn.classList.add("active");
+		const tab = (btn as HTMLElement).dataset["tab"];
+		document.getElementById("tab-episodes")!.style.display =
+			tab === "episodes" ? "" : "none";
+		document.getElementById("tab-reviews")!.style.display =
+			tab === "reviews" ? "" : "none";
+		if (tab === "reviews" && !reviewsLoaded) {
+			reviewsLoaded = true;
+			loadReviews();
+		}
+	});
+});
+
+function activateTab(tab: "episodes" | "reviews"): void {
+	(document.querySelector(`.tab[data-tab="${tab}"]`) as HTMLElement | null)?.click();
+}
+
+// Auto-switch to reviews tab when deep-linking to a review
+if (targetReviewId) {
+	activateTab("reviews");
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+const esc = escapeHtml;
+const fmtRuntime = formatRuntimeKo;
+const fmtDate = formatDateTimeKo;
+const fmtRelTime = formatRelativeTimeKo;
+
+let timePref: string = localStorage.getItem("time_pref") || "relative";
+function fmtDateByPref(s: string | null | undefined): string {
+	return timePref === "relative" ? fmtRelTime(s) : fmtDate(s);
+}
+function rerenderDates(): void {
+	document
+		.querySelectorAll<HTMLElement>(".review-date[data-ts]")
+		.forEach((el) => {
+			el.textContent = fmtDateByPref(el.dataset["ts"]);
+		});
+}
+// click any date to toggle relative ↔ absolute
+document.addEventListener("click", (e) => {
+	if (!(e.target as Element).closest(".review-date[data-ts]")) return;
+	timePref = timePref === "relative" ? "absolute" : "relative";
+	localStorage.setItem("time_pref", timePref);
+	rerenderDates();
+});
+
+function skelEps(n = 6): void {
+	document.getElementById("episodes")!.innerHTML = Array.from(
+		{ length: n },
+		() => '<div class="ep skel"></div>',
+	).join("");
+}
+function skelRevs(n = 3): void {
+	document.getElementById("reviews")!.innerHTML = Array.from(
+		{ length: n },
+		() => '<div class="review skel"></div>',
+	).join("");
+}
+
+function resetItemView(): void {
+	document.title = "라트펠";
+	const itemName = document.getElementById("item-name");
+	if (itemName) {
+		itemName.textContent = "";
+		itemName.classList.add("skel");
+	}
+	const itemMeta = document.getElementById("item-meta");
+	if (itemMeta) {
+		itemMeta.textContent = "";
+		itemMeta.classList.add("skel");
+	}
+	const itemDesc = document.getElementById("item-desc");
+	if (itemDesc) {
+		itemDesc.textContent = "";
+		itemDesc.classList.add("skel");
+		itemDesc.classList.remove("expanded");
+	}
+	document.getElementById("item-rating")?.remove();
+	document.getElementById("item-badges")?.remove();
+	const itemStats = document.getElementById("item-stats");
+	if (itemStats) {
+		itemStats.innerHTML = "";
+		itemStats.classList.remove("show");
+	}
+	const seriesBar = document.getElementById("series-bar");
+	if (seriesBar) {
+		seriesBar.innerHTML = "";
+		seriesBar.classList.remove("show");
+	}
+	const thumb = document.getElementById("item-thumb");
+	if (thumb && thumb.tagName !== "DIV") {
+		const div = document.createElement("div");
+		div.id = "item-thumb";
+		div.className = "skel";
+		thumb.replaceWith(div);
+	} else if (thumb) {
+		thumb.className = "skel";
+		thumb.textContent = "";
+	}
+	document.getElementById("episodes")!.innerHTML = "";
+	document.getElementById("reviews")!.innerHTML = "";
+	document.getElementById("rev-prev-btn")?.remove();
+	updateSentinel("ep-sentinel", false, loadEpisodes);
+	updateSentinel("rev-sentinel", false, loadReviews);
+}
+
+// ── Item info ─────────────────────────────────────────────────────────────────
+async function loadItem(): Promise<void> {
+	if (!itemId) {
+		document.getElementById("item-name")!.textContent =
+			"항목을 찾을 수 없습니다.";
+		return;
+	}
+	skelEps();
+
+	try {
+		const [item, stats] = await Promise.all([
+			apiFetch<any>(`/api/items/v4/${itemId}`).catch((err: any) => { console.error("item fetch failed:", err); return null; }),
+			apiFetch<any>(`/api/items/v1/${itemId}/statistics/`).catch((err: any) => { console.error("stats fetch failed:", err); return null; }),
+		]);
+
+		if (!item) {
+			document.getElementById("item-name")!.textContent =
+				"불러오기에 실패하였습니다.";
+			return;
+		}
+
+		document.title = item.name ?? "";
+
+		// thumbnail
+		const thumbEl = document.getElementById("item-thumb")!;
+		const thumbUrl =
+			item.images?.find((i: any) => i.option_name === "home_default")
+				?.img_url ??
+			item.images?.[0]?.img_url ??
+			"";
+		updateItemHistoryMeta(String(itemId), {
+			itemName: item.name ?? undefined,
+			itemThumbPath: thumbUrl || undefined,
+			itemMedium: item.medium ?? undefined,
+		});
+		thumbEl.classList.remove("skel");
+		if (thumbUrl) {
+			if (manualThumbs) {
+				thumbEl.classList.add("item-thumb-manual");
+				attachManualThumb(thumbEl as HTMLElement, thumbUrl);
+			} else {
+				const img = document.createElement("img");
+				img.id = "item-thumb";
+				img.className = thumbEl.className;
+				img.src = thumbUrl;
+				img.alt = "";
+				img.loading = "lazy";
+				img.style.cssText =
+					"width:120px;height:170px;border-radius:10px;object-fit:cover;flex-shrink:0;";
+				thumbEl.replaceWith(img);
+			}
+		}
+
+		// name
+		const nameEl = document.getElementById("item-name")!;
+		nameEl.classList.remove("skel");
+		nameEl.textContent = item.name ?? "";
+
+		// meta
+		const metaEl = document.getElementById("item-meta")!;
+		metaEl.classList.remove("skel");
+		const parts = [];
+		if (item.medium) parts.push(item.medium);
+		if (item.air_year_quarter) parts.push(item.air_year_quarter);
+		const directors = (item.directors ?? [])
+			.map((d: any) => d.name)
+			.filter(Boolean);
+		if (directors.length)
+			parts.push("감독: " + directors.join(", "));
+		const companies = (item.production_companies ?? [])
+			.map((c: any) => c.name)
+			.filter(Boolean);
+		if (companies.length) parts.push(companies.join(", "));
+		metaEl.textContent = parts.join(" · ");
+
+		// badges + rating
+		const infoEl = document.getElementById("item-info")!;
+		if (item.avg_rating) {
+			const r =
+				document.getElementById("item-rating") ||
+				document.createElement("div");
+			r.id = "item-rating";
+			r.textContent = "★ " + item.avg_rating.toFixed(1);
+			infoEl.insertBefore(r, metaEl);
+		}
+		const genres = item.genre ?? [];
+		const badges = document.createElement("div");
+		badges.id = "item-badges";
+		badges.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
+		for (const g of genres.slice(0, 4)) {
+			const b = document.createElement("span");
+			b.className = "badge";
+			b.textContent = g as string;
+			badges.appendChild(b);
+		}
+		if (item.is_laftel_original) {
+			const b = document.createElement("span");
+			b.className = "badge exclusive";
+			b.textContent = "독점";
+			badges.appendChild(b);
+		}
+		if (item.is_ending) {
+			const b = document.createElement("span");
+			b.className = "badge";
+			b.textContent = "완결";
+			badges.appendChild(b);
+		}
+		if (item.is_new_release) {
+			const b = document.createElement("span");
+			b.className = "badge accent";
+			b.textContent = "신작";
+			badges.appendChild(b);
+		}
+		infoEl.appendChild(badges);
+
+		// description
+		const descEl = document.getElementById("item-desc")!;
+		descEl.classList.remove("skel");
+		descEl.textContent = item.description ?? item.synopsis ?? "";
+		descEl.addEventListener("click", () =>
+			descEl.classList.toggle("expanded"),
+		);
+
+		// statistics
+		if (stats && stats.count_score > 0) {
+			renderStats(stats);
+		}
+
+		// series
+		const sid = item.series_id ?? item.seriesId;
+		if (sid) loadSeries(sid);
+
+		loadEpisodes();
+	} catch (e) {
+		console.error("loadItem failed:", e);
+		document.getElementById("item-name")!.textContent = "불러오기에 실패하였습니다.";
+	}
+}
+
+// ── Statistics ────────────────────────────────────────────────────────────────
+function renderStats(stats: any): void {
+	const el = document.getElementById("item-stats")!;
+	const levels = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
+	const counts = levels.map(
+		(k) =>
+			stats[`count_score_${String(k).padStart(2, "0")}`] || 0,
+	);
+	const maxCnt = Math.max(...counts, 1);
+	const chartH = 138; // px — bar area height (excl. label)
+
+	const barsHtml = levels
+		.map((k, i) => {
+			const cnt = counts[i];
+			const h = Math.round((cnt / maxCnt) * chartH);
+			const label = (k / 10).toFixed(1);
+			const tip = `★${label}	${cnt.toLocaleString()}명`;
+			return (
+				`<div class="vbar-col" data-tip="${esc(tip)}">` +
+				`<div class="vbar-fill" style="height:${h}px"></div>` +
+				`<span class="vbar-lbl">${label}</span>` +
+				`</div>`
+			);
+		})
+		.join("");
+
+	const avg =
+		typeof stats.average_score === "number"
+			? stats.average_score.toFixed(1)
+			: stats.average_score;
+	el.innerHTML = `
+<div class="stats-summary">
+<span class="stats-star">★</span>
+<span class="stats-avg">${esc(String(avg))}</span>
+<span class="stats-meta">${Number(stats.count_score).toLocaleString()}명</span>
+</div>
+<div class="stats-vchart">${barsHtml}</div>`;
+	el.classList.add("show");
+}
+
+// ── Series ────────────────────────────────────────────────────────────────────
+async function loadSeries(sid: string | number): Promise<void> {
+	try {
+		const data = await apiFetch<any>(`/api/items/v2/series/${sid}`);
+		const items = Array.isArray(data)
+			? data
+			: (data?.results ?? []);
+		if (items.length < 2) return;
+		const bar = document.getElementById("series-bar")!;
+		bar.classList.add("show");
+		bar.innerHTML = "";
+		for (const s of items) {
+			const link = document.createElement("a");
+			link.className =
+				"series-btn" +
+				(String(s.id) === String(itemId) ? " active" : "");
+			link.textContent = s.name ?? s.title ?? s.id;
+			link.href = `item.html#id=${s.id}`;
+			link.addEventListener("click", (e: MouseEvent) => {
+				if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+				e.preventDefault();
+				location.href = link.href;
+			});
+			bar.appendChild(link);
+		}
+	} catch (e) {
+		console.error("series fetch failed:", e);
+	}
+}
+
+// ── Episodes ──────────────────────────────────────────────────────────────────
+const EP_PAGE = 30;
+let epOffset = 0,
+	epTotal = Infinity,
+	epLoading = false;
+let epSort = "oldest";
+
+// apply saved sort button state
+document.querySelectorAll("#ep-sort .sort-btn").forEach((b) => {
+	b.classList.toggle("active", (b as HTMLElement).dataset["sort"] === epSort);
+});
+
+async function loadEpisodes(reset = false): Promise<void> {
+	if (reset) {
+		epOffset = 0;
+		epTotal = Infinity;
+		epLoading = false;
+	}
+	if (epLoading || epOffset >= epTotal) return;
+	epLoading = true;
+	if (epOffset === 0) skelEps();
+
+	try {
+		const data = await apiFetch<any>(
+			`/api/episodes/v3/list?item_id=${itemId}&offset=${epOffset}&limit=${EP_PAGE}&sort=${epSort}`,
+		);
+		const items = data.results ?? [];
+		epTotal = data.count ?? items.length;
+
+		const container = document.getElementById("episodes")!;
+		if (epOffset === 0) container.innerHTML = "";
+
+		if (items.length === 0 && epOffset === 0) {
+			container.innerHTML =
+				'<p id="status-msg">에피소드가 없습니다.</p>';
+			return;
+		}
+
+		for (const ep of items) {
+			const div = document.createElement("a");
+			div.className = "ep";
+			div.href = `/player.html#epId=${ep.id}`;
+			div.onclick = (e) => {
+				if (e.ctrlKey || e.metaKey || e.button === 1) return;
+				e.preventDefault();
+				play(ep.id);
+			};
+			const canPlay =
+				((window as any).isAccessibleEpisode?.(ep.id) ?? false) ||
+				(ep.is_free ?? false);
+			const badgeClass = canPlay ? "ok" : "no";
+			const badgeText = canPlay ? "재생 가능" : "재생 불가";
+			const runtime = fmtRuntime(ep.running_time);
+			div.innerHTML = `
+<div class="ep-thumb-wrap">
+	<div class="ep-thumb ${manualThumbs && ep.thumbnail_path ? "ep-thumb-manual" : ""}">${ep.thumbnail_path ? (manualThumbs ? "썸네일 불러오기" : "") : "▶"}</div>
+	${runtime ? `<span class="ep-runtime">${runtime}</span>` : ""}
+</div>
+<span class="ep-num">${esc(ep.episode_num ?? ep.episode_order ?? "")}</span>
+<span class="ep-title">${esc(ep.subject ?? ep.title ?? "Untitled")}</span>
+<span class="ep-badge ${badgeClass}">${badgeText}</span>`;
+
+			const thumbWrap = div.querySelector(".ep-thumb-wrap")!;
+			const thumb = div.querySelector(".ep-thumb") as HTMLElement;
+
+			if (ep.thumbnail_path && !manualThumbs) {
+				const img = document.createElement("img");
+				img.src = ep.thumbnail_path;
+				img.loading = "lazy";
+				img.alt = "";
+				thumb.appendChild(img);
+			} else if (ep.thumbnail_path && manualThumbs) {
+				attachManualThumb(thumb, ep.thumbnail_path);
+			}
+
+			const hist = WatchHistory.getProgress(String(ep.id));
+			const histT = Number(hist?.t ?? 0);
+			const histDur = Number(hist?.dur ?? 0);
+			if (histT > 0 && histDur > 0) {
+				const pct = Math.min(100, Math.round(histT / histDur * 100));
+				const bar = document.createElement("div");
+				bar.className = "ep-progress";
+				bar.innerHTML = `<div class="ep-progress-bar" style="width:${pct}%"></div>`;
+				thumbWrap.appendChild(bar);
+			}
+
+			container.appendChild(div);
+		}
+
+		epOffset += items.length;
+		updateSentinel(
+			"ep-sentinel",
+			epOffset < epTotal,
+			loadEpisodes,
+		);
+	} catch (e) {
+		console.error("loadEpisodes failed:", e);
+		if (epOffset === 0)
+			document.getElementById("episodes")!.innerHTML =
+				'<p id="status-msg">에피소드를 불러올 수 없습니다.</p>';
+	} finally {
+		epLoading = false;
+		// If the viewport isn't filled yet, trigger next page load automatically.
+		if (epOffset < epTotal) {
+			const el = document.getElementById("ep-sentinel");
+			if (el && el.getBoundingClientRect().top < window.innerHeight + 300) {
+				setTimeout(() => void loadEpisodes(), 50);
+			}
+		}
+	}
+}
+
+document
+	.getElementById("ep-sort")
+	?.addEventListener("click", (e) => {
+		const btn = (e.target as Element | null)?.closest<HTMLButtonElement>(".sort-btn[data-sort]");
+		if (!btn || btn.classList.contains("active")) return;
+		document
+			.querySelectorAll("#ep-sort .sort-btn")
+			.forEach((b) => b.classList.remove("active"));
+		btn.classList.add("active");
+		epSort = btn.dataset["sort"] || "oldest";
+		updateSentinel("ep-sentinel", false, loadEpisodes);
+		loadEpisodes(true);
+	});
+
+// ── Reviews ───────────────────────────────────────────────────────────────────
+// (revOffset, revTotal, revLoading, revSorting, REV_PAGE declared at top)
+
+async function loadReviews(reset = false): Promise<void> {
+	if (reset) {
+		revOffset = 0;
+		revTotal = Infinity;
+		revLoading = false;
+		revDeepLinked = false;
+		revHighlighted = false;
+	}
+	if (revLoading || revOffset >= revTotal) return;
+
+	// Deep-link: look up target review's page via position API (runs once)
+	if (targetReviewId && !revDeepLinked) {
+		revDeepLinked = true;
+		try {
+			const pos = await apiFetch<any>(
+				`/api/reviews/v2/position?item_id=${itemId}&id=${targetReviewId}&sorting=${revSorting}`,
+			).catch(() => null);
+			if (pos?.offset != null) {
+				const pageStart =
+					Math.floor(pos.offset / REV_PAGE) * REV_PAGE;
+				if (pageStart > 0) {
+					revOffset = pageStart;
+					// Show "load previous" button above reviews
+					const prev = document.createElement("button");
+					prev.id = "rev-prev-btn";
+					prev.className = "load-prev-btn";
+					prev.textContent = `이전 리뷰 ${pageStart}개 보기`;
+					prev.onclick = () => {
+						prev.remove();
+						revOffset = 0;
+						revTotal = Infinity;
+						revLoading = false;
+						revDeepLinked = true; // don't re-seek
+						revHighlighted = false;
+						document.getElementById("reviews")!.innerHTML = "";
+						updateSentinel("rev-sentinel", false, loadReviews);
+						loadReviews();
+					};
+					document
+						.getElementById("reviews")!
+						.before(prev);
+				}
+			} else {
+				// Position API unavailable (server not updated yet) –
+				// fall back to sequential page loading.
+				revDeepLinked = false;
+			}
+		} catch (_) {
+			revDeepLinked = false; // retry on next page if position API errors
+		}
+	}
+
+	revLoading = true;
+	if (revOffset === 0) skelRevs();
+
+	try {
+		const data = await apiFetch<any>(
+			`/api/reviews/v2/list?item_id=${itemId}&offset=${revOffset}&limit=${REV_PAGE}&sorting=${revSorting}`,
+		);
+		const items = data.results ?? [];
+		revTotal = data.count ?? items.length;
+
+		const container = document.getElementById("reviews")!;
+		if (revOffset === 0) container.innerHTML = "";
+
+		if (items.length === 0 && revOffset === 0) {
+			container.innerHTML =
+				'<p id="status-msg">리뷰가 없습니다.</p>';
+			return;
+		}
+
+		for (const r of items) {
+			const el = document.createElement("div");
+			el.className = "review";
+			if (r.id) el.dataset["rid"] = String(r.id);
+			const date = fmtDateByPref(r.created);
+			const hasScore = r.score > 0;
+			const hasContent = (r.content ?? "").trim().length > 0;
+
+			const avatarHtml = r.profile?.image
+				? `<img class="review-avatar" src="${esc(r.profile.image)}" alt="" loading="lazy">`
+				: `<div class="review-avatar"></div>`;
+
+			el.innerHTML = `
+<div class="review-header">
+	${avatarHtml}
+	<span class="review-user">${esc(r.profile?.name ?? "익명")}</span>
+	${hasScore ? `<span class="review-score">★ ${Number(r.score).toFixed(1)}</span>` : ""}
+</div>
+${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}</p>` : ""}
+<div class="review-footer">
+	${r.count_like > 0 ? `<span class="review-likes">♥ ${r.count_like}</span>` : ""}
+	${r.created ? `<span class="review-date" data-ts="${esc(r.created)}">${date}</span>` : ""}
+	${r.id ? `<button class="link-copy-btn review-copy-btn" title="링크 복사" aria-label="리뷰 링크 복사">🔗</button>` : ""}
+</div>`;
+
+			if (r.id) {
+				const rid = String(r.id);
+				el.querySelector(".review-copy-btn")?.addEventListener("click", (e) => {
+					e.stopPropagation();
+					const sortingPart = revSorting
+						? `?sorting=${encodeURIComponent(revSorting)}`
+						: "";
+					const url = `${location.origin}/review/${rid}${sortingPart}`;
+					(window as any).ShareLink?.copy(url, e.currentTarget as HTMLElement, { successText: "✓", resetText: "🔗" });
+				});
+			}
+			container.appendChild(el);
+		}
+
+		revOffset += items.length;
+		updateSentinel(
+			"rev-sentinel",
+			revOffset < revTotal,
+			loadReviews,
+		);
+
+		// deep-link: highlight the target review once it's in the DOM
+		if (targetReviewId && !revHighlighted) {
+			const revEl = container.querySelector(`[data-rid="${targetReviewId}"]`);
+			if (revEl) {
+				revHighlighted = true;
+				(window as any).ShareLink?.highlight(revEl);
+			} else if (revOffset < revTotal) {
+				// Target not on this page; load next (fallback when position
+				// API is unavailable or returned a wrong offset).
+				setTimeout(() => loadReviews(), 80);
+			}
+		}
+	} catch (e) {
+		console.error("loadReviews failed:", e);
+		if (revOffset === 0)
+			document.getElementById("reviews")!.innerHTML =
+				'<p id="status-msg">리뷰를 불러올 수 없습니다.</p>';
+	} finally {
+		revLoading = false;
+		// If the viewport isn't filled yet, trigger next page load automatically.
+		if (revOffset < revTotal) {
+			const el = document.getElementById("rev-sentinel");
+			if (el && el.getBoundingClientRect().top < window.innerHeight + 300) {
+				setTimeout(() => void loadReviews(), 50);
+			}
+		}
+	}
+}
+
+document
+	.getElementById("rev-sort")!
+	.addEventListener("click", (e) => {
+		const btn = (e.target as Element).closest(".sort-btn") as HTMLElement | null;
+		if (!btn || btn.classList.contains("active")) return;
+		revSorting = btn.dataset["sorting"] || "like";
+		syncReviewSortButtons();
+		updateSentinel("rev-sentinel", false, loadReviews);
+		loadReviews(true);
+	});
+
+// ── Play ──────────────────────────────────────────────────────────────────────
+async function play(epId: string | number): Promise<void> {
+	try {
+		const info = await apiFetch<any>(`/api/episodes/v3/${epId}/video`);
+		if (!info.dash_url) {
+			alert("DASH URL이 없습니다.");
+			return;
+		}
+		const localDash = rewriteCdnUrl(info.dash_url ?? "");
+		const key = info.keys?.[0] ?? {};
+		location.href = `player.html#epId=${epId}&mpd=${encodeURIComponent(localDash)}&kid=${key.key_id ?? ""}&key=${key.key ?? ""}`;
+	} catch (e) {
+		console.error("fetch video info failed:", e);
+		alert("스트림 정보를 가져올 수 없습니다.");
+	}
+}
+
+// ── Infinite scroll sentinel ──────────────────────────────────────────────────
+const io = new IntersectionObserver(
+	(entries) => {
+		for (const e of entries)
+			if (e.isIntersecting) (e.target as SentinelElement)._load?.();
+	},
+	{ rootMargin: "200px" },
+);
+
+function updateSentinel(id: string, hasMore: boolean, loadFn: () => void): void {
+	let el = document.getElementById(id) as SentinelElement | null;
+	if (!hasMore) {
+		el?.remove();
+		return;
+	}
+	if (!el) {
+		el = document.createElement("div") as SentinelElement;
+		el.id = id;
+		el.style.cssText = "height:1px;margin:8px 0;";
+		const container =
+			id === "ep-sentinel"
+				? document.getElementById("episodes")!
+				: document.getElementById("reviews")!;
+		container.after(el);
+		setTimeout(() => io.observe(el!), 0);
+	}
+	el._load = loadFn;
+}
+
+loadItem();
+document.getElementById("btn-load-all-thumbs")?.addEventListener("click", () => {
+	document.querySelectorAll<HTMLElement>("[data-thumb]").forEach((el) => el.click());
+});
+
+function handleRouteChange(): void {
+	const next = getRouteParams();
+	const itemChanged = next.itemId !== itemId;
+	itemId = next.itemId;
+	targetReviewId = next.targetReviewId;
+	reviewSorting = next.reviewSorting;
+	revSorting = (targetReviewId && reviewSorting) ? reviewSorting : "like";
+	syncReviewSortButtons();
+
+	if (itemChanged) {
+		epOffset = 0;
+		epTotal = Infinity;
+		epLoading = false;
+		epSort = "oldest";
+		document.querySelectorAll("#ep-sort .sort-btn").forEach((b) => {
+			b.classList.toggle("active", (b as HTMLElement).dataset["sort"] === epSort);
+		});
+		revOffset = 0;
+		revTotal = Infinity;
+		revLoading = false;
+		revDeepLinked = false;
+		revHighlighted = false;
+		reviewsLoaded = false;
+		resetItemView();
+		if (targetReviewId) activateTab("reviews");
+		else activateTab("episodes");
+		loadItem();
+		return;
+	}
+
+	if (targetReviewId) {
+		activateTab("reviews");
+		updateSentinel("rev-sentinel", false, loadReviews);
+		loadReviews(true);
+	}
+}
+
+window.addEventListener("hashchange", handleRouteChange);

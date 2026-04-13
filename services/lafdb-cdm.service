@@ -1,0 +1,13 @@
+[Unit]
+Description=lafdb Widevine CDM server
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/lafdb
+WorkingDirectory=${LAFDB_HOME}/scripts
+ExecStart=${LAFDB_HOME}/scripts/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 3040 --loop uvloop --http httptools
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
