@@ -66,8 +66,9 @@ func (a *App) handlePlayerShare(c fiber.Ctx) error {
 	title := fmt.Sprintf("%s - %s", epData.Title, epData.Subject)
 	description := epData.Description
 	image := rewriteCDNString(c, epData.ThumbnailPath)
-	if t := c.Query("t"); t != "" {
-		if seconds, err := strconv.ParseFloat(t, 64); err == nil {
+	shareTime, hasShareTime := normalizeShareTimeParam(c.Query("t"))
+	if hasShareTime {
+		if seconds, err := strconv.ParseFloat(shareTime, 64); err == nil {
 			image = rewriteCDNString(c, selectEpisodeThumbnailAtTime(epData.ThumbnailPath, epData.RunningTime, seconds))
 		}
 	}
@@ -90,8 +91,8 @@ func (a *App) handlePlayerShare(c fiber.Ctx) error {
 		}
 	}
 
-	if t := c.Query("t"); t != "" {
-		redirectURL += "&t=" + t
+	if hasShareTime {
+		redirectURL += "&t=" + shareTime
 	}
 
 	canonicalURL := ""
@@ -174,6 +175,9 @@ func (a *App) handleCommentShare(c fiber.Ctx) error {
 	}
 	if commentInfo.IsReply {
 		redirectURL += fmt.Sprintf("&reply=%d", commentID)
+	}
+	if t, ok := normalizeShareTimeParam(c.Query("t")); ok {
+		redirectURL += "&t=" + t
 	}
 	if drmOk {
 		var drmData struct {
@@ -494,6 +498,43 @@ func normalizeReviewSorting(s string) string {
 	default:
 		return "like"
 	}
+}
+
+func normalizeShareTimeParam(s string) (string, bool) {
+	if s == "" {
+		return "", false
+	}
+
+	dotCount := 0
+	hasDigit := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+			hasDigit = true
+		case c == '.':
+			dotCount++
+			if dotCount > 1 {
+				return "", false
+			}
+		default:
+			return "", false
+		}
+	}
+	if !hasDigit {
+		return "", false
+	}
+
+	if s[len(s)-1] == '.' {
+		s = s[:len(s)-1]
+	}
+	if s == "" {
+		return "", false
+	}
+	if s[0] == '.' {
+		return "0" + s, true
+	}
+	return s, true
 }
 
 func rewriteCDNString(c fiber.Ctx, s string) string {
