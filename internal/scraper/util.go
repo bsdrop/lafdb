@@ -73,8 +73,8 @@ func collectEpisodeIDsFromLists(dir string) ([]int64, error) {
 	return ids, nil
 }
 
-// collectCommentIDsWithReplies reads all saved episode comment files and returns
-// the IDs of top-level comments that have replies and haven't been fetched yet.
+// reads all saved episode comment files and returns the IDs of top-level comments that have replies.
+// 현재 행동: 중복이 아니어야 하고 s.shouldSkip(path) 에 걸리지 않아야 합니다.
 func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 	listDir := filepath.Clean(s.dir("comments/v1/list"))
 	repliesDir := filepath.Clean(s.dir("comments/v1/replies"))

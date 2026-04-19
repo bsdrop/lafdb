@@ -46,7 +46,7 @@ func (s *Scraper) fetchJSON(url string) ([]byte, string, error) {
 	return body, "200", nil
 }
 
-const skipAge = 14 * 24 * time.Hour
+const skipAge = 5 * 24 * time.Hour
 
 func (s *Scraper) shouldSkip(path string) bool {
 	if s.flags.NoSkip {
