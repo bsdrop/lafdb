@@ -137,12 +137,60 @@ interface ProgressInfo {
 async function _dlRun(repId: string, onProgress: (p: ProgressInfo) => void): Promise<Uint8Array> {
   _dlAbort = new AbortController();
   const sig = _dlAbort.signal;
+  const FETCH_RETRY_LIMIT = 6;
+
+  function isRetriableFetchError(err: unknown): boolean {
+    if ((err as Error | undefined)?.name === 'AbortError') return false;
+    const msg = String((err as Error | undefined)?.message ?? err ?? '');
+    return (
+      /NS_ERROR_NET_PARTIAL_TRANSFER/i.test(msg) ||
+      /Content-Length header of network response exceeds response Body/i.test(msg) ||
+      /NetworkError when attempting to fetch resource/i.test(msg) ||
+      /Failed to fetch/i.test(msg) ||
+      /Load failed/i.test(msg) ||
+      /body stream/i.test(msg) ||
+      /terminated/i.test(msg)
+    );
+  }
+
+  function fetchRetryDelay(attempt: number): number {
+    return Math.min(8000, 500 * Math.pow(2, attempt));
+  }
+
+  function waitForRetry(ms: number): Promise<void> {
+    if (sig.aborted) return Promise.reject(new DOMException('aborted', 'AbortError'));
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        sig.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      function onAbort(): void {
+        window.clearTimeout(timer);
+        reject(new DOMException('aborted', 'AbortError'));
+      }
+      sig.addEventListener('abort', onAbort, { once: true });
+    });
+  }
 
   async function fetchBuf(url: string): Promise<Uint8Array> {
-    if (sig.aborted) throw new DOMException('aborted', 'AbortError');
-    const r = await fetch(url, { signal: sig });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return new Uint8Array(await r.arrayBuffer());
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt <= FETCH_RETRY_LIMIT; attempt++) {
+      if (sig.aborted) throw new DOMException('aborted', 'AbortError');
+      try {
+        const r = await fetch(url, { signal: sig });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return new Uint8Array(await r.arrayBuffer());
+      } catch (err) {
+        lastError = err;
+        if (sig.aborted || !isRetriableFetchError(err) || attempt >= FETCH_RETRY_LIMIT) {
+          throw err;
+        }
+        const delay = fetchRetryDelay(attempt);
+        console.warn(`[DL] partial/network transfer failed; retry ${attempt + 1}/${FETCH_RETRY_LIMIT} in ${delay}ms`, err);
+        await waitForRetry(delay);
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   onProgress({ phase: 'init', msg: '트랙 정보 불러오는 중…', pct: 0 });

@@ -94,7 +94,16 @@ func DispatchByHost(c fiber.Ctx) (bool, error) {
 
 func RegisterRoutes(srv *fiber.App) {
 	for prefix, cfg := range mediaCfgs {
-		srv.Get("/"+prefix+"/*", mediaHandler(prefix, cfg))
+		handler := mediaHandler(prefix, cfg)
+		base := "/" + prefix
+		// Path-style media routes for networks that do not reliably support
+		// wildcard subdomains, e.g. /mediacloud/..., /thumbnail/....
+		srv.Get(base, handler)
+		srv.Head(base, handler)
+		srv.Get(base+"/", handler)
+		srv.Head(base+"/", handler)
+		srv.Get(base+"/*", handler)
+		srv.Head(base+"/*", handler)
 	}
 }
 
@@ -125,13 +134,13 @@ func isAllowedMediaPathByte(b byte) bool {
 
 func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int) {
 	rawPath = stripURLParams(rawPath)
-	if (len(rawPath) > maxMediaPathnameRunes) {
+	if len(rawPath) > maxMediaPathnameRunes {
 		return "", http.StatusRequestURITooLong
 	}
-	if (strings.HasSuffix(rawPath, "/")) {
+	if strings.HasSuffix(rawPath, "/") {
 		return "", fiber.StatusBadRequest
 	}
-	if (rawPath == "" || strings.HasPrefix(rawPath, "/")) {
+	if rawPath == "" || strings.HasPrefix(rawPath, "/") {
 		return "", fiber.StatusBadRequest
 	}
 
@@ -157,7 +166,6 @@ func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int) {
 	}
 	return normalized, 0
 }
-
 
 func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 	normalized, status := normalizeMediaPath(rawPath, cfg)

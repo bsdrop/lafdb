@@ -17,6 +17,11 @@ function getCurrentMirrorRootHost(): string | null {
   return host.replace(/^(?:www|app|mediacloud|streaming-bp|thumbnail)\./, "");
 }
 
+function isI2PHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/g, "");
+  return host.endsWith(".i2p");
+}
+
 export function rewriteCdnUrl(url: string): string {
   if (!url) return url ?? "";
 
@@ -38,7 +43,12 @@ export function rewriteCdnUrl(url: string): string {
   const subdomain = sourceMatch.groups.subdomain;
 
   if (mirrorRoot) {
-    parsed.hostname = `${subdomain}.${mirrorRoot}`;
+    if (isI2PHost(mirrorRoot)) {
+      parsed.hostname = mirrorRoot;
+      parsed.pathname = `/${subdomain}${parsed.pathname.startsWith("/") ? parsed.pathname : `/${parsed.pathname}`}`;
+    } else {
+      parsed.hostname = `${subdomain}.${mirrorRoot}`;
+    }
     if (typeof location !== "undefined") {
       if (/^https?:$/.test(location.protocol)) {
         parsed.protocol = location.protocol;

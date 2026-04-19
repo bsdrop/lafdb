@@ -74,12 +74,34 @@ func isAnonymousNetworkHost(host string) bool {
 	return strings.HasSuffix(host, ".onion") || strings.HasSuffix(host, ".i2p")
 }
 
+func isI2PHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(stripPort(host)))
+	host = strings.TrimRight(host, ".")
+	return strings.HasSuffix(host, ".i2p")
+}
+
+var cdnSubdomains = []string{"mediacloud", "streaming-bp", "thumbnail"}
+
 func rewriteCdnJSONForMirror(b []byte, mirror string) []byte {
+	if isI2PHost(mirror) {
+		for _, subdomain := range cdnSubdomains {
+			for _, sourceDomain := range []string{"latfel.net", "laftel.net"} {
+				fromHTTPS := []byte("https://" + subdomain + "." + sourceDomain + "/")
+				fromHTTP := []byte("http://" + subdomain + "." + sourceDomain + "/")
+				to := []byte("http://" + mirror + "/" + subdomain + "/")
+				b = bytes.ReplaceAll(b, fromHTTPS, to)
+				b = bytes.ReplaceAll(b, fromHTTP, to)
+			}
+		}
+		return b
+	}
+
 	b = bytes.ReplaceAll(b, []byte(".latfel.net"), []byte("."+mirror))
+	b = bytes.ReplaceAll(b, []byte(".laftel.net"), []byte("."+mirror))
 	if !isAnonymousNetworkHost(mirror) {
 		return b
 	}
-	for _, subdomain := range []string{"mediacloud", "streaming-bp", "thumbnail"} {
+	for _, subdomain := range cdnSubdomains {
 		from := []byte("https://" + subdomain + "." + mirror)
 		to := []byte("http://" + subdomain + "." + mirror)
 		b = bytes.ReplaceAll(b, from, to)
@@ -89,10 +111,21 @@ func rewriteCdnJSONForMirror(b []byte, mirror string) []byte {
 
 func rewriteCDNStringForMirror(s string, mirror string) string {
 	if mirror != "" && mirror != "laftel.net" && mirror != "latfel.net" {
+		if isI2PHost(mirror) {
+			for _, subdomain := range cdnSubdomains {
+				for _, sourceDomain := range []string{"latfel.net", "laftel.net"} {
+					to := "http://" + mirror + "/" + subdomain + "/"
+					s = strings.ReplaceAll(s, "https://"+subdomain+"."+sourceDomain+"/", to)
+					s = strings.ReplaceAll(s, "http://"+subdomain+"."+sourceDomain+"/", to)
+				}
+			}
+			return s
+		}
+
 		s = strings.ReplaceAll(s, ".laftel.net", "."+mirror)
 		s = strings.ReplaceAll(s, ".latfel.net", "."+mirror)
 		if isAnonymousNetworkHost(mirror) {
-			for _, subdomain := range []string{"mediacloud", "streaming-bp", "thumbnail"} {
+			for _, subdomain := range cdnSubdomains {
 				s = strings.ReplaceAll(s, "https://"+subdomain+"."+mirror, "http://"+subdomain+"."+mirror)
 			}
 		}
