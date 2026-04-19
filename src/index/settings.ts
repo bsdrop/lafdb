@@ -28,28 +28,77 @@ const html = (s: TemplateStringsArray, ...args: any[]) => s.map((p, i) => p + (a
 export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const panel = document.getElementById("settings-panel")!;
 	const overlay = document.getElementById("settings-overlay")!;
+	const settingsBtn = document.getElementById("btn-settings") as HTMLButtonElement;
+	const closeSettingsBtn = document.getElementById("btn-close-settings") as HTMLButtonElement;
+	let previouslyFocused: HTMLElement | null = null;
+
+	function getPanelFocusable(): HTMLElement[] {
+		return Array.from(
+			panel.querySelectorAll<HTMLElement>(
+				'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+			),
+		).filter((el) => !el.hidden && el.offsetParent !== null);
+	}
 
 	function openSettings() {
+		previouslyFocused = document.activeElement instanceof HTMLElement
+			? document.activeElement
+			: null;
 		panel.classList.add("open");
 		overlay.classList.add("open");
 		syncSettingsUI();
+		requestAnimationFrame(() => {
+			closeSettingsBtn.focus({ preventScroll: true });
+		});
 	}
 
 	function closeSettings() {
+		const wasOpen = panel.classList.contains("open");
 		panel.classList.remove("open");
 		overlay.classList.remove("open");
 		qualAdvPanel.style.display = "none";
 		const playerAdvPanel = document.getElementById("player-adv-panel") as HTMLElement | null;
 		if (playerAdvPanel) playerAdvPanel.style.display = "none";
+		if (!wasOpen) return;
+		const restoreTarget = previouslyFocused ?? settingsBtn;
+		previouslyFocused = null;
+		requestAnimationFrame(() => {
+			if (document.contains(restoreTarget)) {
+				restoreTarget.focus({ preventScroll: true });
+			}
+		});
 	}
 
-	document.getElementById("btn-settings")!.addEventListener("click", openSettings);
-	document.getElementById("btn-close-settings")!.addEventListener("click", closeSettings);
+	settingsBtn.addEventListener("click", openSettings);
+	closeSettingsBtn.addEventListener("click", closeSettings);
 	overlay.addEventListener("click", closeSettings);
 	document.addEventListener("keydown", (e) => {
 		if (e.key === "Escape") {
 			closeSettings();
 			closeMdModal();
+			return;
+		}
+		if (e.key === "Tab" && panel.classList.contains("open")) {
+			const focusable = getPanelFocusable();
+			if (focusable.length === 0) return;
+			const first = focusable[0];
+			const last = focusable[focusable.length - 1];
+			const active = document.activeElement;
+
+			if (!panel.contains(active)) {
+				e.preventDefault();
+				first.focus();
+				return;
+			}
+			if (e.shiftKey && active === first) {
+				e.preventDefault();
+				last.focus();
+				return;
+			}
+			if (!e.shiftKey && active === last) {
+				e.preventDefault();
+				first.focus();
+			}
 		}
 	});
 

@@ -5,6 +5,18 @@ import { initSettings } from "./index/settings";
 
 normalizeStoredTimestamps();
 
+function primeKeyboardFocus(): void {
+	if (document.activeElement && document.activeElement !== document.body) return;
+	document.body.tabIndex = -1;
+	document.body.focus({ preventScroll: true });
+}
+
+if (document.readyState === "loading") {
+	document.addEventListener("DOMContentLoaded", primeKeyboardFocus, { once: true });
+} else {
+	primeKeyboardFocus();
+}
+
 const feed = initFeed();
 
 initAutocomplete({
