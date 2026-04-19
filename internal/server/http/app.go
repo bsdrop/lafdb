@@ -53,7 +53,7 @@ func sendJSONBytes(c fiber.Ctx, b []byte) error {
 	c.Set("Vary", fiber.HeaderAccept)
 	mirror := getMirrorRoot(c)
 	if mirror != "" && mirror != "latfel.net" {
-		b = bytes.ReplaceAll(b, []byte(".latfel.net"), []byte("."+mirror))
+		b = rewriteCdnJSONForMirror(b, mirror)
 	}
 
 	if accept := acceptedMsgpack(c); accept != "" {
@@ -66,6 +66,39 @@ func sendJSONBytes(c fiber.Ctx, b []byte) error {
 	}
 	c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
 	return c.Send(b)
+}
+
+func isAnonymousNetworkHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(stripPort(host)))
+	host = strings.TrimRight(host, ".")
+	return strings.HasSuffix(host, ".onion") || strings.HasSuffix(host, ".i2p")
+}
+
+func rewriteCdnJSONForMirror(b []byte, mirror string) []byte {
+	b = bytes.ReplaceAll(b, []byte(".latfel.net"), []byte("."+mirror))
+	if !isAnonymousNetworkHost(mirror) {
+		return b
+	}
+	for _, subdomain := range []string{"mediacloud", "streaming-bp", "thumbnail"} {
+		from := []byte("https://" + subdomain + "." + mirror)
+		to := []byte("http://" + subdomain + "." + mirror)
+		b = bytes.ReplaceAll(b, from, to)
+	}
+	return b
+}
+
+func rewriteCDNStringForMirror(s string, mirror string) string {
+	if mirror != "" && mirror != "laftel.net" && mirror != "latfel.net" {
+		s = strings.ReplaceAll(s, ".laftel.net", "."+mirror)
+		s = strings.ReplaceAll(s, ".latfel.net", "."+mirror)
+		if isAnonymousNetworkHost(mirror) {
+			for _, subdomain := range []string{"mediacloud", "streaming-bp", "thumbnail"} {
+				s = strings.ReplaceAll(s, "https://"+subdomain+"."+mirror, "http://"+subdomain+"."+mirror)
+			}
+		}
+		return s
+	}
+	return strings.ReplaceAll(s, ".laftel.net", ".latfel.net")
 }
 
 func sendJSON(c fiber.Ctx, v any) error {

@@ -86,7 +86,7 @@ func (a *App) handlePlayerShare(c fiber.Ctx) error {
 		if err := json.Unmarshal(drmBytes, &drmData); err == nil {
 			if len(drmData.Keys) > 0 {
 				k := drmData.Keys[0]
-				redirectURL += fmt.Sprintf("&mpd=%s&kid=%s&key=%s", url.QueryEscape(drmData.DashURL), k.KeyID, k.Key)
+				redirectURL += fmt.Sprintf("&mpd=%s&kid=%s&key=%s", url.QueryEscape(rewriteCDNString(c, drmData.DashURL)), k.KeyID, k.Key)
 			}
 		}
 	}
@@ -189,7 +189,7 @@ func (a *App) handleCommentShare(c fiber.Ctx) error {
 		}
 		if err := json.Unmarshal(drmBytes, &drmData); err == nil && len(drmData.Keys) > 0 {
 			k := drmData.Keys[0]
-			redirectURL += fmt.Sprintf("&mpd=%s&kid=%s&key=%s", url.QueryEscape(drmData.DashURL), k.KeyID, k.Key)
+			redirectURL += fmt.Sprintf("&mpd=%s&kid=%s&key=%s", url.QueryEscape(rewriteCDNString(c, drmData.DashURL)), k.KeyID, k.Key)
 		}
 	}
 	title := ""
@@ -538,11 +538,7 @@ func normalizeShareTimeParam(s string) (string, bool) {
 }
 
 func rewriteCDNString(c fiber.Ctx, s string) string {
-	mirror := getMirrorRoot(c)
-	if mirror != "" && mirror != "laftel.net" {
-		return strings.ReplaceAll(s, ".laftel.net", "."+mirror)
-	}
-	return strings.ReplaceAll(s, ".laftel.net", ".latfel.net")
+	return rewriteCDNStringForMirror(s, getMirrorRoot(c))
 }
 
 func formatCommentShareTime(s string) string {
