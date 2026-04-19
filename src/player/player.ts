@@ -18,6 +18,13 @@ const MS: MediaSourceLike | undefined =
       ? MediaSource
       : undefined;
 
+function isAnonymousNetworkPage(): boolean {
+  const loc = (globalThis as { location?: Location }).location;
+  if (!loc?.hostname) return false;
+  const host = loc.hostname.toLowerCase().replace(/\.$/, "");
+  return host.endsWith(".onion") || host.endsWith(".i2p");
+}
+
 interface Track {
   type: string;
   repId: string;
@@ -909,7 +916,13 @@ class Player {
       Array.from(set.children).find((c) => c.tagName === "SegmentTemplate") ||
       null;
     if (!tmpl) return null;
-    if (!MS?.isTypeSupported(fullMime)) return null;
+    const supported = !!MS?.isTypeSupported(fullMime);
+    if (!supported && !isAnonymousNetworkPage()) return null;
+    if (!supported) {
+      console.warn(
+        `[${type.toUpperCase()}] ${fullMime} failed isTypeSupported on anonymous network; trying SourceBuffer anyway`,
+      );
+    }
 
     const repId = rep.getAttribute("id") || "";
     const fill = (s: string) => s.replace(/\$RepresentationID\$/g, repId);
