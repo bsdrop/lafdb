@@ -85,7 +85,7 @@ interface WorkerMessage {
 }
 
 const ANONYMOUS_NETWORK_CODEC_MESSAGE =
-  "현재 브라우저에서 H.264/AAC 재생을 지원하지 않습니다. Brave의 Tor 비공개 창을 사용하시거나, 로컬 프록시를 통해 일반 브라우저로 접속해주시기 바랍니다.\n필요하면 다운로드 후 VLC 또는 MPV로 재생하실 수 있습니다.";
+  "현재 브라우저에서 H.264/AAC 재생을 지원하지 않습니다. Brave의 Tor 비공개 창을 사용하시거나, 로컬 프록시를 통해 일반 브라우저로 접속해주시기 바랍니다.";
 
 interface XmlNode {
   tagName: string;
@@ -1180,6 +1180,13 @@ class Player {
     console.log(
       `[PLAYER] Tracks: ${tracks.length}, VideoReps: ${this.videoReps.length}`,
     );
+    this._sendQualityOptions(
+      this.videoReps.map((r) => ({
+        id: r.repId,
+        label: `${r.height}p (${Math.round(r.bandwidth / 1000)}kbps)`,
+      })),
+      this.activeVideoRepId,
+    );
     return tracks;
   }
 
@@ -1573,14 +1580,6 @@ class Player {
     }
 
     await Promise.all(this.tracks.map((track) => this._appendInit(track)));
-
-    this._sendQualityOptions(
-      this.videoReps.map((r) => ({
-        id: r.repId,
-        label: `${r.height}p (${Math.round(r.bandwidth / 1000)}kbps)`,
-      })),
-      this.activeVideoRepId,
-    );
 
     if (this._video && playbackState) {
       try {

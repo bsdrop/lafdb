@@ -107,6 +107,11 @@ function buildUnsupportedBrowserMessage(): string {
 
 function showCompatWarning(msg: string): void {
   if (document.getElementById("player-compat-warning")) return;
+  const qualitySelector = document.getElementById("quality-selector") as HTMLSelectElement | null;
+  const canOpenDownload =
+    !!globalThis.crypto?.subtle &&
+    !!document.getElementById("btn-download") &&
+    !!qualitySelector?.options.length;
   const banner = document.createElement("div");
   banner.id = "player-compat-warning";
   banner.style.cssText = [
@@ -126,11 +131,10 @@ function showCompatWarning(msg: string): void {
     'font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
     "box-shadow:0 10px 30px rgba(0,0,0,.35)",
   ].join(";");
-  const canDownloadFallback = !!globalThis.crypto?.subtle;
   banner.innerHTML = `
 <p style="margin:0;">${msg}</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-	${canDownloadFallback ? `<button id="player-compat-download" style="padding:7px 14px;border-radius:8px;border:1px solid #e5ff00;background:#e5ff00;color:#000;font:600 13px inherit;cursor:pointer;">다운로드</button>` : ""}
+	${canOpenDownload ? `<button id="player-compat-download" style="padding:7px 14px;border-radius:8px;border:1px solid #e5ff00;background:#e5ff00;color:#000;font:600 13px inherit;cursor:pointer;">다운로드</button>` : ""}
 	<button id="player-compat-close" style="padding:7px 14px;border-radius:8px;border:1px solid #3f3f46;background:transparent;color:#d4d4d8;font:13px inherit;cursor:pointer;">닫기</button>
 </div>
   `;
