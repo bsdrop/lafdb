@@ -26,9 +26,18 @@ function attachManualThumb(el: HTMLElement | null, src: string | null, text = "�
 	if (!el || !src) return;
 	el.dataset["thumb"] = src;
 	el.textContent = text;
-	el.addEventListener("click", (e: MouseEvent) => {
+	el.setAttribute("aria-label", text);
+	const canBeKeyboardButton = !el.closest("a");
+	if (canBeKeyboardButton) {
+		el.setAttribute("role", "button");
+		el.setAttribute("tabindex", "0");
+	}
+	let loaded = false;
+	const loadThumb = (e: MouseEvent | KeyboardEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
+		if (loaded) return;
+		loaded = true;
 		const target = e.currentTarget as HTMLElement | null;
 		if (!target) return;
 		if (target.id === "item-thumb") {
@@ -50,7 +59,14 @@ function attachManualThumb(el: HTMLElement | null, src: string | null, text = "�
 		img.loading = "lazy";
 		img.alt = "";
 		target.appendChild(img);
-	}, { once: true });
+	};
+	el.addEventListener("click", loadThumb);
+	if (canBeKeyboardButton) {
+		el.addEventListener("keydown", (e: KeyboardEvent) => {
+			if (e.key !== "Enter" && e.key !== " ") return;
+			loadThumb(e);
+		});
+	}
 }
 
 // Review state – declared early so the auto-tab click below can use them
@@ -66,28 +82,49 @@ let revHighlighted = false; // true once the target review has been scrolled to
 // Apply initial active sort button state
 function syncReviewSortButtons(): void {
 	document.querySelectorAll("#rev-sort .sort-btn").forEach((b) => {
-		b.classList.toggle("active", (b as HTMLElement).dataset["sorting"] === revSorting);
+		const isActive = (b as HTMLElement).dataset["sorting"] === revSorting;
+		b.classList.toggle("active", isActive);
+		b.setAttribute("aria-pressed", String(isActive));
 	});
 }
 syncReviewSortButtons();
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 let reviewsLoaded = false;
+function setActiveTab(tab: string | undefined): void {
+	document.querySelectorAll<HTMLElement>(".tab").forEach((t) => {
+		const selected = t.dataset["tab"] === tab;
+		t.classList.toggle("active", selected);
+		t.setAttribute("aria-selected", String(selected));
+	});
+	const episodesPanel = document.getElementById("tab-episodes")!;
+	const reviewsPanel = document.getElementById("tab-reviews")!;
+	const showEpisodes = tab === "episodes";
+	episodesPanel.style.display = showEpisodes ? "" : "none";
+	episodesPanel.toggleAttribute("hidden", !showEpisodes);
+	reviewsPanel.style.display = tab === "reviews" ? "" : "none";
+	reviewsPanel.toggleAttribute("hidden", tab !== "reviews");
+}
 document.querySelectorAll(".tab").forEach((btn) => {
 	btn.addEventListener("click", () => {
-		document
-			.querySelectorAll(".tab")
-			.forEach((t) => t.classList.remove("active"));
-		btn.classList.add("active");
 		const tab = (btn as HTMLElement).dataset["tab"];
-		document.getElementById("tab-episodes")!.style.display =
-			tab === "episodes" ? "" : "none";
-		document.getElementById("tab-reviews")!.style.display =
-			tab === "reviews" ? "" : "none";
+		setActiveTab(tab);
 		if (tab === "reviews" && !reviewsLoaded) {
 			reviewsLoaded = true;
 			loadReviews();
 		}
+	});
+	btn.addEventListener("keydown", (e) => {
+		if (!(e instanceof KeyboardEvent)) return;
+		if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+		e.preventDefault();
+		const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".tab"));
+		const index = tabs.indexOf(btn as HTMLButtonElement);
+		const nextIndex = e.key === "ArrowRight"
+			? (index + 1) % tabs.length
+			: (index - 1 + tabs.length) % tabs.length;
+		tabs[nextIndex]?.focus();
+		tabs[nextIndex]?.click();
 	});
 });
 
@@ -403,7 +440,9 @@ let epSort = "oldest";
 
 // apply saved sort button state
 document.querySelectorAll("#ep-sort .sort-btn").forEach((b) => {
-	b.classList.toggle("active", (b as HTMLElement).dataset["sort"] === epSort);
+	const isActive = (b as HTMLElement).dataset["sort"] === epSort;
+	b.classList.toggle("active", isActive);
+	b.setAttribute("aria-pressed", String(isActive));
 });
 
 async function loadEpisodes(reset = false): Promise<void> {
@@ -513,8 +552,12 @@ document
 		if (!btn || btn.classList.contains("active")) return;
 		document
 			.querySelectorAll("#ep-sort .sort-btn")
-			.forEach((b) => b.classList.remove("active"));
+			.forEach((b) => {
+				b.classList.remove("active");
+				b.setAttribute("aria-pressed", "false");
+			});
 		btn.classList.add("active");
+		btn.setAttribute("aria-pressed", "true");
 		epSort = btn.dataset["sort"] || "oldest";
 		updateSentinel("ep-sentinel", false, loadEpisodes);
 		loadEpisodes(true);

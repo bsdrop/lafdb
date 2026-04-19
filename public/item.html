@@ -27,28 +27,28 @@
 
 		<div id="series-bar"></div>
 
-		<div id="tabs">
-			<button class="tab active" data-tab="episodes">에피소드</button>
-			<button class="tab" data-tab="reviews">리뷰</button>
+		<div id="tabs" role="tablist" aria-label="작품 정보">
+			<button class="tab active" data-tab="episodes" id="tab-button-episodes" role="tab" aria-selected="true" aria-controls="tab-episodes">에피소드</button>
+			<button class="tab" data-tab="reviews" id="tab-button-reviews" role="tab" aria-selected="false" aria-controls="tab-reviews">리뷰</button>
 		</div>
 
-		<div id="tab-episodes">
+		<div id="tab-episodes" role="tabpanel" aria-labelledby="tab-button-episodes">
 			<div class="sort-bar" id="ep-sort">
-				<button class="sort-btn active" data-sort="oldest">
+				<button class="sort-btn active" data-sort="oldest" aria-pressed="true">
 					오래된 순
 				</button>
-				<button class="sort-btn" data-sort="newest">최신 순</button>
+				<button class="sort-btn" data-sort="newest" aria-pressed="false">최신 순</button>
 				<button class="sort-btn-inline" id="btn-load-all-thumbs" type="button">썸네일 모두 로드</button>
 			</div>
 			<div id="episodes"></div>
 		</div>
-		<div id="tab-reviews" style="display: none">
+		<div id="tab-reviews" role="tabpanel" aria-labelledby="tab-button-reviews" style="display: none" hidden>
 			<div id="item-stats"></div>
 			<div class="sort-bar" id="rev-sort">
-				<button class="sort-btn active" data-sorting="like">
+				<button class="sort-btn active" data-sorting="like" aria-pressed="true">
 					좋아요 순
 				</button>
-				<button class="sort-btn" data-sorting="newest">최신 순</button>
+				<button class="sort-btn" data-sorting="newest" aria-pressed="false">최신 순</button>
 			</div>
 			<div id="reviews"></div>
 		</div>

@@ -58,11 +58,13 @@ const ShareSheet = (() => {
 
     overlay.classList.add("open");
     sheet.classList.add("open");
+    sheet.setAttribute("aria-hidden", "false");
   }
 
   function close(): void {
     overlay.classList.remove("open");
     sheet.classList.remove("open");
+    sheet.setAttribute("aria-hidden", "true");
   }
 
   function buildUrls(): Array<{ label: string; url: string; withTime?: boolean }> {
@@ -180,6 +182,9 @@ const ShareSheet = (() => {
   });
 
   overlay.addEventListener("click", close);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sheet.classList.contains("open")) close();
+  });
 
   let touchStartY = 0;
   sheet.addEventListener(
@@ -209,8 +214,10 @@ const btnAutoPlay = document.getElementById("btn-autoplay") as HTMLButtonElement
 function syncOptBtns(): void {
   btnAutoSkip.classList.toggle("on", autoSkip);
   btnAutoSkip.textContent = autoSkip ? "켜짐" : "꺼짐";
+  btnAutoSkip.setAttribute("aria-pressed", String(autoSkip));
   btnAutoPlay.classList.toggle("on", autoPlay);
   btnAutoPlay.textContent = autoPlay ? "켜짐" : "꺼짐";
+  btnAutoPlay.setAttribute("aria-pressed", String(autoPlay));
 }
 syncOptBtns();
 btnAutoSkip.addEventListener("click", () => {
@@ -232,12 +239,17 @@ btnAutoPlay.addEventListener("click", () => {
 
 const btnSettings = document.getElementById("btn-settings") as HTMLButtonElement;
 const settingsPanel = document.getElementById("settings-panel")!;
+function setSettingsPanelOpen(open: boolean): void {
+  settingsPanel.classList.toggle("open", open);
+  settingsPanel.setAttribute("aria-hidden", String(!open));
+  btnSettings.setAttribute("aria-expanded", String(open));
+}
 btnSettings.addEventListener("click", (e) => {
   e.stopPropagation();
-  settingsPanel.classList.toggle("open");
+  setSettingsPanelOpen(!settingsPanel.classList.contains("open"));
 });
 document.addEventListener("click", () =>
-  settingsPanel.classList.remove("open"),
+  setSettingsPanelOpen(false),
 );
 settingsPanel.addEventListener("click", (e) => e.stopPropagation());
 
@@ -724,6 +736,7 @@ function setupAutoplay(epId: string): void {
           (i === currentIdx ? " current" : "");
         btn.textContent = episodeLabel(ep, i);
         btn.title = btn.textContent;
+        if (i === currentIdx) btn.setAttribute("aria-current", "page");
         btn.addEventListener("click", () => {
           closePanel();
           navigate(ep.id);
@@ -749,11 +762,15 @@ function setupAutoplay(epId: string): void {
   const closePanel = () => {
     panel.classList.remove("open");
     btnList.classList.remove("on");
+    panel.setAttribute("aria-hidden", "true");
+    btnList.setAttribute("aria-expanded", "false");
   };
   btnList.addEventListener("click", (e) => {
     e.stopPropagation();
     const isOpen = panel.classList.toggle("open");
     btnList.classList.toggle("on", isOpen);
+    panel.setAttribute("aria-hidden", String(!isOpen));
+    btnList.setAttribute("aria-expanded", String(isOpen));
     if (isOpen && epList.length === 0) loadEpList();
   }, { signal });
   document.addEventListener("click", closePanel, { signal });
@@ -1025,6 +1042,10 @@ function buildCommentEl(
   const repliesBtn = el.querySelector(".comment-replies-btn") as HTMLButtonElement | null;
   if (repliesBtn) {
     const repliesContainer = el.querySelector(".replies") as HTMLElement;
+    const repliesId = `replies-${c.id}`;
+    repliesContainer.id = repliesId;
+    repliesBtn.setAttribute("aria-controls", repliesId);
+    repliesBtn.setAttribute("aria-expanded", "false");
     const REPLY_PAGE = 10;
     let rOffset = 0,
       rTotal = Infinity,
@@ -1101,6 +1122,7 @@ function buildCommentEl(
       const isOpen =
         repliesContainer.classList.toggle("open");
       repliesBtn!.classList.toggle("open", isOpen);
+      repliesBtn!.setAttribute("aria-expanded", String(isOpen));
       if (!isOpen || rOpened) return;
       rOpened = true;
       fetchReplies();
@@ -1233,7 +1255,9 @@ async function loadComments(epId: string): Promise<void> {
     cHighlighted = false;
 
   sortBar.querySelectorAll(".csort-btn").forEach((b) => {
-    b.classList.toggle("active", (b as HTMLElement).dataset["sorting"] === sorting);
+    const isActive = (b as HTMLElement).dataset["sorting"] === sorting;
+    b.classList.toggle("active", isActive);
+    b.setAttribute("aria-pressed", String(isActive));
   });
 
   list.onclick = (e) => {
@@ -1394,8 +1418,12 @@ async function loadComments(epId: string): Promise<void> {
     if (!btn || btn.classList.contains("active")) return;
     sortBar
       .querySelectorAll(".csort-btn")
-      .forEach((b) => b.classList.remove("active"));
+      .forEach((b) => {
+        b.classList.remove("active");
+        b.setAttribute("aria-pressed", "false");
+      });
     btn.classList.add("active");
+    btn.setAttribute("aria-pressed", "true");
     sorting = btn.dataset["sorting"]!;
     reset();
     if (loadToken === activeCommentsLoadToken) void fetchPage();

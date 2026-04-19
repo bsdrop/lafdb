@@ -31,6 +31,12 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const settingsBtn = document.getElementById("btn-settings") as HTMLButtonElement;
 	const closeSettingsBtn = document.getElementById("btn-close-settings") as HTMLButtonElement;
 	let previouslyFocused: HTMLElement | null = null;
+	const backgroundRoots = [
+		document.getElementById("header"),
+		document.getElementById("feed-status"),
+		document.getElementById("grid"),
+		document.getElementById("sentinel"),
+	].filter((el): el is HTMLElement => !!el);
 
 	function getPanelFocusable(): HTMLElement[] {
 		return Array.from(
@@ -40,12 +46,23 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		).filter((el) => !el.hidden && el.offsetParent !== null);
 	}
 
+	function setBackgroundAccessibility(hidden: boolean) {
+		for (const root of backgroundRoots) {
+			root.toggleAttribute("inert", hidden);
+			if (hidden) root.setAttribute("aria-hidden", "true");
+			else root.removeAttribute("aria-hidden");
+		}
+	}
+
 	function openSettings() {
 		previouslyFocused = document.activeElement instanceof HTMLElement
 			? document.activeElement
 			: null;
 		panel.classList.add("open");
 		overlay.classList.add("open");
+		panel.setAttribute("aria-hidden", "false");
+		settingsBtn.setAttribute("aria-expanded", "true");
+		setBackgroundAccessibility(true);
 		syncSettingsUI();
 		requestAnimationFrame(() => {
 			closeSettingsBtn.focus({ preventScroll: true });
@@ -56,9 +73,14 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		const wasOpen = panel.classList.contains("open");
 		panel.classList.remove("open");
 		overlay.classList.remove("open");
+		panel.setAttribute("aria-hidden", "true");
+		settingsBtn.setAttribute("aria-expanded", "false");
+		setBackgroundAccessibility(false);
 		qualAdvPanel.style.display = "none";
 		const playerAdvPanel = document.getElementById("player-adv-panel") as HTMLElement | null;
 		if (playerAdvPanel) playerAdvPanel.style.display = "none";
+		qualAdvBtn?.setAttribute("aria-expanded", "false");
+		playerAdvBtn?.setAttribute("aria-expanded", "false");
 		if (!wasOpen) return;
 		const restoreTarget = previouslyFocused ?? settingsBtn;
 		previouslyFocused = null;
@@ -447,6 +469,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	qualAdvBtn.addEventListener("click", () => {
 		const open = qualAdvPanel.style.display !== "none" && qualAdvPanel.style.display !== "";
 		qualAdvPanel.style.display = open ? "none" : "block";
+		qualAdvBtn.setAttribute("aria-expanded", String(!open));
 		if (!open) qualBpsInput.focus();
 	});
 
@@ -454,6 +477,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (!playerAdvPanel) return;
 		const open = playerAdvPanel.style.display !== "none" && playerAdvPanel.style.display !== "";
 		playerAdvPanel.style.display = open ? "none" : "block";
+		playerAdvBtn.setAttribute("aria-expanded", String(!open));
 		if (!open) bufferAheadInput?.focus();
 	});
 

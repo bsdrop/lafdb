@@ -24,11 +24,12 @@
 			id="settings-panel"
 			role="dialog"
 			aria-modal="true"
-			aria-label="설정"
+			aria-labelledby="settings-title"
+			aria-hidden="true"
 		>
 			<div id="settings-header">
-				<h2>⚙ 설정</h2>
-				<button id="btn-close-settings" aria-label="닫기">✕</button>
+				<h2 id="settings-title">⚙ 설정</h2>
+				<button id="btn-close-settings" aria-label="설정 닫기">✕</button>
 			</div>
 			<div id="settings-body">
 				<!-- 통계 & 개인정보 -->
@@ -43,7 +44,7 @@
 							</div>
 						</div>
 						<label class="s-toggle" aria-label="통계 수집 토글">
-							<input type="checkbox" id="toggle-telemetry" />
+							<input type="checkbox" id="toggle-telemetry" aria-label="익명 방문 통계 수집" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -75,7 +76,7 @@
 								<label class="s-pill"><input type="radio" name="qual-pref" value="720">720p</label>
 								<label class="s-pill"><input type="radio" name="qual-pref" value="480">480p</label>
 							</div>
-							<button class="s-btn s-btn-icon" id="btn-quality-adv" aria-label="비트레이트 설정" title="비트레이트 직접 지정">⋮</button>
+							<button class="s-btn s-btn-icon" id="btn-quality-adv" aria-label="비트레이트 설정" aria-controls="quality-adv-panel" aria-expanded="false" title="비트레이트 직접 지정">⋮</button>
 						</div>
 					</div>
 					<div id="quality-adv-panel" style="display:none">
@@ -101,7 +102,7 @@
 							<div class="s-row-sub">에피소드 종료 후 다음 화 자동 시작</div>
 						</div>
 						<label class="s-toggle" aria-label="자동 재생 토글">
-							<input type="checkbox" id="toggle-autoplay" />
+							<input type="checkbox" id="toggle-autoplay" aria-label="자동 재생" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -113,7 +114,7 @@
 							<div class="s-row-sub">오프닝·엔딩 자동으로 건너뜀</div>
 						</div>
 						<label class="s-toggle" aria-label="자동 스킵 토글">
-							<input type="checkbox" id="toggle-autoskip" />
+							<input type="checkbox" id="toggle-autoskip" aria-label="자동 스킵" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -125,7 +126,7 @@
 							<div class="s-row-sub">댓글 시간을 "3분 전"과 같은 형식으로 표시</div>
 						</div>
 						<label class="s-toggle" aria-label="시간 표시 형식 토글">
-							<input type="checkbox" id="toggle-timepref" />
+							<input type="checkbox" id="toggle-timepref" aria-label="상대 시간 표시" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -136,7 +137,7 @@
 							<div class="s-row-label">고급 재생 설정</div>
 							<div class="s-row-sub">미리 로드할 시간과 유지 구간을 설정합니다.</div>
 						</div>
-						<button class="s-btn s-btn-icon" id="btn-player-adv" aria-label="고급 설정" title="버퍼 설정">⋮</button>
+						<button class="s-btn s-btn-icon" id="btn-player-adv" aria-label="고급 재생 설정" aria-controls="player-adv-panel" aria-expanded="false" title="버퍼 설정">⋮</button>
 					</div>
 					
 					<div id="player-adv-panel" style="display:none">
@@ -165,7 +166,7 @@
 							</div>
 						</div>
 						<label class="s-toggle" aria-label="content-visibility 토글">
-							<input type="checkbox" id="toggle-cv" />
+							<input type="checkbox" id="toggle-cv" aria-label="화면 밖 항목의 렌더링 줄이기" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -183,7 +184,7 @@
 							</div>
 						</div>
 						<label class="s-toggle" aria-label="오프라인 모드 토글">
-							<input type="checkbox" id="toggle-offline-mode" />
+							<input type="checkbox" id="toggle-offline-mode" aria-label="오프라인 메타데이터 모드" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -214,7 +215,7 @@
 							</div>
 						</div>
 						<label class="s-toggle" aria-label="썸네일 수동 로드 토글">
-							<input type="checkbox" id="toggle-manual-thumbs" />
+							<input type="checkbox" id="toggle-manual-thumbs" aria-label="썸네일 수동 로드" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -227,7 +228,7 @@
 							</div>
 						</div>
 						<label class="s-toggle" aria-label="댓글 수동 로드 토글">
-							<input type="checkbox" id="toggle-manual-comments" />
+							<input type="checkbox" id="toggle-manual-comments" aria-label="댓글 수동 로드" />
 							<span class="s-toggle-track"></span>
 							<span class="s-toggle-thumb"></span>
 						</label>
@@ -374,7 +375,7 @@
 						/>
 						<div id="ac-dropdown"></div>
 					</div>
-					<button id="btn-settings" aria-label="설정">⋮</button>
+					<button id="btn-settings" aria-label="설정 열기" aria-controls="settings-panel" aria-expanded="false">⋮</button>
 				</div>
 				<div id="filters">
 					<div id="filters-track">

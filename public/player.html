@@ -17,8 +17,8 @@
 		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
 		<!-- ── Share sheet ─────────────────────────────────────────────────── -->
 		<div id="share-overlay"></div>
-		<div id="share-sheet" aria-modal="true" role="dialog" aria-label="공유">
-			<div id="share-handle"></div>
+		<div id="share-sheet" aria-modal="true" role="dialog" aria-labelledby="share-title" aria-hidden="true">
+			<div id="share-handle" aria-hidden="true"></div>
 			<div id="share-title">공유</div>
 
 			<!-- 시간 포함 옵션 (에피소드 공유에만 표시) -->
@@ -29,7 +29,7 @@
 			>
 				<span class="share-toggle-label">현재 재생 위치 포함</span>
 				<label class="s-toggle" aria-label="재생 위치 포함">
-					<input type="checkbox" id="share-time-toggle" checked />
+					<input type="checkbox" id="share-time-toggle" checked aria-label="재생 위치 포함" />
 					<span class="s-toggle-track"></span>
 					<span class="s-toggle-thumb"></span>
 				</label>
@@ -43,7 +43,7 @@
 			<div id="player-col">
 				<div id="player-core">
 					<div id="video-box">
-						<video id="v" controls autoplay playsinline disableremoteplayback></video>
+						<video id="v" controls autoplay playsinline disableremoteplayback aria-label="동영상 플레이어"></video>
 						<button id="skip-opening" class="skip-btn">
 							오프닝 스킵 →
 						</button>
@@ -58,14 +58,14 @@
 					</div>
 					<div id="ep-info">
 						<span id="ep-title"></span>
-						<button id="btn-download" class="ep-icon-btn" title="다운로드" hidden>
+						<button id="btn-download" class="ep-icon-btn" title="다운로드" aria-label="다운로드" hidden>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
 								<polyline points="7 10 12 15 17 10"/>
 								<line x1="12" y1="15" x2="12" y2="3"/>
 							</svg>
 						</button>
-						<button id="btn-share" class="ep-icon-btn" title="공유">
+						<button id="btn-share" class="ep-icon-btn" title="공유" aria-label="공유">
 							<svg
 								width="16" height="16"
 								viewBox="0 0 24 24"
@@ -86,14 +86,18 @@
 							<button id="btn-settings"
 								class="ep-icon-btn"
 								title="설정"
+								aria-label="설정"
+								aria-controls="settings-panel"
+								aria-expanded="false"
 							>
 								⋮
 							</button>
-							<div id="settings-panel">
+							<div id="settings-panel" aria-hidden="true">
 								<div class="settings-row">
 									자동 스킵
 									<button id="btn-autoskip"
 										class="settings-toggle"
+										aria-pressed="false"
 									>
 										끄기
 									</button>
@@ -102,6 +106,7 @@
 									자동 재생
 									<button id="btn-autoplay"
 										class="settings-toggle"
+										aria-pressed="false"
 									>
 										끄기
 									</button>
@@ -115,17 +120,17 @@
 						</div>
 					</div>
 					<div id="controls">
-						<select id="quality-selector">
+						<select id="quality-selector" aria-label="화질 선택">
 							<option value="">Quality</option>
 						</select>
 						<button id="btn-prev-ep" class="ctrl-btn" disabled>
 							◀ 이전
 						</button>
 						<div id="ep-list-wrap">
-							<button id="btn-ep-list" class="ctrl-btn">
+							<button id="btn-ep-list" class="ctrl-btn" aria-haspopup="menu" aria-controls="ep-list-panel" aria-expanded="false">
 								목록 ▾
 							</button>
-							<div id="ep-list-panel"></div>
+							<div id="ep-list-panel" aria-hidden="true"></div>
 						</div>
 						<button id="btn-next-ep" class="ctrl-btn" disabled>
 							다음 ▶
@@ -149,13 +154,13 @@
 							</svg>
 						</button>
 						<div id="comments-sort">
-							<button class="csort-btn active" data-sorting="top">
+							<button class="csort-btn active" data-sorting="top" aria-pressed="true">
 								인기순
 							</button>
-							<button class="csort-btn" data-sorting="newest">
+							<button class="csort-btn" data-sorting="newest" aria-pressed="false">
 								최신순
 							</button>
-							<button class="csort-btn" data-sorting="oldest">
+							<button class="csort-btn" data-sorting="oldest" aria-pressed="false">
 								오래된순
 							</button>
 						</div>
@@ -167,8 +172,8 @@
 
 	<!-- ── Download modal ──────────────────────────────────────────────── -->
 	<div id="dl-modal" hidden>
-		<div id="dl-dialog">
-			<h3>다운로드</h3>
+		<div id="dl-dialog" role="dialog" aria-modal="true" aria-labelledby="dl-title">
+			<h3 id="dl-title">다운로드</h3>
 			<div class="dl-row">
 				<label for="dl-quality-sel">화질</label>
 				<select id="dl-quality-sel"></select>
@@ -193,7 +198,7 @@
 				<div id="dl-toast-sub"></div>
 			</div>
 			<button class="dl-toast-btn" id="dl-toast-open">보기</button>
-			<button class="dl-toast-btn" id="dl-toast-abort">✕</button>
+			<button class="dl-toast-btn" id="dl-toast-abort" aria-label="다운로드 취소">✕</button>
 		</div>
 		<div id="dl-toast-bar-bg"><div id="dl-toast-bar"></div></div>
 	</div>
