@@ -336,6 +336,35 @@ function openViewer(): void {
   const body = document.createElement("div");
   body.style.cssText = "flex:1 1 auto;min-height:0;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;";
 
+  const mobileMedia = window.matchMedia("(max-width: 640px)");
+  function applyViewerLayout(): void {
+    if (mobileMedia.matches) {
+      overlay.style.padding = "8px";
+      panel.style.width = "100%";
+      panel.style.height = "calc(100dvh - 16px)";
+      panel.style.gridTemplateColumns = "1fr";
+      panel.style.gridTemplateRows = "minmax(86px, 26vh) minmax(0, 1fr)";
+      sidebar.style.borderRight = "0";
+      sidebar.style.borderBottom = "1px solid #222831";
+      header.style.alignItems = "stretch";
+      header.style.flexDirection = "column";
+      actions.style.justifyContent = "flex-end";
+      return;
+    }
+    overlay.style.padding = "16px";
+    panel.style.width = "min(1100px, 100%)";
+    panel.style.height = "min(85vh, 100%)";
+    panel.style.gridTemplateColumns = "minmax(240px, 320px) 1fr";
+    panel.style.gridTemplateRows = "";
+    sidebar.style.borderRight = "1px solid #222831";
+    sidebar.style.borderBottom = "0";
+    header.style.alignItems = "center";
+    header.style.flexDirection = "row";
+    actions.style.justifyContent = "";
+  }
+  applyViewerLayout();
+  mobileMedia.addEventListener("change", applyViewerLayout, { signal });
+
   const sessions = [...nextStore.sessions].reverse();
   let selected: LogSession | null = sessions[0] ?? null;
 
