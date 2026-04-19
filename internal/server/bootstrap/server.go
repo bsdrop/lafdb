@@ -215,7 +215,7 @@ func Run() {
 	srv.Use(rejectInvalidHostMiddleware)
 
 	srv.Use(limiter.New(limiter.Config{
-		Max:        6144,
+		Max:        4096,
 		Expiration: time.Minute,
 		KeyGenerator: func(c fiber.Ctx) string {
 			return loggingpkg.ClientIP(c)
