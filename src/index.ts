@@ -5,16 +5,17 @@ import { initSettings } from "./index/settings";
 
 normalizeStoredTimestamps();
 
-function primeKeyboardFocus(): void {
+function focusInitialSearch(): void {
 	if (document.activeElement && document.activeElement !== document.body) return;
-	document.body.tabIndex = -1;
-	document.body.focus({ preventScroll: true });
+	const search = document.getElementById("search") as HTMLInputElement | null;
+	if (!search) return;
+	search.focus({ preventScroll: true });
 }
 
 if (document.readyState === "loading") {
-	document.addEventListener("DOMContentLoaded", primeKeyboardFocus, { once: true });
+	document.addEventListener("DOMContentLoaded", focusInitialSearch, { once: true });
 } else {
-	primeKeyboardFocus();
+	focusInitialSearch();
 }
 
 const feed = initFeed();

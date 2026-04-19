@@ -69,6 +69,7 @@ const htmlTplPlugin = {
 const common = {
   charset: "utf8",
   minify: true, minifyIdentifiers: false,
+  minifySyntax: true, minifyWhitespace: true,
   sourcemap: withSourceMap ? (dev ? "inline" : "external") : false,
   sourcesContent: withSourceMap && dev,
   target: ["chrome103", "firefox100", "safari16"],
