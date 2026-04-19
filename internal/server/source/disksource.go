@@ -13,26 +13,27 @@ import (
 )
 
 // DiskSource implements DataSource by reading JSON files on demand.
-// Only three lightweight indexes are kept in RAM:
-//   - episodeToItem (ep ID -> item ID)
-//   - playable (item IDs with a DRM key)
-//   - ending   (item IDs where is_ending == true; set externally after index build)
+// A few small indexes are kept in RAM so expensive lookups never walk the
+// source tree on the request path.
 type DiskSource struct {
-	dataDir       string
-	episodeToItem map[int64]int64
-	playable      map[int64]struct{}
-	ending        map[int64]struct{}
+	dataDir                     string
+	episodeToItem               map[int64]int64
+	commentListFileByCommentID  map[int64]int64
+	commentReplyParentByReplyID map[int64]int64
+	playable                    map[int64]struct{}
+	ending                      map[int64]struct{}
 }
 
-// NewDiskSource scans episodes/v3/list and mediacloud/keys to build the
-// episodeToItem and playable maps. Call ds.ending = idx.EndingItemIDs()
+// NewDiskSource builds request-path indexes. Call ds.ending = idx.EndingItemIDs()
 // after BuildIndexFromDisk to complete initialisation.
 func NewDiskSource(dataDir string) (*DiskSource, error) {
 	ds := &DiskSource{
-		dataDir:       dataDir,
-		episodeToItem: make(map[int64]int64, 65536),
-		playable:      make(map[int64]struct{}, 4096),
-		ending:        make(map[int64]struct{}, 1024),
+		dataDir:                     dataDir,
+		episodeToItem:               make(map[int64]int64, 65536),
+		commentListFileByCommentID:  make(map[int64]int64, 65536),
+		commentReplyParentByReplyID: make(map[int64]int64, 16384),
+		playable:                    make(map[int64]struct{}, 4096),
+		ending:                      make(map[int64]struct{}, 1024),
 	}
 
 	episodeListRoot, err := resolveWalkRoot(filepath.Join(dataDir, "episodes/v3/list"))
@@ -88,6 +89,8 @@ func NewDiskSource(dataDir string) (*DiskSource, error) {
 		return nil
 	})
 	log.Printf("[disk] playable items: %d", len(ds.playable))
+
+	ds.buildShareIndexes()
 
 	return ds, nil
 }
@@ -200,21 +203,21 @@ func (d *DiskSource) GetCommentReplies(id int64) ([]byte, bool) {
 	return d.readJSONID("comments/v1/replies", id)
 }
 func (d *DiskSource) GetCommentShare(targetID int64) (CommentShareEntry, bool) {
-	var target CommentShareEntry
-	found := false
-	d.ForEachCommentBlob(func(raw []byte) {
-		if found {
-			return
+	if episodeID, ok := d.commentListFileByCommentID[targetID]; ok {
+		raw, ok := d.readJSONID("comments/v1/list", episodeID)
+		if !ok {
+			return CommentShareEntry{}, false
 		}
-		for _, entry := range ParseCommentShareEntries(raw, 0, d.episodeToItem) {
-			if entry.CommentID == targetID {
-				target = entry
-				found = true
-				return
-			}
+		return findCommentShareEntry(raw, targetID, episodeID, d.episodeToItem)
+	}
+	if parentID, ok := d.commentReplyParentByReplyID[targetID]; ok {
+		raw, ok := d.readJSONID("comments/v1/replies", parentID)
+		if !ok {
+			return CommentShareEntry{}, false
 		}
-	})
-	return target, found
+		return findCommentShareEntry(raw, targetID, 0, d.episodeToItem)
+	}
+	return CommentShareEntry{}, false
 }
 func (d *DiskSource) GetReviewShare(targetID int64) (ReviewShareEntry, bool) {
 	var target ReviewShareEntry
@@ -239,6 +242,119 @@ func (d *DiskSource) GetEndingItemIDs() map[int64]struct{}   { return d.ending }
 
 func (d *DiskSource) SetEndingItemIDs(ending map[int64]struct{}) {
 	d.ending = ending
+}
+
+func (d *DiskSource) buildShareIndexes() {
+	d.buildCommentShareLookupIndex()
+}
+
+func (d *DiskSource) buildCommentShareLookupIndex() {
+	log.Printf("[disk] scanning comment share lookup index ...")
+
+	listRoot := filepath.Join(d.dataDir, "comments", "v1", "list")
+	_ = filepath.WalkDir(listRoot, func(path string, dir fs.DirEntry, err error) error {
+		if err != nil || dir.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		episodeID, parseErr := FileIDFromPath(path)
+		if parseErr != nil {
+			return nil
+		}
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		for _, id := range parseCommentIDs(raw) {
+			d.commentListFileByCommentID[id] = episodeID
+		}
+		return nil
+	})
+
+	replyRoot := filepath.Join(d.dataDir, "comments", "v1", "replies")
+	_ = filepath.WalkDir(replyRoot, func(path string, dir fs.DirEntry, err error) error {
+		if err != nil || dir.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		parentID, parseErr := FileIDFromPath(path)
+		if parseErr != nil {
+			return nil
+		}
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		for _, entry := range parseCommentReplyIDs(raw, parentID) {
+			d.commentReplyParentByReplyID[entry.replyID] = entry.parentID
+		}
+		return nil
+	})
+
+	log.Printf("[disk] comment share lookup index: comments=%d replies=%d",
+		len(d.commentListFileByCommentID),
+		len(d.commentReplyParentByReplyID),
+	)
+}
+
+func findCommentShareEntry(raw []byte, targetID int64, fallbackEpisodeID int64, episodeToItem map[int64]int64) (CommentShareEntry, bool) {
+	for _, entry := range ParseCommentShareEntries(raw, fallbackEpisodeID, episodeToItem) {
+		if entry.CommentID == targetID {
+			return entry, true
+		}
+	}
+	return CommentShareEntry{}, false
+}
+
+func parseCommentIDs(raw []byte) []int64 {
+	var doc struct {
+		Results []struct {
+			ID int64 `json:"id"`
+		} `json:"results"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return nil
+	}
+	out := make([]int64, 0, len(doc.Results))
+	for _, result := range doc.Results {
+		if result.ID > 0 {
+			out = append(out, result.ID)
+		}
+	}
+	return out
+}
+
+type commentReplyLookupEntry struct {
+	replyID  int64
+	parentID int64
+}
+
+func parseCommentReplyIDs(raw []byte, fallbackParentID int64) []commentReplyLookupEntry {
+	var doc struct {
+		Results []struct {
+			ID              int64  `json:"id"`
+			ParentCommentID *int64 `json:"parent_comment_id"`
+		} `json:"results"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return nil
+	}
+	out := make([]commentReplyLookupEntry, 0, len(doc.Results))
+	for _, result := range doc.Results {
+		if result.ID <= 0 {
+			continue
+		}
+		parentID := fallbackParentID
+		if result.ParentCommentID != nil && *result.ParentCommentID > 0 {
+			parentID = *result.ParentCommentID
+		}
+		if parentID <= 0 {
+			continue
+		}
+		out = append(out, commentReplyLookupEntry{
+			replyID:  result.ID,
+			parentID: parentID,
+		})
+	}
+	return out
 }
 
 func (d *DiskSource) ForEachCommentBlob(fn func(raw []byte)) {

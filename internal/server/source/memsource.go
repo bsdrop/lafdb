@@ -1,11 +1,5 @@
 package source
 
-import (
-	"log"
-	"path/filepath"
-	"strconv"
-)
-
 // MemData is a lightweight view of in-memory maps used by MemSource.
 type MemData struct {
 	EpisodesListByItemID map[int64][]byte
@@ -29,12 +23,11 @@ type MemData struct {
 
 // MemSource implements DataSource using in-memory maps.
 type MemSource struct {
-	dataDir string
-	d       MemData
+	d MemData
 }
 
-func NewMemSource(dataDir string, data MemData) *MemSource {
-	return &MemSource{dataDir: dataDir, d: data}
+func NewMemSource(_ string, data MemData) *MemSource {
+	return &MemSource{d: data}
 }
 
 func (m *MemSource) GetEpisodesList(id int64) ([]byte, bool) {
@@ -75,86 +68,26 @@ func (m *MemSource) GetCommentCount(id int64) ([]byte, bool) {
 			return b, true
 		}
 	}
-	path := filepath.Join(m.dataDir, "comments/v1/list", strconv.FormatInt(id, 10)+".json")
-	raw, _, err := loadAndNormalizeJSON(path)
-	if err != nil {
-		log.Printf("warning: comment count miss %d (list cache miss, disk miss at %s: %v)", id, path, err)
-		return nil, false
-	}
-	b, ok := deriveCommentCountJSON(raw)
-	if !ok {
-		log.Printf("warning: comment count decode miss %d (list present at %s)", id, path)
-		return nil, false
-	}
-	log.Printf("warning: mem cache miss for comment count %d, derived from comment list", id)
-	return b, true
+	return nil, false
 }
 func (m *MemSource) GetCommentList(id int64) ([]byte, bool) {
 	v, ok := m.d.CommentListByEpisodeID[id]
-	if ok {
-		return v, ok
-	}
-	path := filepath.Join(m.dataDir, "comments/v1/list", strconv.FormatInt(id, 10)+".json")
-	b, _, err := loadAndNormalizeJSON(path)
-	if err != nil {
-		log.Printf("warning: comment list miss %d (cache miss, disk miss at %s: %v)", id, path, err)
-		return nil, false
-	}
-	log.Printf("warning: mem cache miss for comment list %d, served from disk fallback", id)
-	return b, true
+	return v, ok
 }
 func (m *MemSource) GetCommentReplies(id int64) ([]byte, bool) {
 	v, ok := m.d.CommentRepliesByParentID[id]
-	if ok {
-		return v, ok
-	}
-	path := filepath.Join(m.dataDir, "comments/v1/replies", strconv.FormatInt(id, 10)+".json")
-	b, _, err := loadAndNormalizeJSON(path)
-	if err != nil {
-		log.Printf("warning: comment replies miss %d (cache miss, disk miss at %s: %v)", id, path, err)
-		return nil, false
-	}
-	log.Printf("warning: mem cache miss for comment replies %d, served from disk fallback", id)
-	return b, true
+	return v, ok
 }
 func (m *MemSource) GetDRMKey(id int64) ([]byte, bool) {
 	v, ok := m.d.DRMKeyByEpisodeID[id]
-	if ok {
-		return v, ok
-	}
-	path := filepath.Join(m.dataDir, "mediacloud/keys", strconv.FormatInt(id, 10)+".json")
-	b, _, err := loadAndNormalizeJSON(path)
-	if err != nil {
-		return nil, false
-	}
-	log.Printf("warning: mem cache miss for DRM key %d, served from disk fallback", id)
-	return b, true
+	return v, ok
 }
 func (m *MemSource) GetCommentShare(id int64) (CommentShareEntry, bool) {
 	v, ok := m.d.CommentShareByCommentID[id]
-	if ok {
-		return v, ok
-	}
-	ds := &DiskSource{
-		dataDir:       m.dataDir,
-		episodeToItem: m.d.EpisodeToItemID,
-	}
-	v, ok = ds.GetCommentShare(id)
-	if ok {
-		log.Printf("warning: mem cache miss for comment share %d, served from disk fallback", id)
-	}
 	return v, ok
 }
 func (m *MemSource) GetReviewShare(id int64) (ReviewShareEntry, bool) {
 	v, ok := m.d.ReviewShareByReviewID[id]
-	if ok {
-		return v, ok
-	}
-	ds := &DiskSource{dataDir: m.dataDir}
-	v, ok = ds.GetReviewShare(id)
-	if ok {
-		log.Printf("warning: mem cache miss for review share %d, served from disk fallback", id)
-	}
 	return v, ok
 }
 func (m *MemSource) GetPlayableItemIDs() map[int64]struct{} { return m.d.PlayableItemIDs }
