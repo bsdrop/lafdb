@@ -252,6 +252,9 @@ async function startPlayer(
         case "error":
           showError(data["message"] as string);
           break;
+        case "compatWarning":
+          showCompatWarning(data["message"] as string);
+          break;
         default:
           _dlHandleMsg(data);
       }

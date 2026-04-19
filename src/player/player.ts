@@ -84,6 +84,9 @@ interface WorkerMessage {
   qualityPrefBps?: string;
 }
 
+const ANONYMOUS_NETWORK_CODEC_MESSAGE =
+  "현재 브라우저에서 H.264/AAC 재생을 지원하지 않습니다. Brave의 Tor 비공개 창을 사용하시거나, 로컬 프록시를 통해 일반 브라우저로 접속해주시기 바랍니다.\n필요하면 다운로드 후 VLC 또는 MPV로 재생하실 수 있습니다.";
+
 interface XmlNode {
   tagName: string;
   attrs: Record<string, string>;
@@ -295,17 +298,28 @@ class Player {
     return this._ct;
   }
 
-  _emitCompatibilityWarning(reason: "decode" | "stall"): void {
-    //return console.warn("[PLAYER] 파폭 호환성 관련?", reason);
-    if (!this._isFirefox || this._compatWarningShown) return;
+  _emitCompatibilityWarning(
+    reason: "decode" | "stall" | "anonymous-codec",
+  ): void {
+    if (this._compatWarningShown) return;
+    if (reason !== "anonymous-codec" && !this._isFirefox) return;
     this._compatWarningShown = true;
     const detail = {
       reason,
       message:
-        "Firefox에서는 영상이 자주 멈출 수 있습니다. Chrome 계열 브라우저로 보시거나, 다운로드 후 재생하실 것을 권장드립니다.",
+        reason === "anonymous-codec"
+          ? ANONYMOUS_NETWORK_CODEC_MESSAGE
+          : "Firefox에서는 영상이 자주 멈출 수 있습니다. Chrome 계열 브라우저로 보시거나, 다운로드 후 재생하실 것을 권장드립니다.",
     };
     try {
-      self.dispatchEvent(new CustomEvent("player:compat-warning", { detail }));
+      if (IS_WORKER) {
+        (self as unknown as DedicatedWorkerGlobalScope).postMessage({
+          type: "compatWarning",
+          message: detail.message,
+        });
+      } else {
+        self.dispatchEvent(new CustomEvent("player:compat-warning", { detail }));
+      }
     } catch (e) {
       console.debug("[PLAYER] compat warning dispatch failed:", e);
     }
@@ -1523,7 +1537,15 @@ class Player {
     console.log(`[PLAYER] _startPlayback resumeTime=${resumeTime ?? "null"}`);
 
     for (const track of this.tracks) {
-      const sb = this.ms!.addSourceBuffer(track.mime);
+      let sb: SourceBuffer;
+      try {
+        sb = this.ms!.addSourceBuffer(track.mime);
+      } catch (e) {
+        if (isAnonymousNetworkPage()) {
+          this._emitCompatibilityWarning("anonymous-codec");
+        }
+        throw e;
+      }
       track.sb = sb;
       track.sbToken++;
       sb.mode = "segments";
@@ -2182,6 +2204,14 @@ class Player {
     console.error(
       `[VIDEO] error code=${code} ct=${this._currentTime.toFixed(3)}`,
     );
+    if (
+      code === 4 /* MEDIA_ERR_SRC_NOT_SUPPORTED */ &&
+      isAnonymousNetworkPage()
+    ) {
+      this._stopFetchLoops("anonymous network codec unsupported");
+      this._emitCompatibilityWarning("anonymous-codec");
+      return;
+    }
     if (
       code === 3 /* MEDIA_ERR_DECODE */ ||
       code === 2 /* MEDIA_ERR_NETWORK */
