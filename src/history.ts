@@ -66,7 +66,7 @@ async function render(): Promise<void> {
     const thumbSrc = info.img || info.images?.[0]?.img_url || "";
     const thumb = thumbSrc
       ? (manualThumbs
-        ? `<button class="history-thumb-manual" type="button" data-thumb="${esc(rewriteCDN(thumbSrc))}">썸네일 불러오기</button>`
+        ? `<span class="history-thumb-manual" data-thumb="${esc(rewriteCDN(thumbSrc))}">썸네일 불러오기</span>`
         : `<img class="history-thumb-img" src="${esc(rewriteCDN(thumbSrc))}" alt="" loading="lazy">`)
       : `<div class="history-thumb-fallback"></div>`;
     const progress = group.progresses[0]?.data ?? null;
@@ -79,6 +79,7 @@ async function render(): Promise<void> {
       group.latestEpisodeTitle ||
       "최근 시청 에피소드",
     );
+    const itemName = esc(info.name || `작품 ${group.itemId}`);
     const episodeRows = group.progresses
       .slice(0, 12)
       .map(({ epId, data }, index) => {
@@ -98,11 +99,11 @@ async function render(): Promise<void> {
       .join("");
 
     card.innerHTML = `
-<a class="history-thumb" href="/item.html#id=${esc(group.itemId)}">${thumb}</a>
+<a class="history-thumb" href="/item.html#id=${esc(group.itemId)}" aria-label="${itemName} 작품 보기">${thumb}</a>
 <div class="history-body">
 	<div class="history-top">
 	<div>
-			<a class="history-title" href="/item.html#id=${esc(group.itemId)}">${esc(info.name || `작품 ${group.itemId}`)}</a>
+			<a class="history-title" href="/item.html#id=${esc(group.itemId)}" tabindex="-1">${itemName}</a>
 			<div class="history-meta">${esc(info.medium || "")}</div>
 		</div>
 		<button class="history-delete" type="button" data-item-id="${esc(group.itemId)}">삭제</button>
@@ -141,8 +142,10 @@ async function render(): Promise<void> {
     });
   });
 
-  listEl.querySelectorAll<HTMLButtonElement>(".history-thumb-manual").forEach((button) => {
-    button.addEventListener("click", () => {
+  listEl.querySelectorAll<HTMLElement>(".history-thumb-manual").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       const src = button.dataset.thumb;
       if (!src) return;
       const img = document.createElement("img");
