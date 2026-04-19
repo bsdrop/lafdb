@@ -41,6 +41,7 @@ let store: LogStore | null = null;
 let currentSession: LogSession | null = null;
 let flushTimer: number | null = null;
 let viewerEl: HTMLElement | null = null;
+let viewerAbortController: AbortController | null = null;
 let originalConsole: Pick<Console, LogLevel> | null = null;
 
 function readStore(): LogStore {
@@ -244,6 +245,18 @@ function createSession(): LogSession {
   };
 }
 
+function isCurrentLocationIndexPage(): boolean {
+  try {
+    const path = new URL(location.href).pathname;
+    return path === "/" || path.length < 20 && (
+      path.startsWith("/index.html") ||
+      path.startsWith("/index")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function exportText(): string {
   const nextStore = store ?? readStore();
   return nextStore.sessions
@@ -259,12 +272,16 @@ function exportText(): string {
 }
 
 function closeViewer(): void {
+  viewerAbortController?.abort();
+  viewerAbortController = null;
   viewerEl?.remove();
   viewerEl = null;
 }
 
 function openViewer(): void {
   closeViewer();
+  viewerAbortController = new AbortController();
+  const signal = viewerAbortController.signal;
   const nextStore = store ?? readStore();
   const overlay = document.createElement("div");
   overlay.id = "laf-log-viewer";
@@ -320,7 +337,7 @@ function openViewer(): void {
   body.style.cssText = "flex:1 1 auto;min-height:0;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;";
 
   const sessions = [...nextStore.sessions].reverse();
-  let selected = sessions[0] ?? null;
+  let selected: LogSession | null = sessions[0] ?? null;
 
   function renderSidebar(): void {
     sidebar.innerHTML = "";
@@ -374,21 +391,32 @@ function openViewer(): void {
     if (!selected) return;
     store = store ?? readStore();
     const selectedId = selected.id;
+    const selectedIndex = sessions.findIndex((session) => session.id === selectedId);
     store.sessions = store.sessions.filter((session) => session.id !== selectedId);
     if (currentSession?.id === selectedId) {
-      currentSession = createSession();
-      store.sessions.push(currentSession);
+      if (isCurrentLocationIndexPage()) {
+        currentSession = null;
+      } else {
+        currentSession = createSession();
+        store.sessions.push(currentSession);
+      }
     }
     flushStore();
     sessions.splice(0, sessions.length, ...store.sessions.slice().reverse());
-    selected = sessions[0] ?? null;
+    const nextIndex = selectedIndex >= 0
+      ? Math.min(selectedIndex, sessions.length - 1)
+      : -1;
+    selected = nextIndex >= 0 ? sessions[nextIndex] ?? null : null;
     renderSidebar();
     renderBody();
   });
-  closeBtn.addEventListener("click", closeViewer);
+  closeBtn.addEventListener("click", closeViewer, { signal });
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) closeViewer();
-  });
+  }, { signal });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && viewerEl === overlay) closeViewer();
+  }, { signal });
 
   main.append(header, body);
   panel.append(sidebar, main);

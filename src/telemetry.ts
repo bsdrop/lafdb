@@ -198,6 +198,9 @@ declare global {
     bg.addEventListener("click", (e) => {
       if (e.target === bg) closeModal();
     });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && bg.classList.contains("_tm-open")) closeModal();
+    });
     document.getElementById("_tm-modal-close")!.addEventListener("click", closeModal);
   }
 
