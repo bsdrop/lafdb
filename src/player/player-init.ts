@@ -173,8 +173,9 @@ async function startPlayer(
   const qualityPrefBps = parseInt(localStorage.getItem("quality_pref_bps") || "0", 10);
 
   const MSWithWorker = MS as (typeof MediaSource & { canConstructInDedicatedWorker?: boolean }) | undefined;
-  const workerMseOptIn = localStorage.getItem("player_worker_mse") === "on";
-  const canUseWorkerMse = !!(MSWithWorker?.canConstructInDedicatedWorker && workerMseOptIn);
+  //const workerMseOptIn = localStorage.getItem("player_worker_mse") === "on"; // TODO: FIXME: 이거 항상 false임. player_worker_mse 쓰일 일 없음
+  //const canUseWorkerMse = !!(MSWithWorker?.canConstructInDedicatedWorker && workerMseOptIn);
+  const canUseWorkerMse = MSWithWorker?.canConstructInDedicatedWorker;
 
   if (MS === undefined || !globalThis.crypto?.subtle) {
     if (navigator.userAgent.includes("iP") && MS === undefined) {
@@ -295,7 +296,7 @@ async function startPlayer(
     });
     _dlInit(mpdUrl, worker, true);
   } else {
-    if (MSWithWorker?.canConstructInDedicatedWorker && !workerMseOptIn) {
+    if (canUseWorkerMse) {
       console.log("[PLAYER] Dedicated worker MSE disabled; using main-thread player");
     }
     const player = new Player(video);
