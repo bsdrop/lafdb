@@ -395,7 +395,7 @@ func buildCFCSP(host, scheme, path string) string {
 		" cloudflareinsights.com https://static.cloudflareinsights.com" +
 		" https://www.cloudflare.com; " +
 		"frame-src https://challenges.cloudflare.com; " +
-		"media-src 'self'" + cdnOrigins + " blob:; " +
+		"media-src 'self'" + cdnOrigins + " data: blob:; " +
 		"img-src 'self'" + cdnOrigins + " data: blob:; " +
 		styleSrc +
 		fontSrc +

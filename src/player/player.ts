@@ -895,7 +895,9 @@ class Player {
     type: string,
   ): Track | null {
     const mimeType =
-      rep.getAttribute("mimeType") || set.getAttribute("mimeType") || "";
+      rep.getAttribute("mimeType") ||
+      set.getAttribute("mimeType") ||
+      (type === "audio" ? "audio/mp4" : "video/mp4");
     const codec =
       rep.getAttribute("codecs") ||
       set.getAttribute("codecs") ||
@@ -1043,11 +1045,29 @@ class Player {
     for (const set of sets) {
       const reps = Array.from((set as any).querySelectorAll("Representation"));
       if (reps.length === 0) continue;
-      const firstMime =
+      const contentType = String(
+        ((set as any).getAttribute("contentType") ||
+          (set as any).getAttribute("type") ||
+          "") as string,
+      ).toLowerCase();
+      const firstMime = String(
         (reps[0] as any).getAttribute("mimeType") ||
-        (set as any).getAttribute("mimeType") ||
-        "";
-      const type = firstMime.includes("video") ? "video" : "audio";
+          (set as any).getAttribute("mimeType") ||
+          "",
+      ).toLowerCase();
+      const firstCodec = String(
+        (reps[0] as any).getAttribute("codecs") ||
+          (set as any).getAttribute("codecs") ||
+          "",
+      ).toLowerCase();
+      const type =
+        contentType.includes("video") ||
+        firstMime.includes("video") ||
+        firstCodec.startsWith("avc") ||
+        firstCodec.startsWith("hev") ||
+        firstCodec.startsWith("hvc")
+          ? "video"
+          : "audio";
 
       if (type === "video") {
         for (const rep of reps) {
