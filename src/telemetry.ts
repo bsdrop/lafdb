@@ -216,6 +216,12 @@ declare global {
     localStorage.setItem(STORAGE_KEY, val);
   }
 
+  function isAnonymousNetworkHost(): boolean {
+    const host = location.hostname.toLowerCase().replace(/\.$/, "");
+    return host.endsWith(".i2p") || host.endsWith(".onion");
+  }
+
+
   function setupOptout(): void {
     document.querySelectorAll("[data-tm-optout]").forEach((btn) => {
       btn.addEventListener("click", doOptout);
@@ -275,14 +281,24 @@ declare global {
 
   function init(): void {
     injectStyles();
-    const stored = localStorage.getItem(STORAGE_KEY);
+
+    let stored = localStorage.getItem(STORAGE_KEY);
+    const hasStoredConsent = stored === "yes" || stored === "no";
+
+    if (isAnonymousNetworkHost() && !hasStoredConsent) {
+      setConsent("no");
+      stored = "no";
+    }
+
     if (stored === "yes") {
       loadBeacon();
     } else if (stored !== "no") {
       showBanner();
     }
-    if (stored !== null) setupOptout();
+
+    if (stored === "yes" || stored === "no") setupOptout();
   }
+
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

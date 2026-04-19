@@ -12,6 +12,9 @@
 
 	if (localStorage.getItem(STORAGE_KEY)) return;
 
+  const host = location.hostname.toLowerCase().replace(/\.$/, "");
+  if(host.endsWith(".i2p") || host.endsWith(".onion")) return localStorage.setItem(STORAGE_KEY, "1");
+
 	const CSS = `
 #_warp-banner {
 	position: fixed; bottom: 0; left: 0; right: 0; z-index: 8900;
