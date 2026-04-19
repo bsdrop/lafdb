@@ -26,7 +26,15 @@ const MS: typeof MediaSource | undefined =
       ? MediaSource
       : undefined;
 
+const I2P_UNSUPPORTED_BROWSER_MESSAGE =
+  "이 브라우저는 WebCrypto 또는 MediaSource 지원이 부족합니다. i2pd 내장 브라우저류 대신 Cromite, Brave 같은 일반 브라우저에 I2P 프록시를 설정해 접속해주시기 바랍니다.";
+
 if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
+
+function isI2PHost(): boolean {
+  const host = location.hostname.toLowerCase().replace(/\.+$/g, "");
+  return host.endsWith(".i2p");
+}
 
 function cleanupPreviousPlayer(): void {
   clearAutoplayPrompt();
@@ -89,6 +97,10 @@ function showAutoplayPrompt(): void {
 }
 
 function buildUnsupportedBrowserMessage(): string {
+  if (isI2PHost() && (MS === undefined || !globalThis.crypto?.subtle)) {
+    return I2P_UNSUPPORTED_BROWSER_MESSAGE;
+  }
+
   const ua = navigator.userAgent || "";
   const isAndroid = ua.includes("Android");
 
@@ -182,6 +194,10 @@ async function startPlayer(
   const canUseWorkerMse = MSWithWorker?.canConstructInDedicatedWorker;
 
   if (MS === undefined || !globalThis.crypto?.subtle) {
+    if (isI2PHost()) {
+      showError(I2P_UNSUPPORTED_BROWSER_MESSAGE);
+      return showCompatWarning(I2P_UNSUPPORTED_BROWSER_MESSAGE);
+    }
     if (navigator.userAgent.includes("iP") && MS === undefined) {
       return showError("재생이 지원되지 않습니다. Safari로 열어보시겠어요?");
     }
