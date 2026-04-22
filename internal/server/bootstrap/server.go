@@ -320,10 +320,7 @@ func stripPort(host string) string {
 	if i := strings.LastIndex(host, ":"); i > strings.LastIndex(host, "]") {
 		return host[:i]
 	}
-	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		return strings.Trim(host, "[]")
-	}
-	return strings.Trim(host, "[]")
+	return host
 }
 
 // buildCFCSP builds a Content-Security-Policy header that satisfies Cloudflare's

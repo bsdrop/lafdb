@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	mediapkg "github.com/bsdrop/lafdb/internal/server/media"
 	searchpkg "github.com/bsdrop/lafdb/internal/server/search"
 	sourcepkg "github.com/bsdrop/lafdb/internal/server/source"
 	"github.com/gofiber/fiber/v3"
@@ -185,6 +186,7 @@ func (a *App) Reload() error {
 	a.ds = newDS
 	a.search = newIdx
 	a.mu.Unlock()
+	mediapkg.SnapFailedURLs()
 	runtime.GC()
 	log.Printf("reload complete")
 	return nil

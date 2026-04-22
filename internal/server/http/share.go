@@ -372,9 +372,6 @@ func (a *App) handleItemShare(c fiber.Ctx) error {
 }
 
 func (a *App) handleSitemap(c fiber.Ctx) error {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
 	proto := c.Get("X-Forwarded-Proto")
 	if proto != "https" && proto != "http" {
 		proto = "http"
@@ -383,7 +380,15 @@ func (a *App) handleSitemap(c fiber.Ctx) error {
 	if host == "" {
 		host = c.Hostname()
 	}
-	baseURL := proto + "://" + host
+
+	// Copy the maps under lock, then release before building the XML.
+	a.mu.RLock()
+	playable := a.ds.GetPlayableItemIDs()
+	ending := a.ds.GetEndingItemIDs()
+	a.mu.RUnlock()
+
+	// XML-encode the base URL so a crafted Host header cannot inject XML.
+	baseURL := escapeHTML(proto+"://"+host)
 
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
@@ -393,8 +398,6 @@ func (a *App) handleSitemap(c fiber.Ctx) error {
 	fmt.Fprintf(&sb, "\t<url><loc>%s/docs</loc><changefreq>monthly</changefreq></url>\n", baseURL)
 	fmt.Fprintf(&sb, "\t<url><loc>%s/docs/openapi.json</loc><changefreq>monthly</changefreq></url>\n", baseURL)
 
-	playable := a.ds.GetPlayableItemIDs()
-	ending := a.ds.GetEndingItemIDs()
 	for itemID := range playable {
 		changefreq := "monthly"
 		if _, ok := ending[itemID]; ok {

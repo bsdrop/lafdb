@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -42,8 +44,37 @@ func SetRAMCache(v bool) {
 	mediaRAMCache = v
 }
 
-var failedURLs sync.Map    // cleanPathname → struct{}
+var failedURLs sync.Map      // cleanPathname → struct{}
+var failedURLCount atomic.Int64
 var inflightMedia sync.Map // cleanPathname → *inflightEntry
+
+const maxFailedURLs = 100_000
+
+func storeFailedURL(key string) {
+	if failedURLCount.Load() >= maxFailedURLs {
+		return
+	}
+	if _, loaded := failedURLs.LoadOrStore(key, struct{}{}); !loaded {
+		failedURLCount.Add(1)
+	}
+}
+
+// SnapFailedURLs randomly evicts ~50% of cached failure entries.
+// Called on data reload (after DRM phase) so transiently-failed URLs get a retry.
+func SnapFailedURLs() {
+	var victims []string
+	failedURLs.Range(func(key, _ any) bool {
+		if rand.IntN(2) == 0 {
+			victims = append(victims, key.(string))
+		}
+		return true
+	})
+	for _, k := range victims {
+		failedURLs.Delete(k)
+	}
+	failedURLCount.Add(-int64(len(victims)))
+	log.Printf("media: failedURLs snap: evicted %d entries", len(victims))
+}
 
 type inflightEntry struct {
 	done chan struct{}
@@ -237,7 +268,7 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 	resp, err := mediaHTTPClient.Get(sourceURL)
 	if err != nil {
 		log.Printf("media fetch %s: %v", sourceURL, err)
-		failedURLs.Store(cleanPathname, struct{}{})
+		storeFailedURL(cleanPathname)
 		finish(err)
 		return c.Status(fiber.StatusNotFound).SendString("Not Found")
 	}
@@ -245,7 +276,7 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("media upstream %d: %s", resp.StatusCode, sourceURL)
-		failedURLs.Store(cleanPathname, struct{}{})
+		storeFailedURL(cleanPathname)
 		finish(fmt.Errorf("upstream %d", resp.StatusCode))
 		return c.Status(fiber.StatusNotFound).SendString("Not Found")
 	}
@@ -255,34 +286,38 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 	n, _ := io.ReadFull(resp.Body, first)
 	first = first[:n]
 	if n > 0 && ((first[0] == '<' && (n < 2 || first[1] != '?')) || first[0] == '{') {
-		failedURLs.Store(cleanPathname, struct{}{})
+		storeFailedURL(cleanPathname)
 		finish(fmt.Errorf("upstream returned HTML/JSON"))
 		return c.Status(fiber.StatusServiceUnavailable).SendString("Internal Server Error")
 	}
 
 	if !mediaRAMCache {
 		if err := saveMediaStream(localPath, first, resp.Body); err == nil {
+			// resp.Body is fully consumed; open the saved file to serve it.
 			finish(nil)
-			if f, openErr := os.Open(localPath); openErr == nil {
-				if fi, statErr := f.Stat(); statErr == nil && !fi.IsDir() {
-					c.Set(fiber.HeaderContentType, mediaContentType(ext))
-					c.Set(fiber.HeaderContentLength, fmt.Sprintf("%d", fi.Size()))
-					if isStaticMedia(ext) {
-						c.Set(fiber.HeaderCacheControl, "public, max-age=31536000, immutable")
-					}
-					return c.SendStream(f, int(fi.Size()))
-				}
-				_ = f.Close()
+			f, openErr := os.Open(localPath)
+			if openErr != nil {
+				return c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
 			}
-		} else {
-			log.Printf("media stream-save fallback to RAM %s: %v", localPath, err)
+			fi, statErr := f.Stat()
+			if statErr != nil || fi.IsDir() {
+				_ = f.Close()
+				return c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error")
+			}
+			c.Set(fiber.HeaderContentType, mediaContentType(ext))
+			c.Set(fiber.HeaderContentLength, fmt.Sprintf("%d", fi.Size()))
+			if isStaticMedia(ext) {
+				c.Set(fiber.HeaderCacheControl, "public, max-age=31536000, immutable")
+			}
+			return c.SendStream(f, int(fi.Size()))
 		}
+		log.Printf("media stream-save fallback to RAM %s: %v", localPath, err)
 	}
 
-	// Read rest of body
+	// Read rest of body into RAM
 	rest, err := io.ReadAll(resp.Body)
 	if err != nil {
-		failedURLs.Store(cleanPathname, struct{}{})
+		storeFailedURL(cleanPathname)
 		finish(err)
 		return c.Status(fiber.StatusNotFound).SendString("Not Found")
 	}
@@ -387,8 +422,5 @@ func stripPort(host string) string {
 	if i := strings.LastIndex(host, ":"); i > strings.LastIndex(host, "]") {
 		return host[:i]
 	}
-	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		return strings.Trim(host, "[]")
-	}
-	return strings.Trim(host, "[]")
+	return host
 }
