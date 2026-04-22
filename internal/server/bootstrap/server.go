@@ -96,7 +96,7 @@ func Run() {
 				log.Fatalf("failed to reload cache: %v", err)
 			}
 			generateAndSaveOpenAPI(store)
-			GenerateAccessibleBitset("./laftel", "./src/accessible.ts")
+			GenerateAccessibleBitset("./laftel", "./public/accessible.js")
 
 		default:
 			if _, statErr := os.Stat(cacheFile); statErr == nil {

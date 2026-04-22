@@ -66,17 +66,17 @@ func fmtUint32Array(buf []uint32) string {
 	return "\n" + strings.Join(lines, ",\n") + "\n"
 }
 
-func bitsetTS(name string, b *bitsetData) string {
+func bitsetJS(name string, b *bitsetData) string {
 	varBuf := "bitsetBuf" + name
 	varMin := "MIN_" + strings.ToUpper(name) + "_ID"
 	varMax := "MAX_" + strings.ToUpper(name) + "_ID"
 	fnHas := "has" + name
 	fnExport := "isAccessible" + name
 
-	return fmt.Sprintf(`const %s: number = %d;
-const %s: number = %d;
-const %s: Uint32Array = new Uint32Array([%s]);
-function %s(id: number): boolean {
+	return fmt.Sprintf(`const %s = %d;
+const %s = %d;
+const %s = new Uint32Array([%s]);
+function %s(id) {
   if (id < %s || id > %s) return false;
   const o = id - %s;
   return (%s[o >>> 5] & (1 << (o & 31))) !== 0;
@@ -156,18 +156,9 @@ func GenerateAccessibleBitset(root, outPath string) {
 		return
 	}
 
-	// 4. write TS
+	// 4. write JS
 	fmt.Printf("\rbitset/write: 0/1 (0.0%%)    ")
-	out := `export {};
-
-declare global {
-  interface Window {
-    isAccessibleItem: (id: number) => boolean;
-    isAccessibleEpisode: (id: number) => boolean;
-  }
-}
-
-` + bitsetTS("Item", itemBS) + "\n" + bitsetTS("Episode", epBS)
+	out := "(()=>{\n" + bitsetJS("Item", itemBS) + "\n" + bitsetJS("Episode", epBS) + "})();\n"
 	if err := os.WriteFile(filepath.Clean(outPath), []byte(out), 0644); err != nil {
 		fmt.Println()
 		log.Printf("bitset: write %s: %v", outPath, err)

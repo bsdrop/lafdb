@@ -100,7 +100,7 @@ func main() {
 		// ── 3. Cache & Server Update Phase ──────────────────────────
 		log.Printf("daemon: rebuilding cache and signaling server")
 		func() {
-			server.GenerateAccessibleBitset(*root, filepath.Join(*root, "../src/accessible.ts"))
+			server.GenerateAccessibleBitset(*root, filepath.Join(*root, "../public/accessible.js"))
 
 			store, err := cachepkg.NewStore()
 			if err != nil {

@@ -84,7 +84,6 @@ const scripts = [
   { entryPoints: ["src/item.ts"], bundle: true, format: "iife", outfile: "public/item.js" },
   { entryPoints: ["src/history.ts"], bundle: true, format: "iife", outfile: "public/history.js" },
   { entryPoints: ["src/common.ts"], bundle: true, format: "iife", outfile: "public/common.js" },
-  { entryPoints: ["src/accessible.ts"], bundle: true, format: "iife", outfile: "public/accessible.js" },
 ];
 
 const css = {

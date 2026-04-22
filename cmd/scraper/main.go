@@ -34,7 +34,7 @@ func main() {
 	decrypt := flag.String("decrypt", "http://127.0.0.1:3040/api/decrypt", "CDM server URL")
 	drmSleep := flag.Int("drm-sleep", 16000, "DRM sleep between requests (ms)")
 	waitHours := flag.Float64("wait", 24*6, "hours to wait between daemon cycles (default 6 days)")
-	bitsetOut := flag.String("bitset-out", "./src/accessible.ts", "path to write accessible.ts after DRM")
+	bitsetOut := flag.String("bitset-out", "./public/accessible.js", "path to write accessible.js after DRM")
 	flag.Parse()
 
 	proxyFile := *proxies
