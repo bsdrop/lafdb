@@ -19,9 +19,10 @@ import (
 const duckDBSchemaVersion = 1
 
 type DuckDBSource struct {
-	db       *sql.DB
-	playable map[int64]struct{}
-	ending   map[int64]struct{}
+	db            *sql.DB
+	episodeToItem map[int64]int64
+	playable      map[int64]struct{}
+	ending        map[int64]struct{}
 }
 
 func NewDuckDBSource(path string) (*DuckDBSource, error) {
@@ -31,6 +32,10 @@ func NewDuckDBSource(path string) (*DuckDBSource, error) {
 	}
 	ds := &DuckDBSource{db: db}
 	if err := ds.checkSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := ds.loadEpisodeToItem(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -54,6 +59,27 @@ func (d *DuckDBSource) checkSchema() error {
 	if version != strconv.Itoa(duckDBSchemaVersion) {
 		return fmt.Errorf("unsupported duckdb schema version %q", version)
 	}
+	return nil
+}
+
+func (d *DuckDBSource) loadEpisodeToItem() error {
+	rows, err := d.db.Query(`SELECT episode_id, item_id FROM episode_to_item`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	out := make(map[int64]int64)
+	for rows.Next() {
+		var episodeID, itemID int64
+		if err := rows.Scan(&episodeID, &itemID); err != nil {
+			return err
+		}
+		out[episodeID] = itemID
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	d.episodeToItem = out
 	return nil
 }
 
@@ -109,9 +135,8 @@ func (d *DuckDBSource) GetCommentReplies(id int64) ([]byte, bool) {
 }
 
 func (d *DuckDBSource) EpisodeItemID(epID int64) (int64, bool) {
-	var itemID int64
-	err := d.db.QueryRow(`SELECT item_id FROM episode_to_item WHERE episode_id = ?`, epID).Scan(&itemID)
-	return itemID, err == nil
+	itemID, ok := d.episodeToItem[epID]
+	return itemID, ok
 }
 
 func (d *DuckDBSource) GetCommentCount(id int64) ([]byte, bool) {
@@ -144,10 +169,10 @@ func (d *DuckDBSource) GetCommentShare(targetID int64) (CommentShareEntry, bool)
 
 func (d *DuckDBSource) findCommentShareEntry(raw []byte, targetID int64, fallbackEpisodeID int64) (CommentShareEntry, bool) {
 	for _, entry := range ParseCommentShareEntries(raw, fallbackEpisodeID, nil) {
-		if entry.ItemID == 0 && entry.EpisodeID > 0 {
-			entry.ItemID, _ = d.EpisodeItemID(entry.EpisodeID)
-		}
 		if entry.CommentID == targetID {
+			if entry.ItemID == 0 && entry.EpisodeID > 0 {
+				entry.ItemID, _ = d.EpisodeItemID(entry.EpisodeID)
+			}
 			return entry, true
 		}
 	}
