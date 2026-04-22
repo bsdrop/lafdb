@@ -74,12 +74,16 @@ func Run() {
 	if *duckDBPath != "" {
 		var duckDBBuildMu sync.Mutex
 		duckDBBuildRunning := false
+		duckDBBuildPending := false
 		loadDuckDB := func() (sourcepkg.DataSource, *searchpkg.Index, error) {
-			nd, err := sourcepkg.NewDuckDBSource(*duckDBPath)
+			// Build the search index first so its connection is closed before
+			// NewDuckDBSource opens the file.  DuckDB allows only one read-write
+			// connection at a time; opening both simultaneously can deadlock.
+			ni, err := sourcepkg.BuildIndexFromDuckDB(*duckDBPath)
 			if err != nil {
 				return nil, nil, err
 			}
-			ni, err := sourcepkg.BuildIndexFromDuckDB(*duckDBPath)
+			nd, err := sourcepkg.NewDuckDBSource(*duckDBPath)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -89,28 +93,34 @@ func Run() {
 			go func() {
 				duckDBBuildMu.Lock()
 				if duckDBBuildRunning {
+					duckDBBuildPending = true
 					duckDBBuildMu.Unlock()
-					log.Printf("duckdb async build already running; skipped trigger (%s)", reason)
+					log.Printf("duckdb async build already running; queued rebuild (%s)", reason)
 					return
 				}
 				duckDBBuildRunning = true
 				duckDBBuildMu.Unlock()
-				defer func() {
-					duckDBBuildMu.Lock()
-					duckDBBuildRunning = false
-					duckDBBuildMu.Unlock()
-				}()
 
-				log.Printf("duckdb async build started: %s (%s)", *duckDBPath, reason)
-				if err := sourcepkg.BuildDuckDBFromDisk(dataDir, *duckDBPath); err != nil {
-					log.Printf("duckdb async build failed: %v", err)
-					return
+				for {
+					log.Printf("duckdb async build started: %s (%s)", *duckDBPath, reason)
+					if err := sourcepkg.BuildDuckDBFromDisk(dataDir, *duckDBPath); err != nil {
+						log.Printf("duckdb async build failed: %v", err)
+					} else if err := app.Reload(); err != nil {
+						log.Printf("duckdb async reload failed: %v", err)
+					} else {
+						log.Printf("duckdb async build loaded")
+					}
+
+					duckDBBuildMu.Lock()
+					if !duckDBBuildPending {
+						duckDBBuildRunning = false
+						duckDBBuildMu.Unlock()
+						return
+					}
+					duckDBBuildPending = false
+					reason = "queued rebuild"
+					duckDBBuildMu.Unlock()
 				}
-				if err := app.Reload(); err != nil {
-					log.Printf("duckdb async reload failed: %v", err)
-					return
-				}
-				log.Printf("duckdb async build loaded")
 			}()
 		}
 		if !*rebuildDuckDB {

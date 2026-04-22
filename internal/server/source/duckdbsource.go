@@ -299,9 +299,7 @@ func BuildDuckDBFromDisk(dataDir, dbPath string) error {
 	if _, err := db.Exec(`CHECKPOINT`); err != nil {
 		return err
 	}
-	if err := db.Close(); err != nil {
-		return err
-	}
+	_ = db.Close()
 	if err := os.Rename(tmp, dbPath); err != nil {
 		return err
 	}
@@ -329,164 +327,201 @@ func initDuckDBSchema(db *sql.DB) error {
 	return err
 }
 
-func populateDuckDB(dataDir string, db *sql.DB) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
+// txInsertDir walks relDir, normalises each JSON file, inserts it as a blob of
+// the given kind, and optionally calls fn for additional per-row work.
+// All inserts go through the caller's transaction.
+func txInsertDir(tx *sql.Tx, dataDir, label, relDir, kind string, fn func(id int64, raw []byte) error) error {
 	insertBlob, err := tx.Prepare(`INSERT INTO json_blobs VALUES (?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer insertBlob.Close()
-	insertEpisodeToItem, err := tx.Prepare(`INSERT OR IGNORE INTO episode_to_item VALUES (?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer insertEpisodeToItem.Close()
-	insertPlayable, err := tx.Prepare(`INSERT OR IGNORE INTO playable_items VALUES (?)`)
-	if err != nil {
-		return err
-	}
-	defer insertPlayable.Close()
-	insertEnding, err := tx.Prepare(`INSERT OR IGNORE INTO ending_items VALUES (?)`)
-	if err != nil {
-		return err
-	}
-	defer insertEnding.Close()
-	insertComment, err := tx.Prepare(`INSERT OR IGNORE INTO comment_list_index VALUES (?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer insertComment.Close()
-	insertReply, err := tx.Prepare(`INSERT OR IGNORE INTO comment_reply_index VALUES (?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer insertReply.Close()
 
-	episodeToItem := make(map[int64]int64, 131072)
-	insertJSONDir := func(label, relDir, kind string, fn func(id int64, raw []byte) error) error {
-		root := filepath.Join(dataDir, relDir)
-		if _, err := os.Stat(root); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				log.Printf("[duckdb] %s missing, skipping", label)
-				return nil
-			}
-			return err
-		}
-		count := 0
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				if path != root {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if filepath.Ext(path) != ".json" {
-				return nil
-			}
-			id, err := FileIDFromPath(path)
-			if err != nil {
-				return nil
-			}
-			raw, _, err := loadAndNormalizeJSON(path)
-			if err != nil {
-				return nil
-			}
-			if _, err := insertBlob.Exec(kind, id, raw); err != nil {
-				return err
-			}
-			count++
-			if fn != nil {
-				return fn(id, raw)
-			}
+	root := filepath.Join(dataDir, relDir)
+	if _, err := os.Stat(root); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("[duckdb] %s missing, skipping", label)
 			return nil
-		})
-		log.Printf("[duckdb] loaded %s: %d", label, count)
-		return err
-	}
-
-	if err := insertJSONDir("items/v4", "items/v4", "item", func(id int64, raw []byte) error {
-		var item struct {
-			IsEnding bool `json:"is_ending"`
 		}
-		if json.Unmarshal(raw, &item) == nil && item.IsEnding {
-			_, err := insertEnding.Exec(id)
-			return err
-		}
-		return nil
-	}); err != nil {
 		return err
 	}
-	if err := insertJSONDir("items/v2/series", "items/v2/series", "series", nil); err != nil {
-		return err
-	}
-	if err := insertJSONDir("episodes/v3", "episodes/v3", "episode", nil); err != nil {
-		return err
-	}
-	if err := insertJSONDir("episodes/v3/list", "episodes/v3/list", "episodes_list", func(itemID int64, raw []byte) error {
-		episodeIDs, err := extractDuckDBEpisodeIDsFromList(raw)
+	count := 0
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		for _, episodeID := range episodeIDs {
-			if _, exists := episodeToItem[episodeID]; exists {
-				continue
+		if d.IsDir() {
+			if path != root {
+				return filepath.SkipDir
 			}
-			episodeToItem[episodeID] = itemID
-			if _, err := insertEpisodeToItem.Exec(episodeID, itemID); err != nil {
-				return err
-			}
+			return nil
 		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	if err := insertJSONDir("reviews/v1/count", "reviews/v1/count", "review_count", nil); err != nil {
-		return err
-	}
-	if err := insertJSONDir("reviews/v2/list", "reviews/v2/list", "review_list", nil); err != nil {
-		return err
-	}
-	if err := insertStatistics(dataDir, insertBlob); err != nil {
-		return err
-	}
-	if err := insertJSONDir("comments/v1/list", "comments/v1/list", "comment_list", func(episodeID int64, raw []byte) error {
-		for _, id := range parseCommentIDs(raw) {
-			if _, err := insertComment.Exec(id, episodeID); err != nil {
-				return err
-			}
+		if filepath.Ext(path) != ".json" {
+			return nil
 		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	if err := insertJSONDir("comments/v1/replies", "comments/v1/replies", "comment_replies", func(parentID int64, raw []byte) error {
-		for _, entry := range parseCommentReplyIDs(raw, parentID) {
-			if _, err := insertReply.Exec(entry.replyID, entry.parentID); err != nil {
-				return err
-			}
+		id, err := FileIDFromPath(path)
+		if err != nil {
+			return nil
 		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	if err := insertJSONDir("mediacloud/keys", "mediacloud/keys", "drm_key", func(epID int64, _ []byte) error {
-		if itemID, ok := episodeToItem[epID]; ok {
-			_, err := insertPlayable.Exec(itemID)
+		raw, _, err := loadAndNormalizeJSON(path)
+		if err != nil {
+			return nil
+		}
+		if _, err := insertBlob.Exec(kind, id, raw); err != nil {
 			return err
 		}
+		count++
+		if fn != nil {
+			return fn(id, raw)
+		}
 		return nil
+	})
+	log.Printf("[duckdb] loaded %s: %d", label, count)
+	return err
+}
+
+func populateDuckDB(dataDir string, db *sql.DB) error {
+	// episodeToItem is built in phase 1 and reused in phase 4.
+	episodeToItem := make(map[int64]int64, 131072)
+
+	// runPhase executes fn in a dedicated transaction.  Splitting into multiple
+	// transactions keeps each WAL small and avoids multi-GB memory pressure that
+	// a single giant transaction would create for large datasets.
+	runPhase := func(fn func(*sql.Tx) error) error {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if err := fn(tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// Phase 1: items, series, episodes, episode_lists.
+	if err := runPhase(func(tx *sql.Tx) error {
+		insertEnding, err := tx.Prepare(`INSERT OR IGNORE INTO ending_items VALUES (?)`)
+		if err != nil {
+			return err
+		}
+		defer insertEnding.Close()
+
+		if err := txInsertDir(tx, dataDir, "items/v4", "items/v4", "item", func(id int64, raw []byte) error {
+			var item struct {
+				IsEnding bool `json:"is_ending"`
+			}
+			if json.Unmarshal(raw, &item) == nil && item.IsEnding {
+				_, err := insertEnding.Exec(id)
+				return err
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		if err := txInsertDir(tx, dataDir, "items/v2/series", "items/v2/series", "series", nil); err != nil {
+			return err
+		}
+		if err := txInsertDir(tx, dataDir, "episodes/v3", "episodes/v3", "episode", nil); err != nil {
+			return err
+		}
+
+		insertEpisodeToItem, err := tx.Prepare(`INSERT OR IGNORE INTO episode_to_item VALUES (?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer insertEpisodeToItem.Close()
+
+		return txInsertDir(tx, dataDir, "episodes/v3/list", "episodes/v3/list", "episodes_list", func(itemID int64, raw []byte) error {
+			episodeIDs, err := extractDuckDBEpisodeIDsFromList(raw)
+			if err != nil {
+				return nil
+			}
+			for _, episodeID := range episodeIDs {
+				if _, exists := episodeToItem[episodeID]; exists {
+					continue
+				}
+				episodeToItem[episodeID] = itemID
+				if _, err := insertEpisodeToItem.Exec(episodeID, itemID); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	}); err != nil {
 		return err
 	}
-	return tx.Commit()
+
+	// Phase 2: reviews and statistics.
+	if err := runPhase(func(tx *sql.Tx) error {
+		if err := txInsertDir(tx, dataDir, "reviews/v1/count", "reviews/v1/count", "review_count", nil); err != nil {
+			return err
+		}
+		if err := txInsertDir(tx, dataDir, "reviews/v2/list", "reviews/v2/list", "review_list", nil); err != nil {
+			return err
+		}
+		return insertStatistics(dataDir, tx)
+	}); err != nil {
+		return err
+	}
+
+	// Phase 3: comment lists + index (large dataset; own transaction to cap WAL size).
+	if err := runPhase(func(tx *sql.Tx) error {
+		insertComment, err := tx.Prepare(`INSERT OR IGNORE INTO comment_list_index VALUES (?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer insertComment.Close()
+
+		return txInsertDir(tx, dataDir, "comments/v1/list", "comments/v1/list", "comment_list", func(episodeID int64, raw []byte) error {
+			for _, id := range parseCommentIDs(raw) {
+				if _, err := insertComment.Exec(id, episodeID); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}); err != nil {
+		return err
+	}
+
+	// Phase 4: comment replies, DRM keys, playable items.
+	if err := runPhase(func(tx *sql.Tx) error {
+		insertReply, err := tx.Prepare(`INSERT OR IGNORE INTO comment_reply_index VALUES (?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer insertReply.Close()
+
+		if err := txInsertDir(tx, dataDir, "comments/v1/replies", "comments/v1/replies", "comment_replies", func(parentID int64, raw []byte) error {
+			for _, entry := range parseCommentReplyIDs(raw, parentID) {
+				if _, err := insertReply.Exec(entry.replyID, entry.parentID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		insertPlayable, err := tx.Prepare(`INSERT OR IGNORE INTO playable_items VALUES (?)`)
+		if err != nil {
+			return err
+		}
+		defer insertPlayable.Close()
+
+		return txInsertDir(tx, dataDir, "mediacloud/keys", "mediacloud/keys", "drm_key", func(epID int64, _ []byte) error {
+			if itemID, ok := episodeToItem[epID]; ok {
+				_, err := insertPlayable.Exec(itemID)
+				return err
+			}
+			return nil
+		})
+	}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func extractDuckDBEpisodeIDsFromList(raw []byte) ([]int64, error) {
@@ -507,7 +542,13 @@ func extractDuckDBEpisodeIDsFromList(raw []byte) ([]int64, error) {
 	return out, nil
 }
 
-func insertStatistics(dataDir string, insertBlob *sql.Stmt) error {
+func insertStatistics(dataDir string, tx *sql.Tx) error {
+	insertBlob, err := tx.Prepare(`INSERT INTO json_blobs VALUES (?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer insertBlob.Close()
+
 	root := filepath.Join(dataDir, "items/v1")
 	if _, err := os.Stat(root); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -516,7 +557,7 @@ func insertStatistics(dataDir string, insertBlob *sql.Stmt) error {
 		return err
 	}
 	count := 0
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Base(path) != "statistics.json" {
 			return nil
 		}
