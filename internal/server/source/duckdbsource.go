@@ -30,6 +30,9 @@ func NewDuckDBSource(path string) (*DuckDBSource, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, err := db.Exec(`SET memory_limit='4GB'`); err != nil {
+		log.Printf("duckdb: SET memory_limit failed: %v", err)
+	}
 	ds := &DuckDBSource{db: db}
 	if err := ds.checkSchema(); err != nil {
 		_ = db.Close()
@@ -230,6 +233,9 @@ func BuildIndexFromDuckDB(path string) (*searchpkg.Index, error) {
 		return nil, err
 	}
 	defer db.Close()
+	if _, err := db.Exec(`SET memory_limit='4GB'`); err != nil {
+		log.Printf("duckdb: SET memory_limit failed: %v", err)
+	}
 
 	items, err := loadBlobMap(db, "item")
 	if err != nil {
@@ -280,6 +286,9 @@ func BuildDuckDBFromDisk(dataDir, dbPath string) error {
 	db, err := sql.Open("duckdb", tmp)
 	if err != nil {
 		return err
+	}
+	if _, err := db.Exec(`SET memory_limit='4GB'`); err != nil {
+		log.Printf("duckdb: SET memory_limit failed: %v", err)
 	}
 	ok := false
 	defer func() {
