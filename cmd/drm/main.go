@@ -26,6 +26,7 @@ func main() {
 	skip := flag.Int("skip-first", 0, "skip first N episodes")
 	skipFailed := flag.Bool("skip-failed", false, "skip episodes previously failed due to missing DRM token")
 	daemon := flag.Bool("daemon", false, "run continuously: scraper → DRM → cache rebuild → signal server")
+	serverDuckDBCache := flag.Bool("server-duckdb-cache", false, "daemon mode: skip data.bin rebuild and only signal server to rebuild DuckDB")
 	proxies := flag.String("proxies", "./proxies.txt", "proxy list file for scraper phase")
 	flag.Parse()
 
@@ -98,19 +99,25 @@ func main() {
 		}
 
 		// ── 3. Cache & Server Update Phase ──────────────────────────
-		log.Printf("daemon: rebuilding cache and signaling server")
+		if *serverDuckDBCache {
+			log.Printf("daemon: signaling server to rebuild duckdb cache")
+		} else {
+			log.Printf("daemon: rebuilding cache and signaling server")
+		}
 		func() {
 			// bitset
 			server.GenerateAccessibleBitset(*root, filepath.Join(*root, "../src/accessible.ts"))
 
-			store, err := cachepkg.NewStore()
-			if err != nil {
-				log.Printf("daemon: failed to rebuild store: %v", err)
-				return
-			}
-			if err := store.SaveToFile(filepath.Join(*root, "data.bin")); err != nil {
-				log.Printf("daemon: failed to save data.bin: %v", err)
-				return
+			if !*serverDuckDBCache {
+				store, err := cachepkg.NewStore()
+				if err != nil {
+					log.Printf("daemon: failed to rebuild store: %v", err)
+					return
+				}
+				if err := store.SaveToFile(filepath.Join(*root, "data.bin")); err != nil {
+					log.Printf("daemon: failed to save data.bin: %v", err)
+					return
+				}
 			}
 
 			// signal server via API
@@ -119,7 +126,11 @@ func main() {
 			if err == nil {
 				resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
-					log.Printf("daemon: server cache updated and reloaded via API")
+					if *serverDuckDBCache {
+						log.Printf("daemon: server duckdb rebuild signaled via API")
+					} else {
+						log.Printf("daemon: server cache updated and reloaded via API")
+					}
 				} else {
 					log.Printf("daemon: reload API returned status %d", resp.StatusCode)
 				}

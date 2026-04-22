@@ -24,9 +24,17 @@ type DiskSource struct {
 	ending                      map[int64]struct{}
 }
 
+type DiskSourceOptions struct {
+	BuildShareIndexes bool
+}
+
 // NewDiskSource builds request-path indexes. Call ds.ending = idx.EndingItemIDs()
 // after BuildIndexFromDisk to complete initialisation.
 func NewDiskSource(dataDir string) (*DiskSource, error) {
+	return NewDiskSourceWithOptions(dataDir, DiskSourceOptions{BuildShareIndexes: true})
+}
+
+func NewDiskSourceWithOptions(dataDir string, opts DiskSourceOptions) (*DiskSource, error) {
 	ds := &DiskSource{
 		dataDir:                     dataDir,
 		episodeToItem:               make(map[int64]int64, 65536),
@@ -90,7 +98,11 @@ func NewDiskSource(dataDir string) (*DiskSource, error) {
 	})
 	log.Printf("[disk] playable items: %d", len(ds.playable))
 
-	ds.buildShareIndexes()
+	if opts.BuildShareIndexes {
+		ds.buildShareIndexes()
+	} else {
+		log.Printf("[disk] comment share lookup index skipped")
+	}
 
 	return ds, nil
 }

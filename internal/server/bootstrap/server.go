@@ -44,6 +44,7 @@ func Run() {
 	noCache := flag.Bool("no-cache", false, "read JSON files on demand; skip data.bin entirely (low RAM mode)")
 	duckDBPath := flag.String("duckdb-cache", "", "use a DuckDB cache file instead of data.bin; builds asynchronously from JSON if missing")
 	rebuildDuckDB := flag.Bool("rebuild-duckdb", false, "rebuild --duckdb-cache asynchronously after starting with disk source")
+	duckDBBuildOnReloadOnly := flag.Bool("duckdb-build-on-reload-only", false, "with --duckdb-cache, only build DuckDB after SIGHUP/internal reload instead of at startup")
 	cfCSP := flag.Bool("cf-csp", false, "add Content-Security-Policy header with Cloudflare-compatible origins (Rocket Loader, Web Analytics, Bot products, Turnstile)")
 	mediaRAMCacheFlag := flag.Bool("media-ram-cache", false, "buffer fetched media responses in RAM before writing/sending")
 	enableLoggingFlag := flag.Bool("enable-logging", false, "force enable request logging (default: off if behind proxy or not a terminal)")
@@ -118,17 +119,25 @@ func Run() {
 				ds, idx, err = loadDuckDB()
 				if err != nil {
 					log.Printf("duckdb load failed, starting disk mode and rebuilding asynchronously: %v", err)
-				} else if duckDBCacheStale(*duckDBPath) {
+				} else if duckDBCacheStale(*duckDBPath) && !*duckDBBuildOnReloadOnly {
 					log.Printf("duckdb cache is older than data.bin; scheduling async rebuild")
 					asyncAfterStart = func(app *httppkg.App) {
 						startDuckDBBuild(app, "stale cache")
 					}
+				} else if duckDBCacheStale(*duckDBPath) {
+					log.Printf("duckdb cache is older than data.bin; waiting for reload trigger")
 				}
 			}
 		}
 		if ds == nil {
-			log.Printf("starting in disk mode while duckdb cache builds asynchronously: %s", *duckDBPath)
-			diskDS, dsErr := sourcepkg.NewDiskSource(dataDir)
+			if *duckDBBuildOnReloadOnly && !*rebuildDuckDB {
+				log.Printf("starting in disk mode; duckdb cache will build on reload trigger: %s", *duckDBPath)
+			} else {
+				log.Printf("starting in disk mode while duckdb cache builds asynchronously: %s", *duckDBPath)
+			}
+			diskDS, dsErr := sourcepkg.NewDiskSourceWithOptions(dataDir, sourcepkg.DiskSourceOptions{
+				BuildShareIndexes: !*duckDBBuildOnReloadOnly || *rebuildDuckDB,
+			})
 			if dsErr != nil {
 				log.Fatalf("disk source init failed: %v", dsErr)
 			}
@@ -138,8 +147,10 @@ func Run() {
 			}
 			diskDS.SetEndingItemIDs(idx.EndingItemIDs())
 			ds = diskDS
-			asyncAfterStart = func(app *httppkg.App) {
-				startDuckDBBuild(app, "missing, invalid, or forced rebuild")
+			if !*duckDBBuildOnReloadOnly || *rebuildDuckDB {
+				asyncAfterStart = func(app *httppkg.App) {
+					startDuckDBBuild(app, "missing, invalid, or forced rebuild")
+				}
 			}
 		}
 		reloadFn = loadDuckDB

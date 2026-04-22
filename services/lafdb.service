@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 EnvironmentFile=/etc/default/lafdb
 WorkingDirectory=${LAFDB_HOME}
-ExecStart=${LAFDB_HOME}/bin/lafdb --cf-csp --duckdb-cache ${LAFDB_HOME}/laftel/data.duckdb
+ExecStart=${LAFDB_HOME}/bin/lafdb --cf-csp --duckdb-cache ${LAFDB_HOME}/laftel/data.duckdb --duckdb-build-on-reload-only
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 
