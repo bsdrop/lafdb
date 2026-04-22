@@ -50,4 +50,4 @@ sleep 3
     --proxies /lafdb/scripts/proxies.txt
 ) &
 
-exec /lafdb/bin/lafdb --cf-csp
+exec /lafdb/bin/lafdb --cf-csp --duckdb-cache /lafdb/laftel/data.duckdb

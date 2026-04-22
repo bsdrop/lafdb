@@ -354,7 +354,16 @@ func populateDuckDB(dataDir string, db *sql.DB) error {
 		}
 		count := 0
 		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || filepath.Ext(path) != ".json" {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if path != root {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if filepath.Ext(path) != ".json" {
 				return nil
 			}
 			id, err := FileIDFromPath(path)
