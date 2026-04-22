@@ -51,10 +51,10 @@ pip install -r requirements.txt
 
 | 플래그     | 설명  |
 | :-------- | :--------------- |
-| `--port 4003`    | 서버가 사용할 포트를 설정합니다. |
 | `--cf-csp`       | Cloudflare 환경에 맞게 CSP 헤더를 자동으로 조정합니다. |
 | `--rebuild-cache`| `laftel/`의 JSON 파일을 다시 스캔해 `data.bin` 인덱스를 재생성합니다. |
 | `--no-cache`     | 인덱스를 사용하지 않고 요청 시 JSON을 직접 읽어 메모리 사용량을 줄입니다. |
+| `--enable-logging` | 요청 로그를 강제 활성화합니다 (기본값: 프록시 뒤이거나 터미널이 아니면 비활성). |
 
 
 ### 2. 스크래퍼 (Scraper)
@@ -83,7 +83,7 @@ go run cmd/drm/main.go [flags]
 | `--skip-failed` | 이전에 실패한 에피소드를 건너뜁니다. |
 
 
-자세한 플래그는 `grep ':= flag.' internal/server/server.go cmd/*/main.go`로 확인할 수 있습니다.
+자세한 플래그는 `grep ':= flag.' internal/server/bootstrap/server.go cmd/*/main.go`로 확인할 수 있습니다.
 
 ## 🚀 배포
 
@@ -142,7 +142,7 @@ localhost, mediacloud.localhost, streaming-bp.localhost, thumbnail.localhost {
 bin/        # 컴파일된 Go 바이너리
 cmd/        # Go 서브커맨드 (scraper, drm 등)
 internal/   # 백엔드 핵심 로직 (server, indexer, drm)
-laftel/     # Laftel API 클라이언트
+laftel/     # 런타임 데이터 저장소 (스크랩 JSON, data.bin 캐시)
 src/        # TypeScript 프론트엔드
 public/     # 정적 리소스 및 빌드 결과물
 scripts/    # Python CDM 서버 (FastAPI)
