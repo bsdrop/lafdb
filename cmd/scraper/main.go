@@ -35,7 +35,6 @@ func main() {
 	drmSleep := flag.Int("drm-sleep", 16000, "DRM sleep between requests (ms)")
 	waitHours := flag.Float64("wait", 24*6, "hours to wait between daemon cycles (default 6 days)")
 	bitsetOut := flag.String("bitset-out", "./src/accessible.ts", "path to write accessible.ts after DRM")
-	serverDuckDBCache := flag.Bool("server-duckdb-cache", false, "daemon mode: skip data.bin rebuild and only signal server to rebuild DuckDB")
 	flag.Parse()
 
 	proxyFile := *proxies
@@ -133,24 +132,17 @@ func main() {
 		server.GenerateAccessibleBitset(*root, *bitsetOut)
 
 		// ── 3.5. server cache ────────────────────────────────────────
-		if *serverDuckDBCache {
-			log.Printf("daemon: signaling server to rebuild duckdb cache")
-		} else {
-			log.Printf("daemon: rebuilding server cache (data.bin)")
-		}
+		log.Printf("daemon: rebuilding server cache (data.bin)")
 		func() {
-			if !*serverDuckDBCache {
-				store, err := cachepkg.NewStore()
-				if err != nil {
-					log.Printf("daemon: failed to rebuild store: %v", err)
-					return
-				}
-				if err := store.SaveToFile(filepath.Join(*root, "data.bin")); err != nil {
-					log.Printf("daemon: failed to save data.bin: %v", err)
-					return
-				}
+			store, err := cachepkg.NewStore()
+			if err != nil {
+				log.Printf("daemon: failed to rebuild store: %v", err)
+				return
 			}
-			// trigger reload via internal API
+			if err := store.SaveToFile(filepath.Join(*root, "data.bin")); err != nil {
+				log.Printf("daemon: failed to save data.bin: %v", err)
+				return
+			}
 			hc := lafutil.NewDirectClient()
 			resp, err := hc.Post("http://127.0.0.1:4003/api/internal/reload", "application/json", nil)
 			if err != nil {
@@ -162,11 +154,7 @@ func main() {
 				log.Printf("daemon: reload API returned status %d", resp.StatusCode)
 				return
 			}
-			if *serverDuckDBCache {
-				log.Printf("daemon: server duckdb rebuild signaled via API")
-			} else {
-				log.Printf("daemon: server cache updated and signaled via API")
-			}
+			log.Printf("daemon: server cache updated and signaled via API")
 		}()
 
 		// ── 4. wait ──────────────────────────────────────────────────

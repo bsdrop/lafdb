@@ -14,6 +14,7 @@ _
 .copilot
 .gemini
 
+src/accessible.ts
 # esbuild output
 /public/player.css
 /public/index.css

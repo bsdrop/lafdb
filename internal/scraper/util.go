@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/bsdrop/lafdb/internal/lafutil"
 )
 
 func existingIDs(dir string) ([]int64, error) {
@@ -90,6 +92,10 @@ func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
+		epID64, parseErr := strconv.ParseInt(strings.TrimSuffix(e.Name(), ".json"), 10, 64)
+		if parseErr != nil {
+			continue
+		}
 		data, err := os.ReadFile(filepath.Clean(filepath.Join(listDir, e.Name())))
 		if err != nil {
 			continue
@@ -103,6 +109,8 @@ func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 		if json.Unmarshal(data, &page) != nil {
 			continue
 		}
+		epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID64))
+		epSkipAge := s.commentFreshAge(epPath)
 		for _, r := range page.Results {
 			if r.CountReply == 0 {
 				continue
@@ -111,8 +119,8 @@ func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 				continue
 			}
 			seen[r.ID] = struct{}{}
-			path := filepath.Join(repliesDir, fmt.Sprintf("%d.json", r.ID))
-			if s.shouldSkip(path) {
+			replyPath := filepath.Join(repliesDir, fmt.Sprintf("%d.json", r.ID))
+			if epSkipAge > 0 && lafutil.FileFresh(replyPath, epSkipAge) {
 				continue
 			}
 			ids = append(ids, r.ID)

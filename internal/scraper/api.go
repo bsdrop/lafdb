@@ -55,6 +55,29 @@ func (s *Scraper) shouldSkip(path string) bool {
 	return lafutil.FileFresh(path, skipAge)
 }
 
+const maxCommentSkipAge = 2 * 24 * time.Hour
+
+// commentFreshAge returns how long to treat a comment file as fresh,
+// derived from the age of the associated episode file clamped to [0, maxCommentSkipAge].
+// New episodes → near-zero skip (always re-fetch); old episodes → up to 2 days.
+func (s *Scraper) commentFreshAge(epFilePath string) time.Duration {
+	if s.flags.NoSkip {
+		return 0
+	}
+	st, err := os.Stat(epFilePath)
+	if err != nil {
+		return 0
+	}
+	age := time.Since(st.ModTime())
+	if age < 0 {
+		age = 0
+	}
+	if age > maxCommentSkipAge {
+		age = maxCommentSkipAge
+	}
+	return age
+}
+
 func (s *Scraper) fetchItem(id int64) string {
 	path := filepath.Join(s.dir("items/v4"), fmt.Sprintf("%d.json", id))
 	if s.shouldSkip(path) {
@@ -230,6 +253,10 @@ func (s *Scraper) fetchStatistics(itemID int64) string {
 
 func (s *Scraper) fetchComments(epID int64) string {
 	path := filepath.Join(s.dir("comments/v1/list"), fmt.Sprintf("%d.json", epID))
+	epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID))
+	if skipAge := s.commentFreshAge(epPath); skipAge > 0 && lafutil.FileFresh(path, skipAge) {
+		return "skip"
+	}
 	all := s.fetchPaginated(fmt.Sprintf(
 		"%s/comments/v1/list/?episode_id=%d&sorting=top&limit=500&mine=false", baseAPI, epID))
 	out, _ := json.Marshal(map[string]any{"episode_id": epID, "count": len(all), "results": all})
