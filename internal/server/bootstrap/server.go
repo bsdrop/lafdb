@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,10 +26,24 @@ import (
 const cacheFile = "./laftel/data.bin"
 const dataDir = "./laftel"
 
+func duckDBCacheStale(path string) bool {
+	duckInfo, err := os.Stat(path)
+	if err != nil {
+		return true
+	}
+	cacheInfo, err := os.Stat(cacheFile)
+	if err != nil {
+		return false
+	}
+	return cacheInfo.ModTime().After(duckInfo.ModTime())
+}
+
 func Run() {
 	startupStart := time.Now()
 	rebuildCache := flag.Bool("rebuild-cache", false, "force rescan and rewrite ./laftel/data.bin")
 	noCache := flag.Bool("no-cache", false, "read JSON files on demand; skip data.bin entirely (low RAM mode)")
+	duckDBPath := flag.String("duckdb-cache", "", "use a DuckDB cache file instead of data.bin; builds asynchronously from JSON if missing")
+	rebuildDuckDB := flag.Bool("rebuild-duckdb", false, "rebuild --duckdb-cache asynchronously after starting with disk source")
 	cfCSP := flag.Bool("cf-csp", false, "add Content-Security-Policy header with Cloudflare-compatible origins (Rocket Loader, Web Analytics, Bot products, Turnstile)")
 	mediaRAMCacheFlag := flag.Bool("media-ram-cache", false, "buffer fetched media responses in RAM before writing/sending")
 	enableLoggingFlag := flag.Bool("enable-logging", false, "force enable request logging (default: off if behind proxy or not a terminal)")
@@ -39,15 +54,100 @@ func Run() {
 	if *rebuildCache && *noCache {
 		log.Fatalf("--rebuild-cache and --no-cache are mutually exclusive")
 	}
+	if *duckDBPath != "" && *rebuildCache {
+		log.Fatalf("--duckdb-cache and --rebuild-cache are mutually exclusive")
+	}
+	if *rebuildDuckDB && *duckDBPath == "" {
+		log.Fatalf("--rebuild-duckdb requires --duckdb-cache")
+	}
 
 	var (
-		ds       sourcepkg.DataSource
-		idx      *searchpkg.Index
-		reloadFn func() (sourcepkg.DataSource, *searchpkg.Index, error)
-		err      error
+		ds              sourcepkg.DataSource
+		idx             *searchpkg.Index
+		reloadFn        func() (sourcepkg.DataSource, *searchpkg.Index, error)
+		triggerReload   func(app *httppkg.App) error
+		asyncAfterStart func(app *httppkg.App)
+		err             error
 	)
 
-	if *noCache {
+	if *duckDBPath != "" {
+		var duckDBBuildMu sync.Mutex
+		duckDBBuildRunning := false
+		loadDuckDB := func() (sourcepkg.DataSource, *searchpkg.Index, error) {
+			nd, err := sourcepkg.NewDuckDBSource(*duckDBPath)
+			if err != nil {
+				return nil, nil, err
+			}
+			ni, err := sourcepkg.BuildIndexFromDuckDB(*duckDBPath)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nd, ni, nil
+		}
+		startDuckDBBuild := func(app *httppkg.App, reason string) {
+			go func() {
+				duckDBBuildMu.Lock()
+				if duckDBBuildRunning {
+					duckDBBuildMu.Unlock()
+					log.Printf("duckdb async build already running; skipped trigger (%s)", reason)
+					return
+				}
+				duckDBBuildRunning = true
+				duckDBBuildMu.Unlock()
+				defer func() {
+					duckDBBuildMu.Lock()
+					duckDBBuildRunning = false
+					duckDBBuildMu.Unlock()
+				}()
+
+				log.Printf("duckdb async build started: %s (%s)", *duckDBPath, reason)
+				if err := sourcepkg.BuildDuckDBFromDisk(dataDir, *duckDBPath); err != nil {
+					log.Printf("duckdb async build failed: %v", err)
+					return
+				}
+				if err := app.Reload(); err != nil {
+					log.Printf("duckdb async reload failed: %v", err)
+					return
+				}
+				log.Printf("duckdb async build loaded")
+			}()
+		}
+		if !*rebuildDuckDB {
+			if _, statErr := os.Stat(*duckDBPath); statErr == nil {
+				log.Printf("duckdb cache found: loading %s", *duckDBPath)
+				ds, idx, err = loadDuckDB()
+				if err != nil {
+					log.Printf("duckdb load failed, starting disk mode and rebuilding asynchronously: %v", err)
+				} else if duckDBCacheStale(*duckDBPath) {
+					log.Printf("duckdb cache is older than data.bin; scheduling async rebuild")
+					asyncAfterStart = func(app *httppkg.App) {
+						startDuckDBBuild(app, "stale cache")
+					}
+				}
+			}
+		}
+		if ds == nil {
+			log.Printf("starting in disk mode while duckdb cache builds asynchronously: %s", *duckDBPath)
+			diskDS, dsErr := sourcepkg.NewDiskSource(dataDir)
+			if dsErr != nil {
+				log.Fatalf("disk source init failed: %v", dsErr)
+			}
+			idx, err = sourcepkg.BuildIndexFromDisk(dataDir)
+			if err != nil {
+				log.Fatalf("search index build failed: %v", err)
+			}
+			diskDS.SetEndingItemIDs(idx.EndingItemIDs())
+			ds = diskDS
+			asyncAfterStart = func(app *httppkg.App) {
+				startDuckDBBuild(app, "missing, invalid, or forced rebuild")
+			}
+		}
+		reloadFn = loadDuckDB
+		triggerReload = func(app *httppkg.App) error {
+			startDuckDBBuild(app, "reload trigger")
+			return nil
+		}
+	} else if *noCache {
 		// Disk mode: lightweight indexes in RAM, JSON reads on demand per request.
 		log.Printf("starting in disk mode (--no-cache): data.bin not used")
 		diskDS, dsErr := sourcepkg.NewDiskSource(dataDir)
@@ -74,6 +174,9 @@ func Run() {
 		}
 		log.Printf("[disk] ready: playable=%d ending=%d",
 			len(diskDS.GetPlayableItemIDs()), len(diskDS.GetEndingItemIDs()))
+		triggerReload = func(app *httppkg.App) error {
+			return app.Reload()
+		}
 	} else {
 		// Memory mode: everything loaded into RAM from data.bin or scanned from disk.
 		var store *cachepkg.Store
@@ -184,11 +287,17 @@ func Run() {
 			len(store.EpisodeToItemID),
 			len(store.DRMKeyByEpisodeID),
 		)
+		triggerReload = func(app *httppkg.App) error {
+			return app.Reload()
+		}
 	}
 
 	log.Printf("startup: initialization completed in %s", time.Since(startupStart))
 
 	app := httppkg.NewApp(ds, idx, reloadFn)
+	if asyncAfterStart != nil {
+		asyncAfterStart(app)
+	}
 
 	// SIGHUP reload handler
 	sigHup := make(chan os.Signal, 1)
@@ -196,7 +305,7 @@ func Run() {
 	go func() {
 		for range sigHup {
 			log.Printf("SIGHUP received: reloading")
-			if err := app.Reload(); err != nil {
+			if err := triggerReload(app); err != nil {
 				log.Printf("reload error: %v", err)
 			}
 		}
@@ -259,7 +368,7 @@ func Run() {
 			return c.Status(fiber.StatusForbidden).SendString("Localhost only")
 		}
 		log.Printf("Internal reload requested via API")
-		if err := app.Reload(); err != nil {
+		if err := triggerReload(app); err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 		}
 		return c.SendString("OK")

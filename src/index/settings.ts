@@ -258,10 +258,13 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const playerAdvPanel = document.getElementById("player-adv-panel") as HTMLElement | null;
 	const bufferAheadInput = document.getElementById("input-buffer-ahead") as HTMLInputElement | null;
 	const bufferBehindInput = document.getElementById("input-buffer-behind") as HTMLInputElement | null;
+	const bufferPruneDelayInput = document.getElementById("input-buffer-prune-delay") as HTMLInputElement | null;
 	const DEFAULT_BUFFER_AHEAD = 40;
 	const DEFAULT_BUFFER_BEHIND = 30;
+	const DEFAULT_BUFFER_PRUNE_DELAY = 0;
 	const MIN_BUFFER_SECONDS = 18;
 	const MAX_BUFFER_SECONDS = 300;
+	const MAX_BUFFER_PRUNE_DELAY = 60;
 
 	function getBpsPref(): number {
 		return parseInt(localStorage.getItem("quality_pref_bps") || "0", 10);
@@ -276,26 +279,41 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		return clampBufferSeconds(parseInt(localStorage.getItem(key) || String(fallback), 10), fallback);
 	}
 
+	function clampBufferPruneDelay(value: number): number {
+		if (!Number.isFinite(value)) return DEFAULT_BUFFER_PRUNE_DELAY;
+		return Math.max(0, Math.min(MAX_BUFFER_PRUNE_DELAY, Math.round(value)));
+	}
+
+	function getBufferPruneDelayPref(): number {
+		return clampBufferPruneDelay(parseInt(localStorage.getItem("player_buffer_prune_delay") || String(DEFAULT_BUFFER_PRUNE_DELAY), 10));
+	}
+
 	function setBufferPref(key: string, value: number, fallback: number) {
 		if (value === fallback) localStorage.removeItem(key);
 		else localStorage.setItem(key, String(value));
 	}
 
-	function updateBufferUI(ahead: number, behind: number) {
+	function updateBufferUI(ahead: number, behind: number, pruneDelay: number) {
 		if (bufferAheadInput) bufferAheadInput.value = String(ahead);
 		if (bufferBehindInput) bufferBehindInput.value = String(behind);
+		if (bufferPruneDelayInput) bufferPruneDelayInput.value = String(pruneDelay);
 		playerAdvBtn?.classList.toggle(
 			"active",
-			ahead !== DEFAULT_BUFFER_AHEAD || behind !== DEFAULT_BUFFER_BEHIND,
+			ahead !== DEFAULT_BUFFER_AHEAD ||
+				behind !== DEFAULT_BUFFER_BEHIND ||
+				pruneDelay !== DEFAULT_BUFFER_PRUNE_DELAY,
 		);
 	}
 
-	function applyBufferPrefs(ahead: number, behind: number) {
+	function applyBufferPrefs(ahead: number, behind: number, pruneDelay: number) {
 		const nextAhead = clampBufferSeconds(ahead, DEFAULT_BUFFER_AHEAD);
 		const nextBehind = clampBufferSeconds(behind, DEFAULT_BUFFER_BEHIND);
+		const nextPruneDelay = clampBufferPruneDelay(pruneDelay);
 		setBufferPref("player_buffer_ahead", nextAhead, DEFAULT_BUFFER_AHEAD);
 		setBufferPref("player_buffer_behind", nextBehind, DEFAULT_BUFFER_BEHIND);
-		updateBufferUI(nextAhead, nextBehind);
+		if (nextPruneDelay === DEFAULT_BUFFER_PRUNE_DELAY) localStorage.removeItem("player_buffer_prune_delay");
+		else localStorage.setItem("player_buffer_prune_delay", String(nextPruneDelay));
+		updateBufferUI(nextAhead, nextBehind, nextPruneDelay);
 	}
 
 	function updateBpsUI(bps: number) {
@@ -333,6 +351,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		updateBufferUI(
 			getBufferPref("player_buffer_ahead", DEFAULT_BUFFER_AHEAD),
 			getBufferPref("player_buffer_behind", DEFAULT_BUFFER_BEHIND),
+			getBufferPruneDelayPref(),
 		);
 	}
 
@@ -500,15 +519,20 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		applyBufferPrefs(
 			parseInt(bufferAheadInput?.value || String(DEFAULT_BUFFER_AHEAD), 10),
 			parseInt(bufferBehindInput?.value || String(DEFAULT_BUFFER_BEHIND), 10),
+			parseInt(bufferPruneDelayInput?.value || String(DEFAULT_BUFFER_PRUNE_DELAY), 10),
 		);
 	}
 
 	bufferAheadInput?.addEventListener("change", commitBufferPrefsFromInputs);
 	bufferBehindInput?.addEventListener("change", commitBufferPrefsFromInputs);
+	bufferPruneDelayInput?.addEventListener("change", commitBufferPrefsFromInputs);
 	bufferAheadInput?.addEventListener("keydown", (e) => {
 		if (e.key === "Enter") (e.target as HTMLInputElement).blur();
 	});
 	bufferBehindInput?.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+	});
+	bufferPruneDelayInput?.addEventListener("keydown", (e) => {
 		if (e.key === "Enter") (e.target as HTMLInputElement).blur();
 	});
 

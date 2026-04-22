@@ -46,6 +46,8 @@ interface Track {
   appended: Set<number>;
   inflight: Set<number>;
   initData: Uint8Array | null;
+  pruneTimer: ReturnType<typeof setTimeout> | null;
+  pruneAbort: AbortController | null;
   tracks?: Track[];
 }
 
@@ -105,6 +107,7 @@ interface DedicatedWorkerGlobalScope extends EventTarget {
 class Player {
   static DEFAULT_BUFFER_AHEAD = 40;
   static DEFAULT_BUFFER_BEHIND = 30;
+  static DEFAULT_BUFFER_PRUNE_DELAY_SECONDS = 0;
   static MIN_BUFFER_SECONDS = 18;
   static MAX_BUFFER_SECONDS = 300;
 
@@ -118,6 +121,7 @@ class Player {
   started: boolean;
   BUFFER_AHEAD_MAX: number;
   BUFFER_BEHIND_KEEP: number;
+  BUFFER_PRUNE_DELAY_MS: number;
   POLL_INTERVAL: number;
   lastSeekTime: number;
   seekDebounceMs: number;
@@ -171,6 +175,12 @@ class Player {
     return Math.max(Player.MIN_BUFFER_SECONDS, Math.min(Player.MAX_BUFFER_SECONDS, raw));
   }
 
+  static _readNonNegativeNumberPref(key: string, fallback: number): number {
+    const raw = parseInt(localStorage.getItem(key) || String(fallback), 10);
+    if (!Number.isFinite(raw)) return fallback;
+    return Math.max(0, raw);
+  }
+
   constructor(video: HTMLVideoElement | null = null) {
     this._video = video;
 
@@ -184,6 +194,10 @@ class Player {
 
     this.BUFFER_AHEAD_MAX = Player._readBufferPref("player_buffer_ahead", Player.DEFAULT_BUFFER_AHEAD);
     this.BUFFER_BEHIND_KEEP = Player._readBufferPref("player_buffer_behind", Player.DEFAULT_BUFFER_BEHIND);
+    this.BUFFER_PRUNE_DELAY_MS = Player._readNonNegativeNumberPref(
+      "player_buffer_prune_delay",
+      Player.DEFAULT_BUFFER_PRUNE_DELAY_SECONDS,
+    ) * 1000;
     this.POLL_INTERVAL = 200;
 
     this.lastSeekTime = -1;
@@ -517,6 +531,56 @@ class Player {
     if (!sb || this._destroyed) return false;
     await this.trimBuffer(sb, keepStart, keepEnd);
     return !!this._getLiveTrackSb(track, token);
+  }
+
+  _cancelTrackPrune(track: Track): void {
+    track.pruneAbort?.abort();
+    if (track.pruneTimer) clearTimeout(track.pruneTimer);
+    track.pruneAbort = null;
+    track.pruneTimer = null;
+  }
+
+  async _pruneTrackBehind(
+    track: Track,
+    token: number,
+    keepStart: number,
+  ): Promise<void> {
+    try {
+      await this._trimTrackBuffer(track, token, keepStart, Infinity);
+      this._pruneAppended(track);
+    } catch {}
+  }
+
+  _schedulePruneTrackBehind(
+    track: Track,
+    token: number,
+    keepStart: number,
+  ): void {
+    if (this.BUFFER_PRUNE_DELAY_MS <= 0) {
+      void this._pruneTrackBehind(track, token, keepStart);
+      return;
+    }
+    if (track.pruneTimer) return;
+
+    const ac = new AbortController();
+    track.pruneAbort = ac;
+    const timer = setTimeout(() => {
+      if (ac.signal.aborted) return;
+      track.pruneTimer = null;
+      track.pruneAbort = null;
+      if (this._destroyed || token !== track.sbToken) return;
+      void this._pruneTrackBehind(track, token, keepStart);
+    }, this.BUFFER_PRUNE_DELAY_MS);
+    track.pruneTimer = timer;
+    ac.signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        if (track.pruneTimer === timer) track.pruneTimer = null;
+        if (track.pruneAbort === ac) track.pruneAbort = null;
+      },
+      { once: true },
+    );
   }
 
   waitOrOnline(ms: number): Promise<void> {
@@ -974,6 +1038,8 @@ class Player {
       appended: new Set(),
       inflight: new Set(),
       initData: null,
+      pruneTimer: null,
+      pruneAbort: null,
     };
   }
 
@@ -1263,6 +1329,7 @@ class Player {
     for (const ac of this.abortControllers) ac.abort();
     this.abortControllers.clear();
     for (const track of this.tracks) {
+      this._cancelTrackPrune(track);
       track.inflight.clear();
       track.appended = new Set();
       this._invalidateTrackSb(track);
@@ -1611,6 +1678,7 @@ class Player {
     const gen = this.generation;
     console.log(`[PLAYER] _startFetchLoopsInner gen=${gen}`);
     for (const track of this.tracks) {
+      this._cancelTrackPrune(track);
       track.inflight.clear();
       this._pruneAppended(track);
     }
@@ -1845,6 +1913,7 @@ class Player {
     for (const ac of this.abortControllers) ac.abort();
     this.abortControllers.clear();
     for (const track of this.tracks) {
+      this._cancelTrackPrune(track);
       track.inflight.clear();
     }
     console.warn(`[PLAYER] fetch loops stopped: ${reason}`);
@@ -1886,10 +1955,7 @@ class Player {
             const sb = this._getLiveTrackSb(track);
             if (sb && sb.buffered.length > 0 && sb.buffered.start(0) < keepStart - 1) {
               const token = track.sbToken;
-              await this._trimTrackBuffer(track, token, keepStart, Infinity).catch(
-                () => {},
-              );
-              this._pruneAppended(track);
+              this._schedulePruneTrackBehind(track, token, keepStart);
             }
           } catch {}
           await this.wait(this.POLL_INTERVAL);
@@ -2117,6 +2183,7 @@ class Player {
     // seek에서는 기존 MediaSource / SourceBuffer를 그대로 쓴다.
     // 이전 generation의 append 결과만 무시되도록 token만 올린다.
     for (const track of this.tracks) {
+      this._cancelTrackPrune(track);
       track.inflight.clear();
       this._bumpTrackSbToken(track);
     }
@@ -2327,6 +2394,7 @@ class Player {
       this._onOnline = null;
     }
     for (const track of this.tracks) {
+      this._cancelTrackPrune(track);
       track.inflight.clear();
       track.appended.clear();
       this._invalidateTrackSb(track);
