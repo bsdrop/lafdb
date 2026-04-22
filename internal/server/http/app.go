@@ -168,10 +168,6 @@ type App struct {
 	reloadFn func() (sourcepkg.DataSource, *searchpkg.Index, error)
 }
 
-type closeableDataSource interface {
-	Close() error
-}
-
 func NewApp(ds sourcepkg.DataSource, idx *searchpkg.Index, reloadFn func() (sourcepkg.DataSource, *searchpkg.Index, error)) *App {
 	return &App{ds: ds, search: idx, reloadFn: reloadFn}
 }
@@ -186,15 +182,9 @@ func (a *App) Reload() error {
 		return err
 	}
 	a.mu.Lock()
-	oldDS := a.ds
 	a.ds = newDS
 	a.search = newIdx
 	a.mu.Unlock()
-	if closeable, ok := oldDS.(closeableDataSource); ok {
-		if err := closeable.Close(); err != nil {
-			log.Printf("reload old data source close error: %v", err)
-		}
-	}
 	runtime.GC()
 	log.Printf("reload complete")
 	return nil
