@@ -83,7 +83,7 @@ func Run() {
 			if err != nil {
 				return nil, nil, err
 			}
-			nd, err := sourcepkg.NewDuckDBSource(*duckDBPath)
+			nd, err := sourcepkg.NewDuckDBSource(*duckDBPath, dataDir)
 			if err != nil {
 				return nil, nil, err
 			}

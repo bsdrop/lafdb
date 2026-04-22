@@ -16,16 +16,20 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 )
 
-const duckDBSchemaVersion = 1
+// Bump when the schema changes to force a rebuild of existing cache files.
+const duckDBSchemaVersion = 2
 
 type DuckDBSource struct {
-	db            *sql.DB
-	episodeToItem map[int64]int64
-	playable      map[int64]struct{}
-	ending        map[int64]struct{}
+	db                          *sql.DB
+	dataDir                     string
+	episodeToItem               map[int64]int64
+	playable                    map[int64]struct{}
+	ending                      map[int64]struct{}
+	commentListFileByCommentID  map[int64]int64
+	commentReplyParentByReplyID map[int64]int64
 }
 
-func NewDuckDBSource(path string) (*DuckDBSource, error) {
+func NewDuckDBSource(path, dataDir string) (*DuckDBSource, error) {
 	db, err := sql.Open("duckdb", path)
 	if err != nil {
 		return nil, err
@@ -38,7 +42,7 @@ func NewDuckDBSource(path string) (*DuckDBSource, error) {
 			log.Printf("duckdb: %s failed: %v", q, err)
 		}
 	}
-	ds := &DuckDBSource{db: db}
+	ds := &DuckDBSource{db: db, dataDir: dataDir}
 	if err := ds.checkSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -51,6 +55,7 @@ func NewDuckDBSource(path string) (*DuckDBSource, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	ds.buildCommentShareIndex()
 	return ds, nil
 }
 
@@ -137,9 +142,19 @@ func (d *DuckDBSource) GetReviewCount(id int64) ([]byte, bool) { return d.getBlo
 func (d *DuckDBSource) GetReviewList(id int64) ([]byte, bool)  { return d.getBlob("review_list", id) }
 func (d *DuckDBSource) GetStatistics(id int64) ([]byte, bool)  { return d.getBlob("statistics", id) }
 func (d *DuckDBSource) GetDRMKey(id int64) ([]byte, bool)      { return d.getBlob("drm_key", id) }
-func (d *DuckDBSource) GetCommentList(id int64) ([]byte, bool) { return d.getBlob("comment_list", id) }
+func (d *DuckDBSource) readDiskJSON(relPath string, id int64) ([]byte, bool) {
+	b, _, err := loadAndNormalizeJSON(filepath.Join(d.dataDir, relPath, fmt.Sprintf("%d.json", id)))
+	if err != nil {
+		return nil, false
+	}
+	return b, true
+}
+
+func (d *DuckDBSource) GetCommentList(id int64) ([]byte, bool) {
+	return d.readDiskJSON("comments/v1/list", id)
+}
 func (d *DuckDBSource) GetCommentReplies(id int64) ([]byte, bool) {
-	return d.getBlob("comment_replies", id)
+	return d.readDiskJSON("comments/v1/replies", id)
 }
 
 func (d *DuckDBSource) EpisodeItemID(epID int64) (int64, bool) {
@@ -156,16 +171,14 @@ func (d *DuckDBSource) GetCommentCount(id int64) ([]byte, bool) {
 }
 
 func (d *DuckDBSource) GetCommentShare(targetID int64) (CommentShareEntry, bool) {
-	var episodeID int64
-	if err := d.db.QueryRow(`SELECT episode_id FROM comment_list_index WHERE comment_id = ?`, targetID).Scan(&episodeID); err == nil {
+	if episodeID, ok := d.commentListFileByCommentID[targetID]; ok {
 		raw, ok := d.GetCommentList(episodeID)
 		if !ok {
 			return CommentShareEntry{}, false
 		}
 		return d.findCommentShareEntry(raw, targetID, episodeID)
 	}
-	var parentID int64
-	if err := d.db.QueryRow(`SELECT parent_id FROM comment_reply_index WHERE reply_id = ?`, targetID).Scan(&parentID); err == nil {
+	if parentID, ok := d.commentReplyParentByReplyID[targetID]; ok {
 		raw, ok := d.GetCommentReplies(parentID)
 		if !ok {
 			return CommentShareEntry{}, false
@@ -173,6 +186,52 @@ func (d *DuckDBSource) GetCommentShare(targetID int64) (CommentShareEntry, bool)
 		return d.findCommentShareEntry(raw, targetID, 0)
 	}
 	return CommentShareEntry{}, false
+}
+
+func (d *DuckDBSource) buildCommentShareIndex() {
+	d.commentListFileByCommentID = make(map[int64]int64, 65536)
+	d.commentReplyParentByReplyID = make(map[int64]int64, 16384)
+
+	listRoot := filepath.Join(d.dataDir, "comments", "v1", "list")
+	_ = filepath.WalkDir(listRoot, func(path string, dir fs.DirEntry, err error) error {
+		if err != nil || dir.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		episodeID, err := FileIDFromPath(path)
+		if err != nil {
+			return nil
+		}
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		for _, id := range parseCommentIDs(raw) {
+			d.commentListFileByCommentID[id] = episodeID
+		}
+		return nil
+	})
+
+	replyRoot := filepath.Join(d.dataDir, "comments", "v1", "replies")
+	_ = filepath.WalkDir(replyRoot, func(path string, dir fs.DirEntry, err error) error {
+		if err != nil || dir.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+		parentID, err := FileIDFromPath(path)
+		if err != nil {
+			return nil
+		}
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		for _, entry := range parseCommentReplyIDs(raw, parentID) {
+			d.commentReplyParentByReplyID[entry.replyID] = entry.parentID
+		}
+		return nil
+	})
+
+	log.Printf("[duckdb] comment share index: comments=%d replies=%d",
+		len(d.commentListFileByCommentID), len(d.commentReplyParentByReplyID))
 }
 
 func (d *DuckDBSource) findCommentShareEntry(raw []byte, targetID int64, fallbackEpisodeID int64) (CommentShareEntry, bool) {
@@ -209,8 +268,21 @@ func (d *DuckDBSource) GetPlayableItemIDs() map[int64]struct{} { return d.playab
 func (d *DuckDBSource) GetEndingItemIDs() map[int64]struct{}   { return d.ending }
 
 func (d *DuckDBSource) ForEachCommentBlob(fn func(raw []byte)) {
-	d.forEachBlob("comment_list", func(_ int64, raw []byte) { fn(raw) })
-	d.forEachBlob("comment_replies", func(_ int64, raw []byte) { fn(raw) })
+	for _, root := range []string{
+		filepath.Join(d.dataDir, "comments", "v1", "list"),
+		filepath.Join(d.dataDir, "comments", "v1", "replies"),
+	} {
+		_ = filepath.WalkDir(root, func(path string, dir fs.DirEntry, err error) error {
+			if err != nil || dir.IsDir() || filepath.Ext(path) != ".json" {
+				return nil
+			}
+			raw, readErr := os.ReadFile(path)
+			if readErr == nil {
+				fn(raw)
+			}
+			return nil
+		})
+	}
 }
 
 func (d *DuckDBSource) ForEachReviewBlob(fn func(itemID int64, raw []byte)) {
@@ -329,8 +401,6 @@ func initDuckDBSchema(db *sql.DB) error {
 		`CREATE TABLE episode_to_item (episode_id BIGINT PRIMARY KEY, item_id BIGINT)`,
 		`CREATE TABLE playable_items (item_id BIGINT PRIMARY KEY)`,
 		`CREATE TABLE ending_items (item_id BIGINT PRIMARY KEY)`,
-		`CREATE TABLE comment_list_index (comment_id BIGINT PRIMARY KEY, episode_id BIGINT)`,
-		`CREATE TABLE comment_reply_index (reply_id BIGINT PRIMARY KEY, parent_id BIGINT)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
@@ -479,45 +549,9 @@ func populateDuckDB(dataDir string, db *sql.DB) error {
 		return err
 	}
 
-	// Phase 3: comment lists + index (large dataset; own transaction to cap WAL size).
+	// Phase 3: DRM keys + playable items.
+	// Comments are served directly from disk (see DuckDBSource.GetCommentList).
 	if err := runPhase(func(tx *sql.Tx) error {
-		insertComment, err := tx.Prepare(`INSERT OR IGNORE INTO comment_list_index VALUES (?, ?)`)
-		if err != nil {
-			return err
-		}
-		defer insertComment.Close()
-
-		return txInsertDir(tx, dataDir, "comments/v1/list", "comments/v1/list", "comment_list", func(episodeID int64, raw []byte) error {
-			for _, id := range parseCommentIDs(raw) {
-				if _, err := insertComment.Exec(id, episodeID); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-	}); err != nil {
-		return err
-	}
-
-	// Phase 4: comment replies, DRM keys, playable items.
-	if err := runPhase(func(tx *sql.Tx) error {
-		insertReply, err := tx.Prepare(`INSERT OR IGNORE INTO comment_reply_index VALUES (?, ?)`)
-		if err != nil {
-			return err
-		}
-		defer insertReply.Close()
-
-		if err := txInsertDir(tx, dataDir, "comments/v1/replies", "comments/v1/replies", "comment_replies", func(parentID int64, raw []byte) error {
-			for _, entry := range parseCommentReplyIDs(raw, parentID) {
-				if _, err := insertReply.Exec(entry.replyID, entry.parentID); err != nil {
-					return err
-				}
-			}
-			return nil
-		}); err != nil {
-			return err
-		}
-
 		insertPlayable, err := tx.Prepare(`INSERT OR IGNORE INTO playable_items VALUES (?)`)
 		if err != nil {
 			return err
