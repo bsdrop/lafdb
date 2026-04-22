@@ -47,8 +47,7 @@ sleep 3
     --token "${LAFTEL_TOKEN}" \
     --daemon \
     --skip-failed \
-    --server-duckdb-cache \
     --proxies /lafdb/scripts/proxies.txt
 ) &
 
-exec /lafdb/bin/lafdb --cf-csp --duckdb-cache /lafdb/laftel/data.duckdb
+exec /lafdb/bin/lafdb --cf-csp

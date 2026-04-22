@@ -8,7 +8,7 @@ Type=simple
 EnvironmentFile=/etc/default/lafdb
 WorkingDirectory=${LAFDB_HOME}
 ExecStartPre=/usr/bin/sleep 3
-ExecStart=${LAFDB_HOME}/bin/drm --token ${LAFTEL_TOKEN} --daemon --skip-failed --server-duckdb-cache --proxies ${LAFDB_HOME}/proxies.txt
+ExecStart=${LAFDB_HOME}/bin/drm --token ${LAFTEL_TOKEN} --daemon --skip-failed --proxies ${LAFDB_HOME}/proxies.txt
 Restart=on-failure
 
 [Install]
