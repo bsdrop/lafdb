@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -47,7 +48,7 @@ type Store struct {
 	DRMKeyByEpisodeID        map[int64][]byte // laftel/mediacloud/keys/{episode_id}.json
 }
 
-const storeVersion = 5
+const storeVersion = 6
 
 func (s *Store) SaveToFile(path string) error {
 	start := time.Now()
@@ -65,16 +66,18 @@ func (s *Store) SaveToFile(path string) error {
 		return fmt.Errorf("create cache file: %w", err)
 	}
 
-	enc := gob.NewEncoder(f)
-
-	// Write version
-	if err := enc.Encode(storeVersion); err != nil {
+	abort := func(e error) error {
 		_ = f.Close()
 		_ = os.Remove(tmp)
-		return fmt.Errorf("encode version: %w", err)
+		return e
 	}
 
-	encodeStep := func(name string, data any) error {
+	enc := gob.NewEncoder(f)
+	if err := enc.Encode(storeVersion); err != nil {
+		return abort(fmt.Errorf("encode version: %w", err))
+	}
+
+	encode := func(name string, data any) error {
 		estart := time.Now()
 		if err := enc.Encode(data); err != nil {
 			return fmt.Errorf("encode %s: %w", name, err)
@@ -83,43 +86,34 @@ func (s *Store) SaveToFile(path string) error {
 		return nil
 	}
 
-	// We encode maps one by one. To save RAM, we can nil out maps after encoding
-	// if we don't need the Store anymore. But NewStore is usually called just before
-	// SaveToFile in the drm daemon, so we can afford to be destructive or just
-	// trigger GC.
-	steps := []struct {
-		name string
-		data any
-	}{
-		{"EpisodesListByItemID", s.EpisodesListByItemID},
-		{"EpisodeByEpisodeID", s.EpisodeByEpisodeID},
-		{"ItemByItemID", s.ItemByItemID},
-		{"SeriesBySeriesID", s.SeriesBySeriesID},
-		{"EpisodeToItemID", s.EpisodeToItemID},
-		{"ReviewCountByItemID", s.ReviewCountByItemID},
-		{"ReviewListByItemID", s.ReviewListByItemID},
-		{"ReviewShareByReviewID", s.ReviewShareByReviewID},
-		{"StatisticsByItemID", s.StatisticsByItemID},
-		{"CommentListByEpisodeID", s.CommentListByEpisodeID},
-		{"CommentRepliesByParentID", s.CommentRepliesByParentID},
-		{"CommentShareByCommentID", s.CommentShareByCommentID},
-		{"DRMKeyByEpisodeID", s.DRMKeyByEpisodeID},
+	// Encode each map then nil it so GC can reclaim memory during the save.
+	// v6 skips ReviewShareByReviewID and CommentShareByCommentID — they are
+	// rebuilt from the raw list maps by initNilMaps() on load.
+	type step struct {
+		fn  func() error
 	}
-
+	steps := []step{
+		{func() error { e := encode("EpisodesListByItemID", s.EpisodesListByItemID); s.EpisodesListByItemID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("EpisodeByEpisodeID", s.EpisodeByEpisodeID); s.EpisodeByEpisodeID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("ItemByItemID", s.ItemByItemID); s.ItemByItemID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("SeriesBySeriesID", s.SeriesBySeriesID); s.SeriesBySeriesID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("EpisodeToItemID", s.EpisodeToItemID); s.EpisodeToItemID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("ReviewCountByItemID", s.ReviewCountByItemID); s.ReviewCountByItemID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("ReviewListByItemID", s.ReviewListByItemID); s.ReviewListByItemID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("StatisticsByItemID", s.StatisticsByItemID); s.StatisticsByItemID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("CommentListByEpisodeID", s.CommentListByEpisodeID); s.CommentListByEpisodeID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("CommentRepliesByParentID", s.CommentRepliesByParentID); s.CommentRepliesByParentID = nil; runtime.GC(); return e }},
+		{func() error { e := encode("DRMKeyByEpisodeID", s.DRMKeyByEpisodeID); s.DRMKeyByEpisodeID = nil; runtime.GC(); return e }},
+	}
 	for _, st := range steps {
-		if err := encodeStep(st.name, st.data); err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmp)
-			return err
+		if err := st.fn(); err != nil {
+			return abort(err)
 		}
-		// st.data = nil // can't do this easily with the slice of structs
 	}
 
 	syncStart := time.Now()
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return fmt.Errorf("sync cache file: %w", err)
+		return abort(fmt.Errorf("sync cache file: %w", err))
 	}
 	log.Printf("cache save: fsync took %s", time.Since(syncStart))
 	if err := f.Close(); err != nil {
@@ -153,8 +147,27 @@ func LoadFromFile(path string) (*Store, error) {
 
 	s := &Store{}
 
-	if version == storeVersion {
-		// Version 2: sequential encoding
+	switch version {
+	case 6:
+		// v6: share indexes not stored; rebuilt by initNilMaps() after load.
+		err = errors.Join(
+			dec.Decode(&s.EpisodesListByItemID),
+			dec.Decode(&s.EpisodeByEpisodeID),
+			dec.Decode(&s.ItemByItemID),
+			dec.Decode(&s.SeriesBySeriesID),
+			dec.Decode(&s.EpisodeToItemID),
+			dec.Decode(&s.ReviewCountByItemID),
+			dec.Decode(&s.ReviewListByItemID),
+			dec.Decode(&s.StatisticsByItemID),
+			dec.Decode(&s.CommentListByEpisodeID),
+			dec.Decode(&s.CommentRepliesByParentID),
+			dec.Decode(&s.DRMKeyByEpisodeID),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("decode cache maps (v6): %w", err)
+		}
+	case 5:
+		// v5: share indexes stored in file (legacy path)
 		err = errors.Join(
 			dec.Decode(&s.EpisodesListByItemID),
 			dec.Decode(&s.EpisodeByEpisodeID),
@@ -171,12 +184,9 @@ func LoadFromFile(path string) (*Store, error) {
 			dec.Decode(&s.DRMKeyByEpisodeID),
 		)
 		if err != nil {
-			return nil, fmt.Errorf("decode cache maps (v2): %w", err)
+			return nil, fmt.Errorf("decode cache maps (v5): %w", err)
 		}
-	} else if version == 1 || version > 1000 { // version 1 didn't have version tag, it started with a map
-		// This is fallback for old format if needed, but since version wasn't there,
-		// gob decode of int might fail or read part of a map.
-		// Actually old format started with a struct.
+	default:
 		return nil, fmt.Errorf("unsupported cache version: %d (please rebuild cache)", version)
 	}
 
@@ -271,11 +281,9 @@ func NewStore() (*Store, error) {
 		EpisodeToItemID:          make(map[int64]int64, 65536),
 		ReviewCountByItemID:      make(map[int64][]byte, 8192),
 		ReviewListByItemID:       make(map[int64][]byte, 8192),
-		ReviewShareByReviewID:    make(map[int64]sourcepkg.ReviewShareEntry, 131072),
 		StatisticsByItemID:       make(map[int64][]byte, 8192),
 		CommentListByEpisodeID:   make(map[int64][]byte, 65536),
 		CommentRepliesByParentID: make(map[int64][]byte, 65536),
-		CommentShareByCommentID:  make(map[int64]sourcepkg.CommentShareEntry, 262144),
 		DRMKeyByEpisodeID:        make(map[int64][]byte, 65536),
 	}
 
@@ -478,11 +486,7 @@ func NewStore() (*Store, error) {
 	}
 	log.Printf("mediacloud/keys done: %d files", len(s.DRMKeyByEpisodeID))
 
-	log.Printf("building derived indexes/sets ...")
-	s.buildReviewShareIndex()
-	log.Printf("derived: review share index ready (%d reviews)", len(s.ReviewShareByReviewID))
-	s.buildCommentShareIndex()
-	log.Printf("derived: comment share index ready (%d comments)", len(s.CommentShareByCommentID))
+	log.Printf("building derived sets ...")
 	s.buildEndingSet()
 	log.Printf("derived: ending set ready (%d items)", len(s.EndingItemIDs))
 	s.buildPlayableSet()

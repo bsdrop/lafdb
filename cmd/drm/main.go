@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -126,6 +127,7 @@ func main() {
 			}
 		}()
 
+		runtime.GC()
 		interval := daemonInterval(time.Since(start))
 		log.Printf("daemon: next run in %.2f days", interval.Hours()/24)
 
