@@ -55,32 +55,93 @@ func (s *Scraper) shouldSkip(path string) bool {
 	return lafutil.FileFresh(path, skipAge)
 }
 
-const maxCommentSkipAge = 2 * 24 * time.Hour
+const failStampAge = 6 * time.Hour
 
-// commentFreshAge returns how long to treat a comment file as fresh,
-// derived from the age of the associated episode file clamped to [0, maxCommentSkipAge].
-// New episodes → near-zero skip (always re-fetch); old episodes → up to 2 days.
-func (s *Scraper) commentFreshAge(epFilePath string) time.Duration {
+func (s *Scraper) failStampPath(category string, id int64) string {
+	return filepath.Join(s.dir(".fail-stamps"), category, fmt.Sprintf("%d", id))
+}
+
+// shouldSkipFailed returns true when this ID 404'd within the last 6 hours.
+func (s *Scraper) shouldSkipFailed(category string, id int64) bool {
+	if s.flags.NoSkip {
+		return false
+	}
+	return lafutil.FileFresh(s.failStampPath(category, id), failStampAge)
+}
+
+func (s *Scraper) writeFailStamp(category string, id int64) {
+	p := s.failStampPath(category, id)
+	_ = os.MkdirAll(filepath.Dir(p), 0750)
+	now := time.Now()
+	if err := os.Chtimes(p, now, now); err != nil {
+		if f, err2 := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0644); err2 == nil {
+			_ = f.Close()
+		}
+	}
+}
+
+func (s *Scraper) clearFailStamp(category string, id int64) {
+	_ = os.Remove(s.failStampPath(category, id))
+}
+
+// commentSkipAge returns how long to treat a comment stamp as fresh,
+// derived from the age of the episode detail file clamped to [1h, 24h].
+// Recently-scraped episodes → 1h minimum; stale episodes → up to 24h.
+func (s *Scraper) commentSkipAge(epFilePath string) time.Duration {
 	if s.flags.NoSkip {
 		return 0
 	}
 	st, err := os.Stat(epFilePath)
 	if err != nil {
-		return 0
+		return time.Hour
 	}
 	age := time.Since(st.ModTime())
-	if age < 0 {
-		age = 0
+	if age < time.Hour {
+		return time.Hour
 	}
-	if age > maxCommentSkipAge {
-		age = maxCommentSkipAge
+	if age > 24*time.Hour {
+		return 24 * time.Hour
 	}
 	return age
+}
+
+func (s *Scraper) commentStampPath(epID int64) string {
+	return filepath.Join(s.dir("comments/v1/.stamps"), fmt.Sprintf("%d", epID))
+}
+
+func (s *Scraper) touchCommentStamp(epID int64) {
+	p := s.commentStampPath(epID)
+	now := time.Now()
+	if err := os.Chtimes(p, now, now); err != nil {
+		if f, err2 := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0644); err2 == nil {
+			_ = f.Close()
+		}
+	}
+}
+
+// filterCommentEpIDs returns only the episode IDs whose comment stamp is stale
+// (older than commentSkipAge), so Run() can pass a pre-filtered list to runPool.
+func (s *Scraper) filterCommentEpIDs(epIDs []int64) []int64 {
+	if s.flags.NoSkip {
+		return epIDs
+	}
+	out := make([]int64, 0, len(epIDs))
+	for _, epID := range epIDs {
+		epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID))
+		skipAge := s.commentSkipAge(epPath)
+		if !lafutil.FileFresh(s.commentStampPath(epID), skipAge) {
+			out = append(out, epID)
+		}
+	}
+	return out
 }
 
 func (s *Scraper) fetchItem(id int64) string {
 	path := filepath.Join(s.dir("items/v4"), fmt.Sprintf("%d.json", id))
 	if s.shouldSkip(path) {
+		return "skip"
+	}
+	if s.shouldSkipFailed("items", id) {
 		return "skip"
 	}
 
@@ -89,6 +150,10 @@ func (s *Scraper) fetchItem(id int64) string {
 		s.debugf("[item] %d: %v", id, err)
 		return errCode(st, err)
 	}
+	if st == "404" {
+		s.writeFailStamp("items", id)
+		return "404"
+	}
 	if st != "200" {
 		return st
 	}
@@ -96,6 +161,7 @@ func (s *Scraper) fetchItem(id int64) string {
 	if err := lafutil.WriteFile(path, lafutil.PrettyJSON(body)); err != nil {
 		return errCode("write", err)
 	}
+	s.clearFailStamp("items", id)
 
 	if !s.flags.SkipThumbnails {
 		var item struct {
@@ -125,6 +191,9 @@ func (s *Scraper) fetchEpisodeList(itemID int64) string {
 	if s.shouldSkip(savePath) {
 		return "skip"
 	}
+	if s.shouldSkipFailed("ep-list", itemID) {
+		return "skip"
+	}
 
 	var all []json.RawMessage
 	var count int
@@ -137,6 +206,7 @@ func (s *Scraper) fetchEpisodeList(itemID int64) string {
 		}
 		if st == "404" {
 			if offset == 0 {
+				s.writeFailStamp("ep-list", itemID)
 				return "404"
 			}
 			break
@@ -176,6 +246,7 @@ func (s *Scraper) fetchEpisodeList(itemID int64) string {
 	}
 
 	if len(all) == 0 {
+		s.writeFailStamp("ep-list", itemID)
 		return "404"
 	}
 
@@ -184,7 +255,11 @@ func (s *Scraper) fetchEpisodeList(itemID int64) string {
 		"count":   count,
 		"results": all,
 	})
-	return writeOrErr(savePath, out)
+	result := writeOrErr(savePath, out)
+	if result == "200" {
+		s.clearFailStamp("ep-list", itemID)
+	}
+	return result
 }
 
 func (s *Scraper) fetchEpisodeDetail(epID int64) string {
@@ -192,10 +267,17 @@ func (s *Scraper) fetchEpisodeDetail(epID int64) string {
 	if s.shouldSkip(path) {
 		return "skip"
 	}
+	if s.shouldSkipFailed("ep-detail", epID) {
+		return "skip"
+	}
 
 	body, st, err := s.fetchJSON(fmt.Sprintf("%s/episodes/v3/%d/", baseAPI, epID))
 	if err != nil {
 		return errCode(st, err)
+	}
+	if st == "404" {
+		s.writeFailStamp("ep-detail", epID)
+		return "404"
 	}
 	if st != "200" {
 		return st
@@ -204,6 +286,7 @@ func (s *Scraper) fetchEpisodeDetail(epID int64) string {
 	if err := lafutil.WriteFile(path, lafutil.PrettyJSON(body)); err != nil {
 		return errCode("write", err)
 	}
+	s.clearFailStamp("ep-detail", epID)
 
 	if !s.flags.SkipThumbnails {
 		var ep struct {
@@ -253,14 +336,10 @@ func (s *Scraper) fetchStatistics(itemID int64) string {
 
 func (s *Scraper) fetchComments(epID int64) string {
 	path := filepath.Join(s.dir("comments/v1/list"), fmt.Sprintf("%d.json", epID))
-	epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID))
-	if skipAge := s.commentFreshAge(epPath); skipAge > 0 && lafutil.FileFresh(path, skipAge) {
-		return "skip"
-	}
 	all := s.fetchPaginated(fmt.Sprintf(
 		"%s/comments/v1/list/?episode_id=%d&sorting=top&limit=500&mine=false", baseAPI, epID))
 	out, _ := json.Marshal(map[string]any{"episode_id": epID, "count": len(all), "results": all})
-	return writeTrackedList(
+	result := writeTrackedList(
 		path,
 		out,
 		"comment",
@@ -268,6 +347,10 @@ func (s *Scraper) fetchComments(epID int64) string {
 		epID,
 		modifiedListPath(s.cfg.Root, "comments", "episode", epID),
 	)
+	if result == "200" {
+		s.touchCommentStamp(epID)
+	}
+	return result
 }
 
 func (s *Scraper) fetchCommentReplies(parentID int64) string {

@@ -110,7 +110,7 @@ func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 			continue
 		}
 		epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID64))
-		epSkipAge := s.commentFreshAge(epPath)
+		epSkipAge := s.commentSkipAge(epPath)
 		for _, r := range page.Results {
 			if r.CountReply == 0 {
 				continue

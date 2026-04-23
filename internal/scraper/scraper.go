@@ -211,7 +211,7 @@ func (s *Scraper) Run() error {
 	for _, d := range []string{
 		"items/v4", "episodes/v3", "episodes/v3/list",
 		"thumbnail", "reviews/v1/count", "reviews/v2/list",
-		"items/v1", "comments/v1/list", "comments/v1/replies",
+		"items/v1", "comments/v1/list", "comments/v1/replies", "comments/v1/.stamps",
 	} {
 		_ = os.MkdirAll(s.dir(d), 0750)
 	}
@@ -235,7 +235,8 @@ func (s *Scraper) Run() error {
 	}
 	if !s.flags.SkipComments {
 		epIDs, _ := collectEpisodeIDsFromLists(s.dir("episodes/v3/list"))
-		s.runPool(epIDs, s.fetchComments, "comments")
+		commentEpIDs := s.filterCommentEpIDs(epIDs)
+		s.runPool(commentEpIDs, s.fetchComments, "comments")
 		replyIDs := s.collectCommentIDsWithReplies()
 		log.Printf("[comment-replies] %d parent comments with replies", len(replyIDs))
 		s.runPool(replyIDs, s.fetchCommentReplies, "comment-replies")
