@@ -78,10 +78,7 @@ const common = {
 
 
 const scripts = [
-  { entryPoints: ["src/player/player.ts"],              bundle: false, format: "esm", outfile: "public/player.js" },
-  { entryPoints: ["src/player/player-drm.ts"],         bundle: false, format: "esm", outfile: "public/player-drm.js" },
-  { entryPoints: ["src/player/player-source-buffer.ts"],bundle: false, format: "esm", outfile: "public/player-source-buffer.js" },
-  { entryPoints: ["src/player/player-segment.ts"],     bundle: false, format: "esm", outfile: "public/player-segment.js" },
+  { entryPoints: ["src/player/player.ts"], bundle: true, format: "esm", outfile: "public/player.js" },
   { entryPoints: ["src/player/player-page.ts"], bundle: true, format: "iife", outfile: "public/player-page.js" },
   { entryPoints: ["src/index.ts"], bundle: true, format: "iife", outfile: "public/index.js" },
   { entryPoints: ["src/item.ts"], bundle: true, format: "iife", outfile: "public/item.js" },
