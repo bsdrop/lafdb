@@ -745,6 +745,9 @@ class Player {
     const vsb = this._getVideoSb();
     const bufEnd = vsb ? this.getBufferedEnd(vsb, ct) : ct;
     const ahead = bufEnd - ct;
+    const asb = this.tracks.find((t) => t.type === "audio")?.sb ?? null;
+    const audioBufEnd = asb ? this.getBufferedEnd(asb, ct) : bufEnd;
+    const audioAhead = audioBufEnd - ct;
 
     if (rs >= 3) {
       this._stallCheckCount = 0;
@@ -790,20 +793,21 @@ class Player {
     } else {
       this._stallCheckCount++;
       console.warn(
-        `[PLAYER] stall strike ${this._stallCheckCount}/${Player.STALL_MAX_STRIKES}` +
-          ` ct=${ct.toFixed(2)} bufEnd=${bufEnd.toFixed(2)} ahead=${ahead.toFixed(2)} rs=${rs}`,
+        `[PLAYER] stall strike ${this._stallCheckCount}/${strikeLimit}` +
+          ` ct=${ct.toFixed(2)} ahead=${ahead.toFixed(2)} audioAhead=${audioAhead.toFixed(2)} rs=${rs}`,
       );
     }
 
     this._stallSnapshotTime = ct;
     this._stallSnapshotBuf = bufEnd;
 
-    if (
-      this._stallCheckCount >=
-      (ahead >= Player.STALL_BUF_MIN
-        ? Player.STALL_DECODER_STRIKES
-        : Player.STALL_MAX_STRIKES)
-    ) {
+    // If video has buffer but audio is still catching up, be patient — it's not a decoder stall.
+    const audioIsBuffering = ahead >= Player.STALL_BUF_MIN && audioAhead < Player.STALL_BUF_MIN;
+    const strikeLimit = ahead >= Player.STALL_BUF_MIN && !audioIsBuffering
+      ? Player.STALL_DECODER_STRIKES
+      : Player.STALL_MAX_STRIKES;
+
+    if (this._stallCheckCount >= strikeLimit) {
       this._stallCheckCount = 0;
       const resumeAt = this._safeCurrentTime();
       if (resumeAt < 1 && this._lastKnownGoodTime !== null) {
