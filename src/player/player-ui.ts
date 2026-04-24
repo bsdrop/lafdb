@@ -261,15 +261,17 @@ btnAutoPlay.addEventListener("click", () => {
     const s = v === 1 ? "1" : v < 10 ? v.toPrecision(3).replace(/\.?0+$/, "") : String(Math.round(v));
     return s + "x";
   };
-  const applySpeed = (v: number) => {
+  const applySpeed = (v: number, silent = false) => {
     v = Math.max(MIN, Math.min(MAX, v));
+    const prev = curSpeed;
     curSpeed = v;
     const video = document.getElementById("v") as HTMLVideoElement | null;
     if (video) video.playbackRate = v;
     if (btnVal) btnVal.textContent = fmtSpeed(v);
     localStorage.setItem("player_speed", String(v));
+    if (!silent) showSpeedToast(prev, v);
   };
-  applySpeed(curSpeed);
+  applySpeed(curSpeed, true);
 
   btnDown?.addEventListener("click", () => applySpeed(curSpeed / getMul()));
   btnUp?.addEventListener("click",   () => applySpeed(curSpeed * getMul()));
@@ -285,7 +287,7 @@ btnAutoPlay.addEventListener("click", () => {
       case "{": applySpeed(curSpeed / getBigMul()); break;
       case ">": { const p = getPresets(); const i = p.findIndex(v => v > curSpeed + 0.01); applySpeed(i >= 0 ? p[i] : p[p.length - 1]); break; }
       case "<": { const p = getPresets(); const i = [...p].reverse().findIndex(v => v < curSpeed - 0.01); applySpeed(i >= 0 ? p[p.length - 1 - i] : p[0]); break; }
-      case "Backspace": applySpeed(1); break;
+      case "Backspace": if (localStorage.getItem("player_speed_bs_reset") !== "off") applySpeed(1); break;
     }
   });
 }
@@ -408,10 +410,53 @@ window.addEventListener("hashchange", () => {
 
 if (epId) initUIForEpisode(epId);
 
+// ── Speed toast ───────────────────────────────────────────────────────────────
+let _speedToastTimer: ReturnType<typeof setTimeout> | null = null;
+function showSpeedToast(prev: number, next: number): void {
+  const box = document.getElementById("video-box");
+  if (!box) return;
+  let toast = document.getElementById("speed-toast") as HTMLDivElement | null;
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "speed-toast";
+    toast.style.cssText = [
+      "position:absolute", "top:50%", "left:50%",
+      "transform:translate(-50%,-50%)",
+      "z-index:30", "pointer-events:none",
+      "display:flex", "flex-direction:column", "align-items:center", "gap:4px",
+      "background:rgba(0,0,0,.55)", "border-radius:10px",
+      "padding:10px 18px",
+      'font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+      "color:#fff", "text-align:center",
+      "transition:opacity .15s",
+    ].join(";");
+    box.appendChild(toast);
+  }
+  const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toPrecision(3).replace(/\.?0+$/, "") + "x";
+  const dir = next > prev ? "▶▶ 빨라짐" : next < prev ? "◀◀ 느려짐" : "↺ 리셋";
+  toast.innerHTML =
+    `<span style="font-size:11px;color:#ccc;letter-spacing:.03em;">${dir}</span>` +
+    `<span style="font-size:22px;font-weight:700;line-height:1.1;">${fmtSpeed(next)}</span>`;
+  toast.style.opacity = "1";
+  if (_speedToastTimer) clearTimeout(_speedToastTimer);
+  _speedToastTimer = setTimeout(() => {
+    if (toast) toast.style.opacity = "0";
+  }, 800);
+}
+
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener("keydown", (e) => {
   if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
-  if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === " ") {
+    const v = document.getElementById("v") as HTMLVideoElement | null;
+    if (!v) return;
+    e.preventDefault();
+    if (v.paused) v.play().catch(() => {});
+    else v.pause();
+    return;
+  }
+  if (e.key === "f" || e.key === "F") {
     const v = document.getElementById("v");
     if (!v) return;
     if (document.fullscreenElement) {
