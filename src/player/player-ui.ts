@@ -476,13 +476,22 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "f" || e.key === "F") {
-    const v = document.getElementById("v");
-    if (!v) return;
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
     } else {
-      v.requestFullscreen?.();
+      const box = document.getElementById("video-box");
+      box?.requestFullscreen?.();
     }
+  }
+});
+
+// 네이티브 컨트롤 fullscreen 버튼이 video를 직접 fullscreen하면 video-box로 교체
+document.addEventListener("fullscreenchange", () => {
+  const el = document.fullscreenElement;
+  const v = document.getElementById("v");
+  const box = document.getElementById("video-box");
+  if (el && el === v && box) {
+    document.exitFullscreen().then(() => box.requestFullscreen()).catch(() => {});
   }
 });
 

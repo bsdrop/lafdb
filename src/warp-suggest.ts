@@ -54,15 +54,18 @@
 		document.getElementById(BANNER_ID)?.remove();
 	}
 
-	function showBanner() {
+	function showBanner(isKr: boolean) {
 		if (document.getElementById(BANNER_ID)) return;
 		inject();
+		const mullvadTip = isKr
+			? ` 또는 <a href="https://mullvad.net/" target="_blank" rel="noopener">Mullvad VPN</a><sup style="font-size:9px;color:#666;margin-left:2px;">유료</sup> 오사카 리전을 사용하면 한국 회선보다 빠른 경로를 탈 수 있어요.`
+			: ` 또는 <a href="https://mullvad.net/" target="_blank" rel="noopener">Mullvad VPN</a><sup style="font-size:9px;color:#666;margin-left:2px;">유료</sup>으로 가까운 리전을 경유하는 것도 도움이 돼요.`;
 		const banner = document.createElement("div");
 		banner.id = BANNER_ID;
 		banner.innerHTML =
 			`<p>🚀 <strong style="color:#e0e0e0">더 빠른 연결을 원하시나요?</strong>&ensp;` +
 			`<a href="https://one.one.one.one/" target="_blank" rel="noopener">Cloudflare WARP</a>` +
-			`를 사용하면 캐시·CDN 경로 최적화로 훨씬 쾌적해져요.</p>` +
+			`를 사용하면 캐시·CDN 경로 최적화로 훨씬 쾌적해져요.${mullvadTip}</p>` +
 			`<button class="_warp-btn" id="_warp-dismiss">괜찮아요</button>`;
 		document.body.appendChild(banner);
 		document.getElementById("_warp-dismiss")!.addEventListener("click", dismiss);
@@ -72,7 +75,11 @@
 		.then((r) => r.text())
 		.then((text) => {
 			if (/^warp=off/m.test(text)) {
-				if (/^fl=/m.test(text)) showBanner();
+				if (/^fl=/m.test(text)) {
+					const locMatch = /^loc=(\w+)/m.exec(text);
+					const isKr = locMatch?.[1]?.toUpperCase() === "KR";
+					showBanner(isKr);
+				}
 			}
 		})
 		.catch((err) => {
