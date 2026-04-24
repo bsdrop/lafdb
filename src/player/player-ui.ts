@@ -245,7 +245,7 @@ btnAutoPlay.addEventListener("click", () => {
   const btnDown = document.getElementById("btn-speed-down") as HTMLButtonElement | null;
   const btnUp   = document.getElementById("btn-speed-up")   as HTMLButtonElement | null;
   const btnVal  = document.getElementById("btn-speed-val")  as HTMLButtonElement | null;
-  const MIN = 0.05, MAX = 16;
+  const MIN = 0.125, MAX = 8;
 
   let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
 
