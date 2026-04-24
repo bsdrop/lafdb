@@ -295,10 +295,10 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const bufferAheadInput = document.getElementById("input-buffer-ahead") as HTMLInputElement | null;
 	const bufferBehindInput = document.getElementById("input-buffer-behind") as HTMLInputElement | null;
 	const bufferPruneDelayInput = document.getElementById("input-buffer-prune-delay") as HTMLInputElement | null;
-	const DEFAULT_ENDING_SKIP_WINDOW = 12.5;
+	const DEFAULT_ENDING_SKIP_WINDOW = 10;
 	const DEFAULT_BUFFER_AHEAD = 40;
-	const DEFAULT_BUFFER_BEHIND = 30;
-	const DEFAULT_BUFFER_PRUNE_DELAY = 0;
+	const DEFAULT_BUFFER_BEHIND = 25;
+	const DEFAULT_BUFFER_PRUNE_DELAY = 5;
 	const MIN_BUFFER_SECONDS = 18;
 	const MAX_BUFFER_SECONDS = 300;
 	const MAX_BUFFER_PRUNE_DELAY = 60;
