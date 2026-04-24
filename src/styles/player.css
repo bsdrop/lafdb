@@ -273,11 +273,7 @@
 				background: #1a1a1a;
 				cursor: pointer;
 				position: relative;
-				transition: height 0.1s;
 				flex-shrink: 0;
-			}
-			#timeline-bar:hover {
-				height: 7px;
 			}
 			#timeline-track {
 				position: relative;

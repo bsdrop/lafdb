@@ -2147,32 +2147,23 @@ class Player {
           await this.waitForIdle(sb);
           if (this._destroyed || seekGeneration !== this.generation) return;
           if (!this._getLiveTrackSb(track, token)) continue;
-          if (seekInBuffer) {
+          {
             const keepStart = Math.max(0, settled - this.BUFFER_BEHIND_KEEP);
             const keepEnd = settled + this.BUFFER_AHEAD_MAX;
             await this._trimTrackBuffer(track, token, keepStart, keepEnd);
-            console.log(
-              `[${track.type.toUpperCase()}] seek: buffer trimmed (in-buffer seek)`,
-            );
-          } else {
             const liveSb = this._getLiveTrackSb(track, token);
-            if (liveSb?.buffered.length) {
-              await this._removeFromTrack(
-                track,
-                token,
-                liveSb.buffered.start(0),
-                liveSb.buffered.end(liveSb.buffered.length - 1),
-              );
-            }
+            const nowEmpty = !liveSb || liveSb.buffered.length === 0;
             console.log(
-              `[${track.type.toUpperCase()}] seek: buffer cleared (out-of-buffer seek)`,
+              `[${track.type.toUpperCase()}] seek: buffer trimmed (${seekInBuffer ? "in-buffer" : "out-of-buffer"} seek, empty=${nowEmpty})`,
             );
-            try {
-              await this._appendInit(track);
-            } catch (e) {
-              console.error(
-                `[${track.type.toUpperCase()}] seek init append failed: ${(e as Error).message}`,
-              );
+            if (nowEmpty) {
+              try {
+                await this._appendInit(track);
+              } catch (e) {
+                console.error(
+                  `[${track.type.toUpperCase()}] seek init append failed: ${(e as Error).message}`,
+                );
+              }
             }
           }
         } catch (e) {
