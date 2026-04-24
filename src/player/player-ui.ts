@@ -240,33 +240,37 @@ btnAutoPlay.addEventListener("click", () => {
   syncOptBtns();
 });
 
-// ── Speed slider ──────────────────────────────────────────────────────────────
-const speedSlider = document.getElementById("speed-slider") as HTMLInputElement | null;
-const speedLabel  = document.getElementById("speed-label") as HTMLSpanElement | null;
-if (speedSlider && speedLabel) {
-  const savedSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
-  speedSlider.value = String(savedSpeed);
+// ── Speed control ─────────────────────────────────────────────────────────────
+{
+  const btnDown = document.getElementById("btn-speed-down") as HTMLButtonElement | null;
+  const btnUp   = document.getElementById("btn-speed-up")   as HTMLButtonElement | null;
+  const btnVal  = document.getElementById("btn-speed-val")  as HTMLButtonElement | null;
+  const STEP = 0.05, MIN = 0.25, MAX = 3;
+  let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
+
   const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toFixed(2).replace(/\.?0+$/, "") + "x";
-  speedLabel.textContent = fmtSpeed(savedSpeed);
   const applySpeed = (v: number) => {
+    v = Math.round(v * 100) / 100;
+    v = Math.max(MIN, Math.min(MAX, v));
+    curSpeed = v;
     const video = document.getElementById("v") as HTMLVideoElement | null;
     if (video) video.playbackRate = v;
-    speedLabel.textContent = fmtSpeed(v);
+    if (btnVal) btnVal.textContent = fmtSpeed(v);
+    if (btnDown) btnDown.disabled = v <= MIN;
+    if (btnUp)   btnUp.disabled   = v >= MAX;
     localStorage.setItem("player_speed", String(v));
   };
-  applySpeed(savedSpeed);
-  speedSlider.addEventListener("input", () => applySpeed(parseFloat(speedSlider.value) || 1));
+  applySpeed(curSpeed);
+
+  btnDown?.addEventListener("click", () => applySpeed(curSpeed - STEP));
+  btnUp?.addEventListener("click",   () => applySpeed(curSpeed + STEP));
+  btnVal?.addEventListener("click",  () => applySpeed(1));
+
   document.addEventListener("keydown", (e) => {
     if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const step = 0.05;
-    if (e.key === "]") {
-      const v = Math.min(3, Math.round((parseFloat(speedSlider.value) + step) * 100) / 100);
-      speedSlider.value = String(v); applySpeed(v);
-    } else if (e.key === "[") {
-      const v = Math.max(0.25, Math.round((parseFloat(speedSlider.value) - step) * 100) / 100);
-      speedSlider.value = String(v); applySpeed(v);
-    }
+    if (e.key === "]") applySpeed(curSpeed + STEP);
+    else if (e.key === "[") applySpeed(curSpeed - STEP);
   });
 }
 
