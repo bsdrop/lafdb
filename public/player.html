@@ -124,6 +124,10 @@
 						<select id="quality-selector" aria-label="화질 선택">
 							<option value="">Quality</option>
 						</select>
+						<div id="speed-wrap" style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+							<input id="speed-slider" type="range" min="0.25" max="3" step="0.05" aria-label="배속" style="width:80px;cursor:pointer;accent-color:var(--accent);">
+							<span id="speed-label" style="font-size:12px;color:var(--muted);min-width:36px;text-align:right;">1x</span>
+						</div>
 						<button id="btn-prev-ep" class="ctrl-btn" disabled>
 							◀ 이전
 						</button>

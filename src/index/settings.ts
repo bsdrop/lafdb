@@ -379,7 +379,9 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (manualThumbsToggle) manualThumbsToggle.checked = isManualThumbsEnabled();
 		if (manualCommentsToggle) manualCommentsToggle.checked = isManualCommentsEnabled();
 		if (apToggle) apToggle.checked = localStorage.getItem("player_autoplay") !== "off";
-		if (asToggle) asToggle.checked = localStorage.getItem("player_autoskip") !== "off";
+		if (asToggle) asToggle.checked = localStorage.getItem("player_autoskip") === "on";
+		const endingWindowEl = document.getElementById("input-ending-skip-window") as HTMLInputElement | null;
+		if (endingWindowEl) endingWindowEl.value = localStorage.getItem("player_ending_skip_window") ?? "12.5";
 		if (tpToggle) tpToggle.checked = (localStorage.getItem("time_pref") || "relative") === "relative";
 		if (shareLaftelToggle) shareLaftelToggle.checked = localStorage.getItem("share_laftel_url") === "yes";
 		setQualVal(localStorage.getItem("quality_pref") || "");
@@ -508,6 +510,11 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	asToggle?.addEventListener("change", () => {
 		localStorage.setItem("player_autoskip", asToggle.checked ? "on" : "off");
 	});
+	(document.getElementById("input-ending-skip-window") as HTMLInputElement | null)
+		?.addEventListener("change", (e) => {
+			const v = parseFloat((e.target as HTMLInputElement).value);
+			if (!isNaN(v)) localStorage.setItem("player_ending_skip_window", String(v));
+		});
 	tpToggle?.addEventListener("change", () => {
 		localStorage.setItem("time_pref", tpToggle.checked ? "relative" : "absolute");
 	});

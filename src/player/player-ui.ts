@@ -210,7 +210,7 @@ const ShareSheet = (() => {
 })();
 
 // ── Options ───────────────────────────────────────────────────────────────────
-let autoSkip = localStorage.getItem("player_autoskip") !== "off";
+let autoSkip = localStorage.getItem("player_autoskip") === "on";
 let autoPlay = localStorage.getItem("player_autoplay") !== "off";
 const btnAutoSkip = document.getElementById("btn-autoskip") as HTMLButtonElement;
 const btnAutoPlay = document.getElementById("btn-autoplay") as HTMLButtonElement;
@@ -239,6 +239,36 @@ btnAutoPlay.addEventListener("click", () => {
   );
   syncOptBtns();
 });
+
+// ── Speed slider ──────────────────────────────────────────────────────────────
+const speedSlider = document.getElementById("speed-slider") as HTMLInputElement | null;
+const speedLabel  = document.getElementById("speed-label") as HTMLSpanElement | null;
+if (speedSlider && speedLabel) {
+  const savedSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
+  speedSlider.value = String(savedSpeed);
+  const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toFixed(2).replace(/\.?0+$/, "") + "x";
+  speedLabel.textContent = fmtSpeed(savedSpeed);
+  const applySpeed = (v: number) => {
+    const video = document.getElementById("v") as HTMLVideoElement | null;
+    if (video) video.playbackRate = v;
+    speedLabel.textContent = fmtSpeed(v);
+    localStorage.setItem("player_speed", String(v));
+  };
+  applySpeed(savedSpeed);
+  speedSlider.addEventListener("input", () => applySpeed(parseFloat(speedSlider.value) || 1));
+  document.addEventListener("keydown", (e) => {
+    if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const step = 0.05;
+    if (e.key === "]") {
+      const v = Math.min(3, Math.round((parseFloat(speedSlider.value) + step) * 100) / 100);
+      speedSlider.value = String(v); applySpeed(v);
+    } else if (e.key === "[") {
+      const v = Math.max(0.25, Math.round((parseFloat(speedSlider.value) - step) * 100) / 100);
+      speedSlider.value = String(v); applySpeed(v);
+    }
+  });
+}
 
 const btnSettings = document.getElementById("btn-settings") as HTMLButtonElement;
 const settingsPanel = document.getElementById("settings-panel")!;
@@ -557,7 +587,9 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
     if (markers!.ending) {
       const { start, end } = markers!.ending;
       const inSeg = t >= start && t < end;
-      btnEnd.classList.toggle("visible", inSeg);
+      const endingWindow = parseFloat(localStorage.getItem("player_ending_skip_window") ?? "12.5");
+      const inWindow = endingWindow < 0 || (endingWindow > 0 && t - start < endingWindow);
+      btnEnd.classList.toggle("visible", inSeg && inWindow);
       if (inSeg && autoSkip) skipTo(end);
     }
   });

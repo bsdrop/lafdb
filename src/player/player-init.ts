@@ -161,6 +161,43 @@ function showCompatWarning(msg: string): void {
     });
 }
 
+function showGapJumpBanner(mpdUrl: string, keyHex: string): void {
+  if (document.getElementById("player-gap-jump-banner")) return;
+  const mpvCmd = keyHex
+    ? `mpv "${mpdUrl}" --ytdl-raw-options=allow-unplayable-formats= --demuxer-lavf-o=decryption_key=${keyHex}`
+    : `mpv "${mpdUrl}"`;
+  const banner = document.createElement("div");
+  banner.id = "player-gap-jump-banner";
+  banner.style.cssText = [
+    "position:fixed", "left:12px", "right:12px", "bottom:12px", "z-index:9400",
+    "display:flex", "flex-direction:column", "gap:10px",
+    "padding:14px 16px",
+    "border:1px solid #3f3f46", "border-radius:12px",
+    "background:#18181b", "color:#d4d4d8",
+    'font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    "box-shadow:0 10px 30px rgba(0,0,0,.35)",
+  ].join(";");
+  banner.innerHTML = `
+<p style="margin:0;">재생 중 버퍼 갭이 감지되어 해당 구간을 건너뛰었습니다. 끊김 없이 보려면 다운로드하거나 mpv로 재생하세요.</p>
+<code id="player-gap-mpv-cmd" style="display:block;background:#0f0f0f;border:1px solid #333;border-radius:8px;padding:8px 10px;font-size:12px;color:#a3e635;word-break:break-all;cursor:pointer;" title="클릭하여 복사">${mpvCmd}</code>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+  <button id="player-gap-copy" style="padding:7px 14px;border-radius:8px;border:1px solid #a3e635;background:#a3e635;color:#000;font:600 13px inherit;cursor:pointer;">명령어 복사</button>
+  <button id="player-gap-close" style="padding:7px 14px;border-radius:8px;border:1px solid #3f3f46;background:transparent;color:#d4d4d8;font:13px inherit;cursor:pointer;">닫기</button>
+</div>`;
+  document.body.appendChild(banner);
+  const copyBtn = document.getElementById("player-gap-copy") as HTMLButtonElement;
+  const codeEl  = document.getElementById("player-gap-mpv-cmd") as HTMLElement;
+  const doCopy  = () => { navigator.clipboard?.writeText(mpvCmd).then(() => { copyBtn.textContent = "복사됨 ✓"; setTimeout(() => { copyBtn.textContent = "명령어 복사"; }, 2000); }); };
+  copyBtn?.addEventListener("click", doCopy);
+  codeEl?.addEventListener("click", doCopy);
+  document.getElementById("player-gap-close")?.addEventListener("click", () => banner.remove(), { once: true });
+}
+
+window.addEventListener("player:gap-jump", ((e: Event) => {
+  const d = (e as CustomEvent<{ mpdUrl?: string; keyHex?: string }>).detail;
+  showGapJumpBanner(d?.mpdUrl ?? "", d?.keyHex ?? "");
+}) as EventListener);
+
 window.addEventListener("player:compat-warning", ((e: Event) => {
   const detail = (e as CustomEvent<{ message?: string }>).detail;
   showCompatWarning(
@@ -274,6 +311,9 @@ async function startPlayer(
           break;
         case "compatWarning":
           showCompatWarning(data["message"] as string);
+          break;
+        case "gapJump":
+          showGapJumpBanner(data["mpdUrl"] as string, data["keyHex"] as string);
           break;
         default:
           _dlHandleMsg(data);

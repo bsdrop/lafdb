@@ -175,6 +175,8 @@ class Player {
   _qualityPrefBps: number;
   _lastReinitAt: number;
   _lastReinitTime: number | null;
+  _mpdUrl: string;
+  _keyHex: string;
   _loggedDecryptLayoutWarning: boolean;
   _isFirefox: boolean;
   _compatWarningShown: boolean;
@@ -259,6 +261,8 @@ class Player {
     this._qualityPrefBps = 0;
     this._lastReinitAt = 0;
     this._lastReinitTime = null;
+    this._mpdUrl = "";
+    this._keyHex = "";
     this._loggedDecryptLayoutWarning = false;
     this._isFirefox =
       typeof navigator !== "undefined" &&
@@ -355,6 +359,19 @@ class Player {
       }
     } catch (e) {
       console.debug("[PLAYER] compat warning dispatch failed:", e);
+    }
+  }
+
+  _emitGapJump(): void {
+    const detail = { mpdUrl: this._mpdUrl, keyHex: this._keyHex };
+    try {
+      if (IS_WORKER) {
+        (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: "gapJump", ...detail });
+      } else {
+        self.dispatchEvent(new CustomEvent("player:gap-jump", { detail }));
+      }
+    } catch (e) {
+      console.debug("[PLAYER] gap jump dispatch failed:", e);
     }
   }
 
@@ -773,6 +790,7 @@ class Player {
           this._gapCandidateStart = -1;
           this._internalSeek = true;
           this._seekTo(gapStart + 0.01);
+          this._emitGapJump();
         } else {
           console.log(`[PLAYER] Gap candidate ${gapStart.toFixed(3)}s, confirming next check`);
           this._gapCandidateStart = gapStart;
@@ -1452,6 +1470,8 @@ class Player {
       }, { signal });
     }
 
+    this._mpdUrl = mpdUrl;
+    this._keyHex = key;
     await this.setKey(kid, key);
     if (this._destroyed) return;
 
