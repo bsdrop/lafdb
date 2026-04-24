@@ -164,8 +164,8 @@ function showCompatWarning(msg: string): void {
 function showGapJumpBanner(mpdUrl: string, keyHex: string): void {
   if (document.getElementById("player-gap-jump-banner")) return;
   const mpvCmd = keyHex
-    ? `mpv "${mpdUrl}" --ytdl-raw-options=allow-unplayable-formats= --demuxer-lavf-o=decryption_key=${keyHex}`
-    : `mpv "${mpdUrl}"`;
+    ? `mpv "ytdl://${mpdUrl}" --ytdl-raw-options=allow-unplayable-formats= --demuxer-lavf-o=decryption_key=${keyHex}`
+    : `mpv "ytdl://${mpdUrl}"`;
   const banner = document.createElement("div");
   banner.id = "player-gap-jump-banner";
   banner.style.cssText = [

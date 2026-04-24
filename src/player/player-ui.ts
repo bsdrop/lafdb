@@ -279,6 +279,15 @@ btnAutoPlay.addEventListener("click", () => {
     if (!silent) showSpeedToast(prev, v);
   };
   applySpeed(curSpeed, true);
+  (document.getElementById("v") as HTMLVideoElement | null)?.addEventListener("ratechange", () => {
+    const v = document.getElementById("v") as HTMLVideoElement | null;
+    if (!v) return;
+    if (v.playbackRate !== curSpeed) applySpeed(v.playbackRate, true);
+  });
+  (document.getElementById("v") as HTMLVideoElement | null)?.addEventListener("playing", () => {
+    const v = document.getElementById("v") as HTMLVideoElement | null;
+    if (v && v.playbackRate !== curSpeed) v.playbackRate = curSpeed;
+  });
 
   btnDown?.addEventListener("click", () => applySpeed(Math.round((curSpeed - 0.05) * 100) / 100));
   btnUp?.addEventListener("click",   () => applySpeed(Math.round((curSpeed + 0.05) * 100) / 100));
