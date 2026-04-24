@@ -848,6 +848,18 @@ class Player {
         );
         return;
       } else {
+        if (this._nudgeCount < Player.NUDGE_MAX) {
+          this._nudgeCount++;
+          const nudgeTarget = Math.max(0, safeResume - 0.06);
+          console.warn(
+            `[PLAYER] decoder stall (buffer ok), nudging back 0.06s to ${nudgeTarget.toFixed(3)}s (nudge ${this._nudgeCount}/${Player.NUDGE_MAX})`,
+          );
+          this._stallCheckCount = 0;
+          this._internalSeek = true;
+          this._seekTo(nudgeTarget);
+          this._scheduleStallCheck();
+          return;
+        }
         const recoveryTime = this._getDecodeRecoveryTime(safeResume);
         const retryResume = Math.min(
           recoveryTime,

@@ -245,7 +245,22 @@ btnAutoPlay.addEventListener("click", () => {
   const btnDown = document.getElementById("btn-speed-down") as HTMLButtonElement | null;
   const btnUp   = document.getElementById("btn-speed-up")   as HTMLButtonElement | null;
   const btnVal  = document.getElementById("btn-speed-val")  as HTMLButtonElement | null;
-  const MIN = 0.05, MAX = 16;
+  const MIN = 0.05;
+
+  // Probe actual browser max by temporarily setting an absurdly high rate.
+  function probeMaxRate(): number {
+    const video = document.getElementById("v") as HTMLVideoElement | null;
+    if (!video) return 16;
+    const saved = video.playbackRate;
+    try { video.playbackRate = 1000; } catch {}
+    const max = video.playbackRate || 16;
+    try { video.playbackRate = saved; } catch {}
+    return max;
+  }
+  let MAX = probeMaxRate();
+  // Re-probe once video is loaded (rate may change before media is attached)
+  document.getElementById("v")?.addEventListener("loadedmetadata", () => { MAX = probeMaxRate(); }, { once: true });
+
   let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
 
   // Customizable via localStorage — not exposed in settings UI
@@ -433,10 +448,11 @@ function showSpeedToast(prev: number, next: number): void {
     box.appendChild(toast);
   }
   const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toPrecision(3).replace(/\.?0+$/, "") + "x";
-  const dir = next > prev ? "▶▶ 빨라짐" : next < prev ? "◀◀ 느려짐" : "↺ 리셋";
-  toast.innerHTML =
-    `<span style="font-size:11px;color:#ccc;letter-spacing:.03em;">${dir}</span>` +
-    `<span style="font-size:22px;font-weight:700;line-height:1.1;">${fmtSpeed(next)}</span>`;
+  const arrow = next > prev ? "▶▶" : next < prev ? "◀◀" : "";
+  toast.innerHTML = arrow
+    ? `<span style="font-size:13px;letter-spacing:.1em;color:#ccc;">${arrow}</span>` +
+      `<span style="font-size:22px;font-weight:700;line-height:1.1;">${fmtSpeed(next)}</span>`
+    : `<span style="font-size:22px;font-weight:700;line-height:1.1;">${fmtSpeed(next)}</span>`;
   toast.style.opacity = "1";
   if (_speedToastTimer) clearTimeout(_speedToastTimer);
   _speedToastTimer = setTimeout(() => {
