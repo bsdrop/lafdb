@@ -8,7 +8,10 @@ mkdir -p bin
 
 clean_public_assets() {
   [ -d public ] || return 0
-  find public -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec rm -f {} \;
+  find public -maxdepth 1 -type f \( -name '*.js' -o -name '*.css' \) \
+    ! -name 'sw.js' \
+    ! -name 'accessible.js' \
+    -exec rm -f {} \;
 }
 
 if [ -f package.json ]; then
