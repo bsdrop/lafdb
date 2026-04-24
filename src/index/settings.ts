@@ -273,6 +273,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const apToggle = document.getElementById("toggle-autoplay") as HTMLInputElement | null;
 	const asToggle = document.getElementById("toggle-autoskip") as HTMLInputElement | null;
 	const tpToggle = document.getElementById("toggle-timepref") as HTMLInputElement | null;
+	const shareLaftelToggle = document.getElementById("toggle-share-laftel") as HTMLInputElement | null;
 	const qualSel = document.getElementById("sel-quality-pref") as HTMLElement;
 	const qualRadios = () => qualSel.querySelectorAll<HTMLInputElement>("input[type=radio]");
 	const getQualVal = () => qualSel.querySelector<HTMLInputElement>("input:checked")?.value ?? "";
@@ -380,6 +381,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (apToggle) apToggle.checked = localStorage.getItem("player_autoplay") !== "off";
 		if (asToggle) asToggle.checked = localStorage.getItem("player_autoskip") !== "off";
 		if (tpToggle) tpToggle.checked = (localStorage.getItem("time_pref") || "relative") === "relative";
+		if (shareLaftelToggle) shareLaftelToggle.checked = localStorage.getItem("share_laftel_url") === "yes";
 		setQualVal(localStorage.getItem("quality_pref") || "");
 		updateBpsUI(getBpsPref());
 		updateBufferUI(
@@ -508,6 +510,10 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	});
 	tpToggle?.addEventListener("change", () => {
 		localStorage.setItem("time_pref", tpToggle.checked ? "relative" : "absolute");
+	});
+	shareLaftelToggle?.addEventListener("change", () => {
+		if (shareLaftelToggle.checked) localStorage.setItem("share_laftel_url", "yes");
+		else localStorage.removeItem("share_laftel_url");
 	});
 	qualRadios().forEach((r) =>
 		r.addEventListener("change", () => {

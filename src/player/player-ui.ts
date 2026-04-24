@@ -46,13 +46,7 @@ const ShareSheet = (() => {
     _epTitle = epTitle ?? "";
     _getTime = getTime ?? null;
 
-    if (epId) {
-      timeRow.style.display = "";
-      timeToggle.checked = true;
-    } else {
-      timeRow.style.display = "none";
-    }
-
+    timeToggle.checked = true;
     render();
     timeToggle.onchange = render;
 
@@ -69,25 +63,32 @@ const ShareSheet = (() => {
 
   function buildUrls(): Array<{ label: string; url: string; withTime?: boolean }> {
     const base = location.origin;
+    const useLaftel = localStorage.getItem("share_laftel_url") === "yes";
+    const laftelBase = "https://laftel.net";
     const urls: Array<{ label: string; url: string; withTime?: boolean }> = [];
 
     if (_epId) {
-      let epUrl = `${base}/player/${_epId}`;
-      if (timeToggle.checked && _getTime) {
-        const t = Math.floor(_getTime());
-        if (t > 1) epUrl += `?t=${t}`;
+      let epUrl: string;
+      if (useLaftel && _itemId) {
+        epUrl = `${laftelBase}/player/${_itemId}/${_epId}`;
+      } else {
+        epUrl = `${base}/player/${_epId}`;
+        if (timeToggle.checked && _getTime) {
+          const t = Math.floor(_getTime());
+          if (t > 1) epUrl += `?t=${t}`;
+        }
       }
       urls.push({
         label: "에피소드 공유",
         url: epUrl,
-        withTime: timeToggle.checked,
+        withTime: !useLaftel && timeToggle.checked,
       });
     }
 
     if (_itemId) {
       urls.push({
         label: "작품 페이지 공유",
-        url: `${base}/item/${_itemId}`,
+        url: useLaftel ? `${laftelBase}/item/${_itemId}` : `${base}/item/${_itemId}`,
       });
     }
 
@@ -105,6 +106,8 @@ const ShareSheet = (() => {
   }
 
   function render(): void {
+    const useLaftel = localStorage.getItem("share_laftel_url") === "yes";
+    timeRow.style.display = _epId && !useLaftel ? "" : "none";
     rowsEl.innerHTML = "";
     const urls = buildUrls();
 
@@ -359,12 +362,12 @@ if (epId) initUIForEpisode(epId);
 document.addEventListener("keydown", (e) => {
   if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
   if (e.key === "f" || e.key === "F") {
-    const box = document.getElementById("video-box");
-    if (!box) return;
+    const v = document.getElementById("v");
+    if (!v) return;
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
     } else {
-      box.requestFullscreen?.();
+      v.requestFullscreen?.();
     }
   }
 });
@@ -493,8 +496,12 @@ interface MarkerData {
 function setupMarkers(markers: MarkerData | null | undefined): void {
   if (!markers) return;
 
-  // Tell the player which ranges to skip buffering through when autoSkip is on.
-  const p = (window as Window & { _currentPlayer?: { skipRanges: Array<{ start: number; end: number }> } | null })._currentPlayer;
+  const video = document.getElementById("v") as HTMLVideoElement;
+  const btnOpen = document.getElementById("skip-opening") as HTMLButtonElement;
+  const btnEnd = document.getElementById("skip-ending") as HTMLButtonElement;
+
+  type SkipPlayer = { skipRanges: Array<{ start: number; end: number }> } | null | undefined;
+  const p = (window as Window & { _currentPlayer?: SkipPlayer })._currentPlayer;
   if (p) {
     p.skipRanges = [
       ...(markers.opening ? [markers.opening] : []),
@@ -502,9 +509,12 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
     ];
   }
 
-  const video = document.getElementById("v") as HTMLVideoElement;
-  const btnOpen = document.getElementById("skip-opening") as HTMLButtonElement;
-  const btnEnd = document.getElementById("skip-ending") as HTMLButtonElement;
+  // Don't seek to video.duration — causes MEDIA_ERR_DECODE on some browsers.
+  function skipTo(time: number): void {
+    const dur = video.duration;
+    if (isFinite(dur) && time >= dur - 0.07) return;
+    video.currentTime = time;
+  }
 
   function renderTimelineMarkers(): void {
     const dur = video.duration;
@@ -542,21 +552,20 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       const { start, end } = markers!.opening;
       const inSeg = t >= start && t < end;
       btnOpen.classList.toggle("visible", inSeg);
-      if (inSeg && autoSkip) video.currentTime = end;
+      if (inSeg && autoSkip) skipTo(end);
     }
     if (markers!.ending) {
       const { start, end } = markers!.ending;
       const inSeg = t >= start && t < end;
       btnEnd.classList.toggle("visible", inSeg);
-      if (inSeg && autoSkip) video.currentTime = end;
+      if (inSeg && autoSkip) skipTo(end);
     }
   });
   btnOpen.onclick = () => {
-    if (markers!.opening)
-      video.currentTime = markers!.opening.end;
+    if (markers!.opening) skipTo(markers!.opening.end);
   };
   btnEnd.onclick = () => {
-    if (markers!.ending) video.currentTime = markers!.ending.end;
+    if (markers!.ending) skipTo(markers!.ending.end);
   };
 }
 

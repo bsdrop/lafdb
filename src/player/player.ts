@@ -1905,11 +1905,10 @@ class Player {
         // Auto-skip: don't buffer deep into OP/ED ranges.
         // Allow at most 1 segment past skipStart so decode stays smooth until
         // the skip fires, then stop — the post-skip buffer fills after the seek.
-        if (
+        const skipOptActive =
           this.skipRanges.length > 0 &&
-          localStorage.getItem("player_autoskip") !== "off" &&
-          isInSkipInterior(this.skipRanges, ct, range.start, range.duration)
-        ) {
+          localStorage.getItem("player_autoskip") !== "off";
+        if (skipOptActive && isInSkipInterior(this.skipRanges, ct, range.start, range.duration)) {
           await this.wait(this.POLL_INTERVAL);
           continue;
         }
