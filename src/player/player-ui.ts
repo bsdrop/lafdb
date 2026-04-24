@@ -245,21 +245,7 @@ btnAutoPlay.addEventListener("click", () => {
   const btnDown = document.getElementById("btn-speed-down") as HTMLButtonElement | null;
   const btnUp   = document.getElementById("btn-speed-up")   as HTMLButtonElement | null;
   const btnVal  = document.getElementById("btn-speed-val")  as HTMLButtonElement | null;
-  const MIN = 0.05;
-
-  // Probe actual browser max by temporarily setting an absurdly high rate.
-  function probeMaxRate(): number {
-    const video = document.getElementById("v") as HTMLVideoElement | null;
-    if (!video) return 16;
-    const saved = video.playbackRate;
-    try { video.playbackRate = 1000; } catch {}
-    const max = video.playbackRate || 16;
-    try { video.playbackRate = saved; } catch {}
-    return max;
-  }
-  let MAX = probeMaxRate();
-  // Re-probe once video is loaded (rate may change before media is attached)
-  document.getElementById("v")?.addEventListener("loadedmetadata", () => { MAX = probeMaxRate(); }, { once: true });
+  const MIN = 0.05, MAX = 16;
 
   let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
 
