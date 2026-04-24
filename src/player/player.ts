@@ -801,6 +801,12 @@ class Player {
     }
     this._gapCandidateStart = -1;
 
+    // If video has buffer but audio is still catching up, be patient — it's not a decoder stall.
+    const audioIsBuffering = ahead >= Player.STALL_BUF_MIN && audioAhead < Player.STALL_BUF_MIN;
+    const strikeLimit = ahead >= Player.STALL_BUF_MIN && !audioIsBuffering
+      ? Player.STALL_DECODER_STRIKES
+      : Player.STALL_MAX_STRIKES;
+
     const prevTime = this._stallSnapshotTime;
     const prevBuf = this._stallSnapshotBuf;
     const timeOk = prevTime !== null && ct - prevTime > 0.05;
@@ -818,12 +824,6 @@ class Player {
 
     this._stallSnapshotTime = ct;
     this._stallSnapshotBuf = bufEnd;
-
-    // If video has buffer but audio is still catching up, be patient — it's not a decoder stall.
-    const audioIsBuffering = ahead >= Player.STALL_BUF_MIN && audioAhead < Player.STALL_BUF_MIN;
-    const strikeLimit = ahead >= Player.STALL_BUF_MIN && !audioIsBuffering
-      ? Player.STALL_DECODER_STRIKES
-      : Player.STALL_MAX_STRIKES;
 
     if (this._stallCheckCount >= strikeLimit) {
       this._stallCheckCount = 0;

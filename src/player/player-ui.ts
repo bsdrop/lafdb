@@ -272,7 +272,7 @@ btnAutoPlay.addEventListener("click", () => {
     const unsafe = v < 0.5 || v > 2;
     if (btnVal) {
       btnVal.textContent = fmtSpeed(v);
-      btnVal.style.color = unsafe ? "#e5ff00" : "";
+      btnVal.style.color = unsafe ? "#f97316" : "";
       btnVal.title = unsafe ? UNSAFE_TITLE : "";
     }
     localStorage.setItem("player_speed", String(v));
@@ -441,10 +441,12 @@ function showSpeedToast(prev: number, next: number): void {
   }
   const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toPrecision(3).replace(/\.?0+$/, "") + "x";
   const arrow = next > prev ? "▶▶" : next < prev ? "◀◀" : "";
+  const unsafe = next < 0.5 || next > 2;
+  const valColor = unsafe ? "#f97316" : "#fff";
   toast.innerHTML = arrow
     ? `<span style="font-size:13px;letter-spacing:.1em;color:#ccc;">${arrow}</span>` +
-      `<span style="font-size:22px;font-weight:700;line-height:1.1;">${fmtSpeed(next)}</span>`
-    : `<span style="font-size:22px;font-weight:700;line-height:1.1;">${fmtSpeed(next)}</span>`;
+      `<span style="font-size:22px;font-weight:700;line-height:1.1;color:${valColor};">${fmtSpeed(next)}</span>`
+    : `<span style="font-size:22px;font-weight:700;line-height:1.1;color:${valColor};">${fmtSpeed(next)}</span>`;
   toast.style.opacity = "1";
   if (_speedToastTimer) clearTimeout(_speedToastTimer);
   _speedToastTimer = setTimeout(() => {
