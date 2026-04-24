@@ -262,13 +262,19 @@ btnAutoPlay.addEventListener("click", () => {
     const s = v === 1 ? "1" : v < 10 ? v.toPrecision(3).replace(/\.?0+$/, "") : String(Math.round(v));
     return s + "x";
   };
+  const UNSAFE_TITLE = "브라우저에 따라 실제 재생 속도가 다를 수 있습니다";
   const applySpeed = (v: number, silent = false) => {
     v = Math.max(MIN, Math.min(MAX, v));
     const prev = curSpeed;
     curSpeed = v;
     const video = document.getElementById("v") as HTMLVideoElement | null;
     if (video) video.playbackRate = v;
-    if (btnVal) btnVal.textContent = fmtSpeed(v);
+    const unsafe = v < 0.5 || v > 2;
+    if (btnVal) {
+      btnVal.textContent = fmtSpeed(v);
+      btnVal.style.color = unsafe ? "#e5ff00" : "";
+      btnVal.title = unsafe ? UNSAFE_TITLE : "";
+    }
     localStorage.setItem("player_speed", String(v));
     if (!silent) showSpeedToast(prev, v);
   };
