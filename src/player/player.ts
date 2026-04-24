@@ -744,6 +744,10 @@ class Player {
       this._scheduleStallCheck();
       return;
     }
+    if (this._video?.ended) {
+      this._clearStallWatchdog();
+      return;
+    }
     if (this._video?.paused && (this._autoplayBlocked || this._awaitingUserPlay)) {
       this._scheduleStallCheck();
       return;
@@ -1804,6 +1808,7 @@ class Player {
     if (!this._isFirefox || track.type !== "video" || !track.timeline?.length) {
       return time;
     }
+    if (this._video?.ended) return time;
     const segNum = this.timeToSegmentNumber(track, time);
     if (segNum <= track.startNumber) {
       return time;
@@ -2108,6 +2113,10 @@ class Player {
 
   _handleSeeking(seekTime: number): void {
     if (this._destroyed) return;
+    if (this._video?.ended) {
+      console.log(`[PLAYER] seeking ignored (video ended) at ${seekTime.toFixed(3)}s`);
+      return;
+    }
     if (this._internalSeek) {
       this._internalSeek = false;
       console.log(
