@@ -288,8 +288,8 @@ btnAutoPlay.addEventListener("click", () => {
   };
   applySpeed(curSpeed, true);
 
-  btnDown?.addEventListener("click", () => applySpeed(curSpeed / getMul()));
-  btnUp?.addEventListener("click",   () => applySpeed(curSpeed * getMul()));
+  btnDown?.addEventListener("click", () => applySpeed(Math.round((curSpeed - 0.05) * 100) / 100));
+  btnUp?.addEventListener("click",   () => applySpeed(Math.round((curSpeed + 0.05) * 100) / 100));
   btnVal?.addEventListener("click",  () => applySpeed(1));
 
   document.addEventListener("keydown", (e) => {
