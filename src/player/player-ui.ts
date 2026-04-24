@@ -662,7 +662,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
     if (markers!.ending) {
       const { start, end } = markers!.ending;
       const inSeg = t >= start && t < end;
-      const endingWindow = parseFloat(localStorage.getItem("player_ending_skip_window") ?? "12.5");
+      const endingWindow = parseFloat(localStorage.getItem("player_ending_skip_window") ?? "10");
       const inWindow = endingWindow < 0 || (endingWindow > 0 && t - start < endingWindow);
       btnEnd.classList.toggle("visible", inSeg && inWindow);
       if (inSeg && autoSkip) skipTo(end);

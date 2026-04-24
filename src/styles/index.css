@@ -570,6 +570,32 @@
 				align-items: center;
 				gap: 6px;
 			}
+			.setting-inline-input {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				flex-shrink: 0;
+				padding: 6px 10px;
+				border: 1px solid #222;
+				border-radius: 8px;
+				background: #111;
+			}
+			.setting-inline-number {
+				width: 64px;
+				flex: 0 0 auto;
+				padding: 0;
+				border: 0;
+				border-radius: 0;
+				background: transparent;
+				text-align: right;
+			}
+			.setting-inline-input:focus-within {
+				border-color: #555;
+			}
+			.setting-inline-input .qual-bps-unit {
+				min-width: 1.4em;
+				text-align: left;
+			}
 			.qual-bps-input {
 				flex: 1;
 				min-width: 0;
@@ -586,6 +612,7 @@
 			.qual-bps-input::-webkit-outer-spin-button,
 			.qual-bps-input::-webkit-inner-spin-button { -webkit-appearance: none; }
 			.qual-bps-input:focus { border-color: #555; }
+			.setting-inline-number:focus { border-color: transparent; }
 			.qual-bps-input.active { border-color: var(--accent); }
 			.qual-bps-unit {
 				font-size: 12px;

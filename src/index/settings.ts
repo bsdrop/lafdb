@@ -291,9 +291,11 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const qualPrefSub = document.getElementById("quality-pref-sub") as HTMLElement;
 	const playerAdvBtn = document.getElementById("btn-player-adv") as HTMLButtonElement | null;
 	const playerAdvPanel = document.getElementById("player-adv-panel") as HTMLElement | null;
+	const endingSkipWindowInput = document.getElementById("input-ending-skip-window") as HTMLInputElement | null;
 	const bufferAheadInput = document.getElementById("input-buffer-ahead") as HTMLInputElement | null;
 	const bufferBehindInput = document.getElementById("input-buffer-behind") as HTMLInputElement | null;
 	const bufferPruneDelayInput = document.getElementById("input-buffer-prune-delay") as HTMLInputElement | null;
+	const DEFAULT_ENDING_SKIP_WINDOW = 12.5;
 	const DEFAULT_BUFFER_AHEAD = 40;
 	const DEFAULT_BUFFER_BEHIND = 30;
 	const DEFAULT_BUFFER_PRUNE_DELAY = 0;
@@ -303,6 +305,32 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 
 	function getBpsPref(): number {
 		return parseInt(localStorage.getItem("quality_pref_bps") || "0", 10);
+	}
+
+	function normalizeEndingSkipWindow(value: number): number {
+		if (!Number.isFinite(value)) return DEFAULT_ENDING_SKIP_WINDOW;
+		if (value <= -1) return -1;
+		if (value === 0) return 0;
+		if (value < 0) return DEFAULT_ENDING_SKIP_WINDOW;
+		return Math.round(value * 10) / 10;
+	}
+
+	function getEndingSkipWindowPref(): number {
+		return normalizeEndingSkipWindow(
+			parseFloat(localStorage.getItem("player_ending_skip_window") ?? String(DEFAULT_ENDING_SKIP_WINDOW)),
+		);
+	}
+
+	function updateEndingSkipWindowUI(value: number) {
+		if (!endingSkipWindowInput) return;
+		endingSkipWindowInput.value = Number.isInteger(value) ? String(value) : value.toFixed(1);
+	}
+
+	function applyEndingSkipWindow(value: number) {
+		const next = normalizeEndingSkipWindow(value);
+		if (next === DEFAULT_ENDING_SKIP_WINDOW) localStorage.removeItem("player_ending_skip_window");
+		else localStorage.setItem("player_ending_skip_window", String(next));
+		updateEndingSkipWindowUI(next);
 	}
 
 	function clampBufferSeconds(value: number, fallback: number): number {
@@ -380,8 +408,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (manualCommentsToggle) manualCommentsToggle.checked = isManualCommentsEnabled();
 		if (apToggle) apToggle.checked = localStorage.getItem("player_autoplay") !== "off";
 		if (asToggle) asToggle.checked = localStorage.getItem("player_autoskip") === "on";
-		const endingWindowEl = document.getElementById("input-ending-skip-window") as HTMLInputElement | null;
-		if (endingWindowEl) endingWindowEl.value = localStorage.getItem("player_ending_skip_window") ?? "12.5";
+		updateEndingSkipWindowUI(getEndingSkipWindowPref());
 		if (tpToggle) tpToggle.checked = (localStorage.getItem("time_pref") || "relative") === "relative";
 		if (shareLaftelToggle) shareLaftelToggle.checked = localStorage.getItem("share_laftel_url") === "yes";
 		setQualVal(localStorage.getItem("quality_pref") || "");
@@ -510,11 +537,15 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	asToggle?.addEventListener("change", () => {
 		localStorage.setItem("player_autoskip", asToggle.checked ? "on" : "off");
 	});
-	(document.getElementById("input-ending-skip-window") as HTMLInputElement | null)
-		?.addEventListener("change", (e) => {
-			const v = parseFloat((e.target as HTMLInputElement).value);
-			if (!isNaN(v)) localStorage.setItem("player_ending_skip_window", String(v));
-		});
+	endingSkipWindowInput?.addEventListener("change", () => {
+		applyEndingSkipWindow(parseFloat(endingSkipWindowInput.value));
+	});
+	endingSkipWindowInput?.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+	});
+	endingSkipWindowInput?.addEventListener("blur", () => {
+		applyEndingSkipWindow(parseFloat(endingSkipWindowInput.value));
+	});
 	tpToggle?.addEventListener("change", () => {
 		localStorage.setItem("time_pref", tpToggle.checked ? "relative" : "absolute");
 	});

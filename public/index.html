@@ -126,7 +126,18 @@
 							<div class="s-row-label">엔딩 스킵 버튼 표시 시간</div>
 							<div class="s-row-sub">엔딩 시작 후 N초 동안만 버튼 표시 (0이면 숨기고 -1이면 항상 표시)</div>
 						</div>
-						<input type="number" id="input-ending-skip-window" step="1" class="qual-bps-input" style="width:60px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px;text-align:right;" />
+						<div class="setting-inline-input">
+							<input
+								type="number"
+								id="input-ending-skip-window"
+								class="qual-bps-input setting-inline-number"
+								min="-1"
+								step="0.5"
+								inputmode="decimal"
+								aria-label="엔딩 스킵 버튼 표시 시간"
+							>
+							<span class="qual-bps-unit">초</span>
+						</div>
 					</div>
 
 					<div class="s-row">
