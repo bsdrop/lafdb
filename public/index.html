@@ -465,7 +465,7 @@
 					const registrations = await navigator.serviceWorker.getRegistrations();
 					await Promise.all(registrations.map(r => r.unregister()));
 
-					if (!silent) alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.\n\n삭제 후에도 업데이트가 안 된다면 Ctrl+Shift+R, 모바일에서는 다른 브라우저 앱으로 재접속해 주세요.");
+					if (!silent) alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.\n\n삭제 후에도 업데이트가 안 된다면 매 페이지에서 Ctrl+Shift+R, 모바일에서는 다른 브라우저 앱으로 재접속해 주세요.");
 					location.reload();
 				} catch (err) {
 					console.error("Cache refresh failed:", err);

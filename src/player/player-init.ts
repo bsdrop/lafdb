@@ -165,7 +165,7 @@ window.addEventListener("player:compat-warning", ((e: Event) => {
   const detail = (e as CustomEvent<{ message?: string }>).detail;
   showCompatWarning(
     detail?.message ??
-      "Firefox에서 재생이 원활하지 않을 수 있습니다. 파일을 다운로드하여 재생하거나 Chrome 기반 브라우저를 이용해 다시 시청하시기를 권장합니다.",
+      "Firefox에서는 재생 끊김 및 탐색 오작동이 자주 발생할 수 있습니다. 파일을 다운로드하여 재생하거나 Chrome 기반 브라우저를 이용해 다시 시청하시기를 권장합니다.",
   );
 }) as EventListener);
 
