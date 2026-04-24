@@ -245,32 +245,48 @@ btnAutoPlay.addEventListener("click", () => {
   const btnDown = document.getElementById("btn-speed-down") as HTMLButtonElement | null;
   const btnUp   = document.getElementById("btn-speed-up")   as HTMLButtonElement | null;
   const btnVal  = document.getElementById("btn-speed-val")  as HTMLButtonElement | null;
-  const STEP = 0.05, MIN = 0.25, MAX = 3;
+  const MIN = 0.05, MAX = 16;
   let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
 
-  const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toFixed(2).replace(/\.?0+$/, "") + "x";
+  // Customizable via localStorage — not exposed in settings UI
+  const getMul    = () => parseFloat(localStorage.getItem("player_speed_step_mul") || "1.1") || 1.1;
+  const getBigMul = () => parseFloat(localStorage.getItem("player_speed_big_mul") || "2")   || 2;
+  const getPresets = (): number[] => {
+    const raw = localStorage.getItem("player_speed_presets");
+    if (raw) { const p = raw.split(",").map(Number).filter(n => n > 0); if (p.length) return p; }
+    return [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  };
+
+  const fmtSpeed = (v: number) => {
+    const s = v === 1 ? "1" : v < 10 ? v.toPrecision(3).replace(/\.?0+$/, "") : String(Math.round(v));
+    return s + "x";
+  };
   const applySpeed = (v: number) => {
-    v = Math.round(v * 100) / 100;
     v = Math.max(MIN, Math.min(MAX, v));
     curSpeed = v;
     const video = document.getElementById("v") as HTMLVideoElement | null;
     if (video) video.playbackRate = v;
     if (btnVal) btnVal.textContent = fmtSpeed(v);
-    if (btnDown) btnDown.disabled = v <= MIN;
-    if (btnUp)   btnUp.disabled   = v >= MAX;
     localStorage.setItem("player_speed", String(v));
   };
   applySpeed(curSpeed);
 
-  btnDown?.addEventListener("click", () => applySpeed(curSpeed - STEP));
-  btnUp?.addEventListener("click",   () => applySpeed(curSpeed + STEP));
+  btnDown?.addEventListener("click", () => applySpeed(curSpeed / getMul()));
+  btnUp?.addEventListener("click",   () => applySpeed(curSpeed * getMul()));
   btnVal?.addEventListener("click",  () => applySpeed(1));
 
   document.addEventListener("keydown", (e) => {
     if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key === "]") applySpeed(curSpeed + STEP);
-    else if (e.key === "[") applySpeed(curSpeed - STEP);
+    switch (e.key) {
+      case "]": applySpeed(curSpeed * getMul()); break;
+      case "[": applySpeed(curSpeed / getMul()); break;
+      case "}": applySpeed(curSpeed * getBigMul()); break;
+      case "{": applySpeed(curSpeed / getBigMul()); break;
+      case ">": { const p = getPresets(); const i = p.findIndex(v => v > curSpeed + 0.01); applySpeed(i >= 0 ? p[i] : p[p.length - 1]); break; }
+      case "<": { const p = getPresets(); const i = [...p].reverse().findIndex(v => v < curSpeed - 0.01); applySpeed(i >= 0 ? p[p.length - 1 - i] : p[0]); break; }
+      case "Backspace": applySpeed(1); break;
+    }
   });
 }
 
