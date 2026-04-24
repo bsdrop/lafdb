@@ -543,6 +543,15 @@ function scoreOfflineMatch(item: OfflineItemRecord, query: string) {
 	const includeIdx = nameLower.indexOf(q);
 	if (includeIdx >= 0) return 900 - includeIdx;
 
+	// Multi-token: all space-separated tokens appear somewhere in the name/search field
+	const tokens = q.split(/\s+/).filter(Boolean);
+	if (tokens.length > 1) {
+		const searchField = String(item._search || nameLower);
+		if (tokens.every((t) => searchField.includes(t))) return 860;
+		const qTokensDecomp = tokens.map((t) => disassemble(t).toLowerCase());
+		if (qTokensDecomp.every((t) => decomp.includes(t))) return 820;
+	}
+
 	if (isChoseongQuery(q)) {
 		const idx = choseong.indexOf(q.replace(/\s+/g, ""));
 		if (idx >= 0) return 860 - idx;

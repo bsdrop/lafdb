@@ -431,6 +431,7 @@ func (idx *Index) Search(q Query) Result {
 		}
 	} else {
 		qLower := strings.ToLower(qTrimmed)
+		qTokens := strings.Fields(qLower)
 		qPure := strings.ReplaceAll(qTrimmed, " ", "")
 		qChosung := toChosung(qPure)
 		qDecomp := toDecomposed(qPure)
@@ -444,7 +445,17 @@ func (idx *Index) Search(q Query) Result {
 		for _, e := range idx.all {
 			nameContains := strings.Contains(e.nameLower, qLower)
 			chosungMatch := qChosung != "" && strings.Contains(e.chosung, qChosung)
-			if !nameContains && !chosungMatch {
+			tokenMatch := false
+			if !nameContains && len(qTokens) > 1 {
+				tokenMatch = true
+				for _, t := range qTokens {
+					if !strings.Contains(e.nameLower, t) {
+						tokenMatch = false
+						break
+					}
+				}
+			}
+			if !nameContains && !chosungMatch && !tokenMatch {
 				continue
 			}
 			matched[e] = struct{}{}
@@ -458,6 +469,8 @@ func (idx *Index) Search(q Query) Result {
 				score = 30 + sim
 			case strings.HasPrefix(e.nameLower, qLower):
 				score = 20 + sim
+			case tokenMatch:
+				score = 15 + sim
 			default:
 				score = 10 + sim
 			}
@@ -684,6 +697,7 @@ func (idx *Index) Autocomplete(q string, limit int) []string {
 		}
 	} else {
 		qLower := strings.ToLower(q)
+		qTokens := strings.Fields(qLower)
 		qPure := strings.ReplaceAll(q, " ", "")
 		qChosung := toChosung(qPure)
 		qDecomp := toDecomposed(qPure)
@@ -712,6 +726,18 @@ func (idx *Index) Autocomplete(q string, limit int) []string {
 				// decomposed contains: 중간에 포함되는 경우
 				seen[e.id] = struct{}{}
 				results = append(results, scored{e.name, 2})
+			} else if len(qTokens) > 1 {
+				tokenMatch := true
+				for _, t := range qTokens {
+					if !strings.Contains(e.nameLower, t) {
+						tokenMatch = false
+						break
+					}
+				}
+				if tokenMatch {
+					seen[e.id] = struct{}{}
+					results = append(results, scored{e.name, 2})
+				}
 			}
 		}
 		// 역색인으로 퍼지 매칭 — 교집합 카운트로 Jaccard 직접 계산
