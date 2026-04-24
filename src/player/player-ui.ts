@@ -492,6 +492,16 @@ interface MarkerData {
 
 function setupMarkers(markers: MarkerData | null | undefined): void {
   if (!markers) return;
+
+  // Tell the player which ranges to skip buffering through when autoSkip is on.
+  const p = (window as Window & { _currentPlayer?: { skipRanges: Array<{ start: number; end: number }> } | null })._currentPlayer;
+  if (p) {
+    p.skipRanges = [
+      ...(markers.opening ? [markers.opening] : []),
+      ...(markers.ending ? [markers.ending] : []),
+    ];
+  }
+
   const video = document.getElementById("v") as HTMLVideoElement;
   const btnOpen = document.getElementById("skip-opening") as HTMLButtonElement;
   const btnEnd = document.getElementById("skip-ending") as HTMLButtonElement;
@@ -1003,7 +1013,7 @@ function buildCommentEl(
   el.querySelector(".comment-copy-btn")?.addEventListener("click", (e) => {
     e.stopPropagation();
     const sorting = getSorting();
-    const sortingPart = sorting ? `?sorting=${encodeURIComponent(sorting)}` : "";
+    const sortingPart = sorting && sorting !== "top" ? `?sorting=${encodeURIComponent(sorting)}` : "";
     const url = `${location.origin}/comment/${c.id}${sortingPart}`;
     window.ShareLink?.copy(url, e.currentTarget as HTMLElement, { successText: "✓", resetText: "🔗" });
   });

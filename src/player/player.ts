@@ -2,6 +2,21 @@ import {
   decryptSegment as decryptPlayerSegment,
   stripDrmSignaling as stripPlayerDrmSignaling,
 } from "./player-drm";
+import {
+  waitForIdle as sbWaitForIdle,
+  appendBuffer as sbAppendBuffer,
+  removeBuffer as sbRemoveBuffer,
+  trimBuffer as sbTrimBuffer,
+  isTimeInBuffer as sbIsTimeInBuffer,
+  getBufferedEnd as sbGetBufferedEnd,
+} from "./player-source-buffer";
+import {
+  parseSegmentTimeline as parseSegmentTimelineFn,
+  segmentNumberToTimeRange as segmentNumberToTimeRangeFn,
+  timeToSegmentNumber as timeToSegmentNumberFn,
+  isInSkipInterior,
+} from "./player-segment";
+import type { SkipRange } from "./player-segment";
 
 declare const ManagedMediaSource:
   | (typeof MediaSource & {
@@ -168,6 +183,7 @@ class Player {
   _qualitySwitchInFlight: boolean;
   _pendingVideoRepId: string | null;
   _objectUrl: string | null;
+  skipRanges: SkipRange[];
 
   static _readBufferPref(key: string, fallback: number): number {
     const raw = parseInt(localStorage.getItem(key) || String(fallback), 10);
@@ -253,6 +269,7 @@ class Player {
     this._qualitySwitchInFlight = false;
     this._pendingVideoRepId = null;
     this._objectUrl = null;
+    this.skipRanges = [];
   }
 
   // ── Video state getters ───────────────────────────────────────────────────
@@ -646,107 +663,28 @@ class Player {
     console.log("[PLAYER] Key imported");
   }
 
-  waitForIdle(sb: SourceBuffer, timeoutMs: number = 5000): Promise<void> {
-    if (!sb.updating) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        sb.removeEventListener("updateend", ok);
-        sb.removeEventListener("error", fail);
-        console.warn("[PLAYER] waitForIdle timeout, forcing idle");
-        resolve();
-      }, timeoutMs);
-      const done = (fn: () => void) => () => {
-        clearTimeout(timer);
-        sb.removeEventListener("updateend", ok);
-        sb.removeEventListener("error", fail);
-        fn();
-      };
-      const ok = done(resolve);
-      const fail = done(() => reject(new Error("SourceBuffer error")));
-      sb.addEventListener("updateend", ok, { once: true });
-      sb.addEventListener("error", fail, { once: true });
-    });
+  waitForIdle(sb: SourceBuffer, timeoutMs = 5000): Promise<void> {
+    return sbWaitForIdle(sb, timeoutMs);
   }
 
   async appendBuffer(sb: SourceBuffer, data: Uint8Array): Promise<void> {
-    await this.waitForIdle(sb);
-    return new Promise((resolve, reject) => {
-      const done = (fn: () => void) => () => {
-        sb.removeEventListener("updateend", ok);
-        sb.removeEventListener("error", fail);
-        fn();
-      };
-      const ok = done(resolve);
-      const fail = done(() => reject(new Error("appendBuffer failed")));
-      sb.addEventListener("updateend", ok, { once: true });
-      sb.addEventListener("error", fail, { once: true });
-      sb.appendBuffer(data as BufferSource);
-    });
+    return sbAppendBuffer(sb, data);
   }
 
   isTimeInBuffer(sb: SourceBuffer, t: number): boolean {
-    try {
-      for (let i = 0; i < sb.buffered.length; i++) {
-        if (sb.buffered.start(i) <= t + 0.5 && sb.buffered.end(i) >= t - 0.5)
-          return true;
-      }
-    } catch {
-      return false;
-    }
-    return false;
+    return sbIsTimeInBuffer(sb, t);
   }
 
-  async trimBuffer(
-    sb: SourceBuffer,
-    keepStart: number,
-    keepEnd: number,
-  ): Promise<void> {
-    try {
-      const len = sb.buffered.length;
-      if (len === 0) return;
-      const totalStart = sb.buffered.start(0);
-      const totalEnd = sb.buffered.end(len - 1);
-      if (totalStart < keepStart - 0.5)
-        await this.removeBuffer(sb, totalStart, Math.min(keepStart, totalEnd));
-      if (totalEnd > keepEnd + 0.5)
-        await this.removeBuffer(sb, Math.max(keepEnd, totalStart), totalEnd);
-    } catch (e) {
-      console.warn("[PLAYER] trimBuffer failed:", (e as Error).message);
-    }
+  async trimBuffer(sb: SourceBuffer, keepStart: number, keepEnd: number): Promise<void> {
+    return sbTrimBuffer(sb, keepStart, keepEnd);
   }
 
-  async removeBuffer(
-    sb: SourceBuffer,
-    start: number,
-    end: number,
-  ): Promise<void> {
-    await this.waitForIdle(sb);
-    if (start >= end) return;
-    return new Promise((resolve, reject) => {
-      const done = (fn: () => void) => () => {
-        sb.removeEventListener("updateend", ok);
-        sb.removeEventListener("error", fail);
-        fn();
-      };
-      const ok = done(resolve);
-      const fail = done(() => reject(new Error("removeBuffer failed")));
-      sb.addEventListener("updateend", ok, { once: true });
-      sb.addEventListener("error", fail, { once: true });
-      sb.remove(start, end);
-    });
+  async removeBuffer(sb: SourceBuffer, start: number, end: number): Promise<void> {
+    return sbRemoveBuffer(sb, start, end);
   }
 
   getBufferedEnd(sb: SourceBuffer, time: number): number {
-    let end = time;
-    try {
-      for (let i = 0; i < sb.buffered.length; i++) {
-        if (sb.buffered.start(i) <= time + 0.5 && sb.buffered.end(i) > end)
-          end = sb.buffered.end(i);
-      }
-    } catch (e) {
-      console.error("[PLAYER] bufferedEnd:", e);
-    }
-    return end;
+    return sbGetBufferedEnd(sb, time);
   }
 
   // ── Stall watchdog ────────────────────────────────────────────────────────
@@ -925,24 +863,8 @@ class Player {
   }
 
   // ── Segment timeline helpers ──────────────────────────────────────────────
-  parseSegmentTimeline(
-    template: Element,
-  ): Array<{ time: number; duration: number }> | null {
-    const timeline = template.querySelector("SegmentTimeline");
-    if (!timeline) return null;
-    const segments: Array<{ time: number; duration: number }> = [];
-    let currentTime = 0;
-    for (const s of timeline.querySelectorAll("S")) {
-      const t = s.getAttribute("t");
-      const d = parseInt(s.getAttribute("d")!, 10);
-      const r = parseInt(s.getAttribute("r") || "0", 10);
-      if (t !== null) currentTime = parseInt(t, 10);
-      for (let i = 0; i <= r; i++) {
-        segments.push({ time: currentTime, duration: d });
-        currentTime += d;
-      }
-    }
-    return segments;
+  parseSegmentTimeline(template: Element): Array<{ time: number; duration: number }> | null {
+    return parseSegmentTimelineFn(template);
   }
 
   segmentNumberToTimeRange(
@@ -950,27 +872,12 @@ class Player {
     segNum: number,
   ): { start: number; end: number; duration: number } | null {
     if (!track.timeline) return null;
-    const index = segNum - track.startNumber;
-    if (index < 0 || index >= track.timeline.length) return null;
-    const seg = track.timeline[index];
-    return {
-      start: seg.time / track.timescale,
-      end: (seg.time + seg.duration) / track.timescale,
-      duration: seg.duration / track.timescale,
-    };
+    return segmentNumberToTimeRangeFn(track.timeline, track.timescale, track.startNumber, segNum);
   }
 
   timeToSegmentNumber(track: Track, time: number): number {
     if (!track.timeline) return track.startNumber;
-    for (let i = 0; i < track.timeline.length; i++) {
-      const seg = track.timeline[i];
-      const start = seg.time / track.timescale;
-      const end = (seg.time + seg.duration) / track.timescale;
-      if (time >= start && time < end) return track.startNumber + i;
-      if (time < start)
-        return Math.max(track.startNumber, track.startNumber + i - 1);
-    }
-    return track.startNumber + track.timeline.length - 1;
+    return timeToSegmentNumberFn(track.timeline, track.timescale, track.startNumber, time);
   }
 
   _buildTrackFromRep(
@@ -1991,6 +1898,18 @@ class Player {
         }
 
         if (range.start - ct >= this.BUFFER_AHEAD_MAX) {
+          await this.wait(this.POLL_INTERVAL);
+          continue;
+        }
+
+        // Auto-skip: don't buffer deep into OP/ED ranges.
+        // Allow at most 1 segment past skipStart so decode stays smooth until
+        // the skip fires, then stop — the post-skip buffer fills after the seek.
+        if (
+          this.skipRanges.length > 0 &&
+          localStorage.getItem("player_autoskip") !== "off" &&
+          isInSkipInterior(this.skipRanges, ct, range.start, range.duration)
+        ) {
           await this.wait(this.POLL_INTERVAL);
           continue;
         }

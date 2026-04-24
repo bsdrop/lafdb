@@ -31,6 +31,9 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const settingsBtn = document.getElementById("btn-settings") as HTMLButtonElement;
 	const closeSettingsBtn = document.getElementById("btn-close-settings") as HTMLButtonElement;
 	let previouslyFocused: HTMLElement | null = null;
+	let settingsPushed = false;
+	let mdPushed = false;
+	let pendingBacks = 0; // programmatic history.back() calls in flight
 	const backgroundRoots = [
 		document.getElementById("header"),
 		document.getElementById("feed-status"),
@@ -67,6 +70,8 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		requestAnimationFrame(() => {
 			closeSettingsBtn.focus({ preventScroll: true });
 		});
+		history.pushState({ lafModal: "settings" }, "");
+		settingsPushed = true;
 	}
 
 	function closeSettings() {
@@ -89,11 +94,32 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 				restoreTarget.focus({ preventScroll: true });
 			}
 		});
+		if (settingsPushed) {
+			settingsPushed = false;
+			pendingBacks++;
+			history.back();
+		}
 	}
 
 	settingsBtn.addEventListener("click", openSettings);
 	closeSettingsBtn.addEventListener("click", closeSettings);
 	overlay.addEventListener("click", closeSettings);
+	window.addEventListener("popstate", () => {
+		if (pendingBacks > 0) {
+			pendingBacks--;
+			return;
+		}
+		// log viewer manages its own popstate; skip if it's open
+		if (document.getElementById("laf-log-viewer")) return;
+		if (mdModal.classList.contains("open")) {
+			mdPushed = false;
+			closeMdModal();
+		} else if (panel.classList.contains("open")) {
+			settingsPushed = false;
+			closeSettings();
+		}
+	});
+
 	document.addEventListener("keydown", (e) => {
 		if (e.key === "Escape") {
 			closeSettings();
@@ -134,6 +160,8 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		mdContent.innerHTML = "로딩 중...";
 		mdModal.classList.add("open");
 		mdOverlay.classList.add("open");
+		history.pushState({ lafModal: "md" }, "");
+		mdPushed = true;
 
 		fetch(url)
 			.then(r => r.text())
@@ -146,8 +174,14 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	}
 
 	function closeMdModal() {
+		const wasOpen = mdModal.classList.contains("open");
 		mdModal.classList.remove("open");
 		mdOverlay.classList.remove("open");
+		if (wasOpen && mdPushed) {
+			mdPushed = false;
+			pendingBacks++;
+			history.back();
+		}
 	}
 
 	document.getElementById("btn-show-notices")?.addEventListener("click", () => {

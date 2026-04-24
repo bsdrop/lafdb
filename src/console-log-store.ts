@@ -42,6 +42,8 @@ let currentSession: LogSession | null = null;
 let flushTimer: number | null = null;
 let viewerEl: HTMLElement | null = null;
 let viewerAbortController: AbortController | null = null;
+let logPushed = false;
+let logPendingBacks = 0;
 let originalConsole: Pick<Console, LogLevel> | null = null;
 
 function readStore(): LogStore {
@@ -272,14 +274,22 @@ function exportText(): string {
 }
 
 function closeViewer(): void {
+  if (!viewerEl) return;
   viewerAbortController?.abort();
   viewerAbortController = null;
-  viewerEl?.remove();
+  viewerEl.remove();
   viewerEl = null;
+  if (logPushed) {
+    logPushed = false;
+    logPendingBacks++;
+    history.back();
+  }
 }
 
 function openViewer(): void {
   closeViewer();
+  history.pushState({ lafModal: "log" }, "");
+  logPushed = true;
   viewerAbortController = new AbortController();
   const signal = viewerAbortController.signal;
   const nextStore = store ?? readStore();
@@ -493,6 +503,17 @@ export function initConsoleLogStore(): void {
   window.addEventListener("pagehide", flushStore);
   window.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushStore();
+  });
+
+  window.addEventListener("popstate", () => {
+    if (logPendingBacks > 0) {
+      logPendingBacks--;
+      return;
+    }
+    if (viewerEl) {
+      logPushed = false;
+      closeViewer();
+    }
   });
 
   window.__lafLogViewer = {
