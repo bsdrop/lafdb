@@ -66,5 +66,7 @@ export function isInSkipInterior(
   segStart: number,
   segDuration: number,
 ): boolean {
-  return skipRanges.some(({ start }) => ct < start && segStart >= start + segDuration);
+  return skipRanges.some(
+    ({ start, end }) => ct < start && segStart >= start + segDuration && segStart < end,
+  );
 }

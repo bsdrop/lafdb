@@ -14,4 +14,22 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     }
     console.log(`[sw] ${data.message}`, data.extra);
   });
+
+  (window as unknown as Record<string, unknown>)["__refreshCache"] = async () => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sw = reg.active;
+      if (sw) {
+        await new Promise<void>((resolve) => {
+          const ch = new MessageChannel();
+          ch.port1.onmessage = () => resolve();
+          sw.postMessage({ type: "refresh-shell" }, [ch.port2]);
+          setTimeout(resolve, 20000);
+        });
+      }
+    } catch (e) {
+      console.warn("[pwa] refreshCache:", e);
+    }
+    location.reload();
+  };
 }

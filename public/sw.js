@@ -201,7 +201,7 @@ self.addEventListener("install", (event) => {
 		Promise.all(
 			APP_SHELL.map(async (path) => {
 				try {
-					const response = await fetch(path);
+					const response = await fetch(path, { cache: "no-store" });
 					await writeCacheWithMeta(path, response);
 				} catch (err) { console.error("SW install fetch failed:", err); }
 			}),

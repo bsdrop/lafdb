@@ -361,7 +361,7 @@ if (epId) initUIForEpisode(epId);
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener("keydown", (e) => {
   if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
-  if (e.key === "f" || e.key === "F") {
+  if ((e.key === "f" || e.key === "F") && !e.ctrlKey && !e.metaKey && !e.altKey) {
     const v = document.getElementById("v");
     if (!v) return;
     if (document.fullscreenElement) {

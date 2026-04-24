@@ -685,7 +685,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	});
 
 	document.getElementById("btn-clear-all")?.addEventListener("click", async () => {
-		if (!confirm("모든 저장 데이터(시청 기록, 설정, 로컬 DB, 캐시, 서비스 워커)를 삭제할까요?\n이 작업은 되돌릴 수 없습니다.")) return;
+		if (!confirm("모든 저장 데이터(시청 기록, 설정, 로컬 DB, 캐시, 서비스 워커)를 삭제할까요?\n이 작업은 되돌릴 수 없습니다.\n\n삭제 후에도 업데이트가 안 된다면 Ctrl+Shift+R, 모바일에서는 다른 브라우저 앱으로 재접속해 주세요.")) return;
 
 		await deleteOfflineDatabase();
 		localStorage.clear();

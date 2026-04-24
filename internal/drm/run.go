@@ -110,8 +110,15 @@ func (c *Client) Run(skipFirst int, skipFailed bool) error {
 	total := len(ids)
 	failedPath := filepath.Join(c.cfg.MediacloudDir, "drm_failed.json")
 	failedSet := loadFailed(failedPath)
-	log.Printf("processing %d episodes (%d likely invalid, existing=%d, skip-first=%d, known-failed=%d)",
-		total, len(invalid)-existingInvalidCount, existingCount, skipFirst, len(failedSet))
+	var failedInQueue int
+	for _, id := range ids[skipFirst:] {
+		if failedSet[id] {
+			failedInQueue++
+		}
+	}
+	net := total - skipFirst - failedInQueue
+	log.Printf("processing %d episodes (%d likely invalid, existing=%d, skip-first=%d, known-failed=%d, net=%d)",
+		total, len(invalid)-existingInvalidCount, existingCount, skipFirst, len(failedSet), net)
 
 	statusPath := filepath.Join(c.cfg.MediacloudDir, "drm_status.json")
 	var success, skipped, fail, invalidRem int

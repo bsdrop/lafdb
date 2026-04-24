@@ -163,6 +163,7 @@ class Player {
   _lastKnownGoodAt: number;
   _expectBrowserResetUntil: number;
   _internalSeek: boolean;
+  _gapCandidateStart: number;
   _reinitInProgress: boolean;
   _endOfStreamCalled: boolean;
   _baseUrl: string;
@@ -246,6 +247,7 @@ class Player {
 
     this._expectBrowserResetUntil = 0;
     this._internalSeek = false;
+    this._gapCandidateStart = -1;
     this._reinitInProgress = false;
     this._endOfStreamCalled = false;
     this._baseUrl = "";
@@ -753,21 +755,30 @@ class Player {
       return;
     }
 
-    // Gap jumper: if stuck at a gap but there's buffer just a bit further ahead
+    // Gap jumper: if stuck at a gap but there's buffer just a bit further ahead.
+    // Confirm on two consecutive checks to avoid jumping over transient false gaps
+    // (Firefox MSE sometimes briefly reports a gap right after a remove/append).
     if (vsb && rs === 2 && ahead < 0.1) {
+      let gapStart = -1;
       for (let i = 0; i < vsb.buffered.length; i++) {
         const start = vsb.buffered.start(i);
-        if (start > ct && start < ct + 3.0) {
-          console.warn(
-            `[PLAYER] Gap detected, jumping to ${start.toFixed(3)}s`,
-          );
+        if (start > ct && start < ct + 3.0) { gapStart = start; break; }
+      }
+      if (gapStart >= 0) {
+        if (Math.abs(this._gapCandidateStart - gapStart) < 0.1) {
+          console.warn(`[PLAYER] Gap detected, jumping to ${gapStart.toFixed(3)}s`);
+          this._gapCandidateStart = -1;
           this._internalSeek = true;
-          this._seekTo(start + 0.01);
-          this._scheduleStallCheck();
-          return;
+          this._seekTo(gapStart + 0.01);
+        } else {
+          console.log(`[PLAYER] Gap candidate ${gapStart.toFixed(3)}s, confirming next check`);
+          this._gapCandidateStart = gapStart;
         }
+        this._scheduleStallCheck();
+        return;
       }
     }
+    this._gapCandidateStart = -1;
 
     const prevTime = this._stallSnapshotTime;
     const prevBuf = this._stallSnapshotBuf;
@@ -2215,6 +2226,8 @@ class Player {
         console.warn(
           `[PLAYER] MediaError near end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
         );
+        this._clearStallWatchdog();
+        this._stopFetchLoops("near-end media error");
         try {
           if (this.ms && this.ms.readyState === "open") {
             this.ms.endOfStream();

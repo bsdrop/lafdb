@@ -123,18 +123,6 @@
 
 					<div class="s-row">
 						<div>
-							<div class="s-row-label">라프텔 공식 링크로 공유</div>
-							<div class="s-row-sub">작품·에피소드 공유 시 laftel.net URL로 복사</div>
-						</div>
-						<label class="s-toggle" aria-label="라프텔 링크 공유 토글">
-							<input type="checkbox" id="toggle-share-laftel" aria-label="라프텔 공식 링크로 공유" />
-							<span class="s-toggle-track"></span>
-							<span class="s-toggle-thumb"></span>
-						</label>
-					</div>
-
-					<div class="s-row">
-						<div>
 							<div class="s-row-label">상대 시간 표시</div>
 							<div class="s-row-sub">댓글 시간을 "3분 전"과 같은 형식으로 표시</div>
 						</div>
@@ -145,6 +133,18 @@
 						</label>
 					</div>
 
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">라프텔 공식 링크로 공유</div>
+							<div class="s-row-sub">작품·에피소드 공유 시 laftel.net URL로 복사</div>
+						</div>
+						<label class="s-toggle" aria-label="라프텔 링크 공유 토글">
+							<input type="checkbox" id="toggle-share-laftel" aria-label="라프텔 공식 링크로 공유" />
+							<span class="s-toggle-track"></span>
+							<span class="s-toggle-thumb"></span>
+						</label>
+					</div>
+					
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">고급 재생 설정</div>
@@ -441,7 +441,6 @@
 
 					const sw = registration.active || navigator.serviceWorker.controller;
 					if (sw) {
-						// 2. SW에게 직접 "앱 쉘 파일들을 새로 다운로드해서 캐시에 넣어라"고 명령
 						const channel = new MessageChannel();
 						const okPromise = new Promise((resolve) => {
 							const timeout = setTimeout(() => resolve(false), 10000); // 10초 대기
@@ -453,12 +452,11 @@
 						sw.postMessage({ type: "refresh-shell" }, [channel.port2]);
 						
 						const ok = await okPromise;
-						if (!ok && !silent) {
+						if (!ok) {
 							console.warn("SW shell refresh reported failure, proceeding to hard clear.");
 						}
 					}
 
-					// 3. 만약 위 방법이 실패할 경우를 대비해 기존 방식(해제 및 캐시 삭제)도 병행
 					if ("caches" in window) {
 						const keys = await caches.keys();
 						await Promise.all(keys.map(key => caches.delete(key)));
@@ -467,11 +465,11 @@
 					const registrations = await navigator.serviceWorker.getRegistrations();
 					await Promise.all(registrations.map(r => r.unregister()));
 
-					if (!silent) alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.");
+					if (!silent) alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.\n\n삭제 후에도 업데이트가 안 된다면 Ctrl+Shift+R, 모바일에서는 다른 브라우저 앱으로 재접속해 주세요.");
 					location.reload();
 				} catch (err) {
 					console.error("Cache refresh failed:", err);
-					if (!silent) alert("갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+					alert(`갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n\n${err?.message||err}`);
 					location.reload();
 				}
 			};
