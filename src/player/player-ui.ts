@@ -15,6 +15,7 @@ declare global {
       highlight: (el: Element | null) => void;
     };
     rewriteCDN: (url: string) => string;
+    mpvCopy?: () => void;
   }
 }
 
@@ -507,7 +508,6 @@ async function initUIForEpisode(id: string): Promise<void> {
   setupMediaSession();
   loadComments(id);
   setupShareButton();
-  setupMpvButton();
 }
 
 window.addEventListener("hashchange", () => {
@@ -717,18 +717,16 @@ function buildCurrentMpvCommand(): string | null {
     : `mpv "ytdl://${mpdUrl}"`;
 }
 
-function setupMpvButton(): void {
+async function handleMpvCopy(): Promise<void> {
   const btn = document.getElementById("btn-mpv") as HTMLButtonElement | null;
-  if (!btn || btn.dataset["bound"] === "yes") return;
-  btn.dataset["bound"] = "yes";
-  btn.addEventListener("click", async () => {
-    const cmd = buildCurrentMpvCommand();
-    if (!cmd) {
-      alert("현재 재생 정보가 없어 mpv 명령을 만들 수 없습니다.");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(cmd);
+  const cmd = buildCurrentMpvCommand();
+  if (!cmd) {
+    alert("현재 재생 정보가 없어 mpv 명령을 만들 수 없습니다.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(cmd);
+    if (btn) {
       btn.classList.add("copied");
       const prevTitle = btn.title;
       const prevLabel = btn.getAttribute("aria-label");
@@ -739,13 +737,15 @@ function setupMpvButton(): void {
         btn.title = prevTitle;
         if (prevLabel) btn.setAttribute("aria-label", prevLabel);
       }, 1500);
-    } catch (_e) {
-      alert("클립보드 복사에 실패했습니다.");
     }
-  });
+  } catch (_e) {
+    alert("클립보드 복사에 실패했습니다.");
+  }
 }
 
-setupMpvButton();
+window.mpvCopy = () => {
+  void handleMpvCopy();
+};
 
 // ── Markers ───────────────────────────────────────────────────────────────────
 interface MarkerData {
