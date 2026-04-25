@@ -1118,7 +1118,15 @@ function saveHash(ct: number): void {
 }
 
 // ── Build episode URL ─────────────────────────────────────────────────────────
-async function buildEpUrl(id: string | number): Promise<string | null> {
+function shouldResetNearEndProgress(epId: string | number): boolean {
+  if (!autoSkip) return false;
+  const progress = WatchHistory.getProgress(String(epId));
+  const savedT = Number(progress?.t ?? 0);
+  const savedDur = Number(progress?.dur ?? 0);
+  return savedT >= 1 && savedDur > 1 && savedT >= savedDur - 1;
+}
+
+async function buildEpUrl(id: string | number, opts?: { resetNearEndProgress?: boolean }): Promise<string | null> {
   try {
     const info = await apiFetch<{ dash_url?: string; keys?: Array<{ key_id?: string; key?: string }> }>(`/api/episodes/v3/${id}/video`);
     if (!info.dash_url) return null;
@@ -1126,6 +1134,7 @@ async function buildEpUrl(id: string | number): Promise<string | null> {
     const key = info.keys?.[0] ?? {};
     let url = `player.html#epId=${id}&mpd=${encodeURIComponent(localDash)}&kid=${key.key_id ?? ""}&key=${key.key ?? ""}`;
     if (_currentItemId) url += `&itemId=${_currentItemId}`;
+    if (opts?.resetNearEndProgress && shouldResetNearEndProgress(id)) url += "&t=0";
     return url;
   } catch (_) {
     return null;
@@ -1171,7 +1180,7 @@ function setupAutoplay(epId: string): void {
   }
 
   async function navigate(id: string | number): Promise<void> {
-    const url = await buildEpUrl(id).catch((e: Error) => {
+    const url = await buildEpUrl(id, { resetNearEndProgress: true }).catch((e: Error) => {
       console.error("buildEpUrl:", e);
       return null;
     });
@@ -1271,6 +1280,7 @@ function setupAutoplay(epId: string): void {
     pendingPiPAutoNext = false;
     const url = await buildEpUrl(
       epList[currentIdx + 1].id,
+      { resetNearEndProgress: true },
     ).catch((e: Error) => {
       console.error("buildEpUrl (autoplay):", e);
       return null;
