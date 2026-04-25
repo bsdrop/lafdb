@@ -1,5 +1,6 @@
 import { WatchHistory, updateEpisodeHistoryMeta } from "../watch-history";
 import { rewriteCdnUrl } from "../shared/cdn";
+import { initExt, extSend, getMyName } from "../shared/ext";
 
 declare global {
   interface Window {
@@ -1138,11 +1139,32 @@ function buildCommentEl(
       : "";
 
   const copyBtnHtml = `<button class="link-copy-btn comment-copy-btn" title="링크 복사" aria-label="댓글 링크 복사">🔗</button>`;
+  const myName = getMyName();
+  const isMine = !!myName && c.profile?.name === myName;
+  const myActionsHtml = isMine
+    ? `<button class="ext-action-btn" data-action="edit-comment">수정</button><button class="ext-action-btn ext-action-del" data-action="del-comment">삭제</button>`
+    : "";
+
   el.innerHTML = `
 	<div class="comment-header">${avatarHtml}<span class="comment-user">${esc(c.profile?.name ?? "익명")}</span></div>
 	${buildCommentTextHtml(c.content, isSpoiler)}
-	<div class="comment-footer">${likesHtml}${repliesHtml}${dateHtml}${copyBtnHtml}</div>
+	<div class="comment-footer">${likesHtml}${repliesHtml}${dateHtml}${copyBtnHtml}${myActionsHtml}</div>
 	${!isReply && (c.count_reply_comment ?? 0) > 0 ? `<div class="replies"></div>` : ""}`;
+
+  if (isMine) {
+    el.querySelector("[data-action='edit-comment']")?.addEventListener("click", () => {
+      openCommentEdit(el, String(c.id), c.content ?? "", !!c.is_spoiler);
+    });
+    el.querySelector("[data-action='del-comment']")?.addEventListener("click", async () => {
+      if (!confirm("댓글을 삭제할까요?")) return;
+      const res = await extSend({ type: "api", method: "DELETE", path: `/comments/v1/${c.id}/`, statusOnly: true });
+      if (res?.ok || res?.status === 204) {
+        el.remove();
+      } else {
+        alert("삭제 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류"));
+      }
+    });
+  }
 
   el.querySelector(".comment-copy-btn")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -1582,5 +1604,114 @@ function esc(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+
+// ── Extension: comment write/edit ─────────────────────────────────────────────
+function openCommentEdit(el: HTMLElement, cid: string, curContent: string, curSpoiler: boolean): void {
+  const form = document.createElement("div");
+  form.className = "ext-edit-form";
+  form.innerHTML = `
+<textarea class="ext-textarea" rows="3">${esc(curContent)}</textarea>
+<div class="ext-form-row">
+  <label class="ext-spoiler-label"><input type="checkbox" class="ext-spoiler-chk"${curSpoiler ? " checked" : ""}> 스포일러</label>
+  <button class="ext-action-btn" data-action="save">저장</button>
+  <button class="ext-action-btn" data-action="cancel">취소</button>
+  <span class="ext-err"></span>
+</div>`;
+
+  el.style.display = "none";
+  el.after(form);
+
+  form.querySelector("[data-action='cancel']")?.addEventListener("click", () => {
+    form.remove();
+    el.style.display = "";
+  });
+
+  form.querySelector("[data-action='save']")?.addEventListener("click", async () => {
+    const content = (form.querySelector(".ext-textarea") as HTMLTextAreaElement).value.trim();
+    const is_spoiler = (form.querySelector(".ext-spoiler-chk") as HTMLInputElement).checked;
+    const btn = form.querySelector("[data-action='save']") as HTMLButtonElement;
+    const errEl = form.querySelector(".ext-err") as HTMLElement;
+    btn.disabled = true; errEl.textContent = "";
+    const res = await extSend({
+      type: "api", method: "PATCH",
+      path: `/comments/v1/${cid}/`,
+      body: JSON.stringify({ content, is_spoiler }),
+    });
+    if (res?.ok) {
+      form.remove();
+      el.style.display = "";
+      const textEl = el.querySelector(".comment-text");
+      if (textEl) textEl.innerHTML = buildCommentTextHtml(content, is_spoiler).replace(/^<div[^>]*>|<\/div>$/g, "");
+    } else {
+      errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
+      btn.disabled = false;
+    }
+  });
+}
+
+let extCommentFormEpId: string | null = null;
+
+function setupExtCommentForm(currentEpId: string): void {
+  extCommentFormEpId = currentEpId;
+  let wrap = document.getElementById("ext-comment-wrap");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "ext-comment-wrap";
+    wrap.innerHTML = `
+<div id="ext-comment-form">
+  <textarea id="ext-comment-content" class="ext-textarea" rows="2" placeholder="댓글 작성 (라프텔 연동)..."></textarea>
+  <div class="ext-form-row">
+    <label class="ext-spoiler-label"><input type="checkbox" id="ext-comment-spoiler"> 스포일러</label>
+    <button class="ext-action-btn" id="ext-comment-submit">등록</button>
+    <span class="ext-err" id="ext-comment-err"></span>
+  </div>
+</div>`;
+    const list = document.getElementById("comments-list");
+    list?.before(wrap);
+
+    document.getElementById("ext-comment-submit")?.addEventListener("click", async () => {
+      const content = (document.getElementById("ext-comment-content") as HTMLTextAreaElement).value.trim();
+      const is_spoiler = (document.getElementById("ext-comment-spoiler") as HTMLInputElement).checked;
+      const btn = document.getElementById("ext-comment-submit") as HTMLButtonElement;
+      const errEl = document.getElementById("ext-comment-err")!;
+      if (!content) { errEl.textContent = "내용을 입력하세요."; return; }
+      btn.disabled = true; errEl.textContent = "";
+      const res = await extSend({
+        type: "api", method: "POST",
+        path: "/comments/v1/",
+        body: JSON.stringify({ episode_id: Number(extCommentFormEpId), content, is_spoiler }),
+      });
+      if (res?.ok) {
+        (document.getElementById("ext-comment-content") as HTMLTextAreaElement).value = "";
+        errEl.textContent = "등록되었습니다. 새로고침 시 반영됩니다.";
+        btn.disabled = false;
+      } else {
+        errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
+        btn.disabled = false;
+      }
+    });
+  } else {
+    // epId changed; just update the reference (extCommentFormEpId already updated above)
+  }
+}
+
+initExt((loggedIn) => {
+  if (!loggedIn) return;
+  // If episode already loaded, set up the form now
+  if (epId) setupExtCommentForm(epId);
+});
+
+// Re-setup form when episode changes
+// Also update form epId on episode change
+window.addEventListener("hashchange", () => {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const newId = p.get("epId");
+  if (newId && newId !== extCommentFormEpId) {
+    extCommentFormEpId = newId;
+    // setupExtCommentForm is idempotent; re-call to update epId reference
+    const existingForm = document.getElementById("ext-comment-wrap");
+    if (existingForm) extCommentFormEpId = newId;
+  }
+});
 
 export {};

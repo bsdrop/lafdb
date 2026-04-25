@@ -1135,3 +1135,61 @@
 			height: 100%; width: 0%; background: var(--accent);
 			border-radius: 2px; transition: width 0.1s linear;
 		}
+
+/* ── Extension: comment write/edit form ── */
+#ext-comment-wrap {
+	padding: 8px 10px 4px;
+	border-bottom: 1px solid #1e1e1e;
+}
+#ext-comment-form .ext-textarea {
+	display: block;
+	width: 100%;
+	background: #0e0e0e;
+	border: 1px solid #222;
+	border-radius: 8px;
+	color: #e0e0e0;
+	padding: 7px 10px;
+	font-size: 12px;
+	font-family: inherit;
+	resize: none;
+	outline: none;
+	margin-bottom: 6px;
+}
+#ext-comment-form .ext-textarea:focus { border-color: #6e58ff; }
+.ext-action-btn {
+	background: #1a1a1a;
+	border: 1px solid #333;
+	border-radius: 6px;
+	color: #a0a0a0;
+	font-size: 11px;
+	padding: 3px 9px;
+	cursor: pointer;
+	font-family: inherit;
+}
+.ext-action-btn:hover { background: #222; color: #e0e0e0; border-color: #555; }
+.ext-action-btn:disabled { opacity: 0.5; cursor: default; }
+.ext-action-del { color: #f87171 !important; border-color: #3b1a1a !important; }
+.ext-action-del:hover { background: #2a1010 !important; }
+.ext-form-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-bottom: 4px;
+}
+.ext-err { font-size: 11px; color: #f87171; }
+.ext-edit-form {
+	padding: 6px 8px;
+	background: #0e0e0e;
+	border: 1px solid #222;
+	border-radius: 8px;
+	margin: 4px 0;
+}
+.ext-spoiler-label {
+	font-size: 12px;
+	color: #888;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	cursor: pointer;
+}

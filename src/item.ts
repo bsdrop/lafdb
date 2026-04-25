@@ -2,6 +2,7 @@ import { escapeHtml } from "./shared/text";
 import { formatDateTimeKo, formatRelativeTimeKo, formatRuntimeKo } from "./shared/time";
 import { rewriteCdnUrl } from "./shared/cdn";
 import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
+import { initExt, extSend, getMyName } from "./shared/ext";
 
 if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
 function getRouteParams() {
@@ -649,6 +650,12 @@ async function loadReviews(reset = false): Promise<void> {
 				? `<img class="review-avatar" src="${esc(r.profile.image)}" alt="" loading="lazy">`
 				: `<div class="review-avatar"></div>`;
 
+			const myName = getMyName();
+			const isMine = !!myName && r.profile?.name === myName;
+			const myActionsHtml = (isMine && r.id)
+				? `<button class="ext-action-btn" data-action="edit-review">수정</button><button class="ext-action-btn ext-action-del" data-action="del-review">삭제</button>`
+				: "";
+
 			el.innerHTML = `
 <div class="review-header">
 	${avatarHtml}
@@ -660,6 +667,7 @@ ${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}
 	${r.count_like > 0 ? `<span class="review-likes">♥ ${r.count_like}</span>` : ""}
 	${r.created ? `<span class="review-date" data-ts="${esc(r.created)}">${date}</span>` : ""}
 	${r.id ? `<button class="link-copy-btn review-copy-btn" title="링크 복사" aria-label="리뷰 링크 복사">🔗</button>` : ""}
+	${myActionsHtml}
 </div>`;
 
 			if (r.id) {
@@ -672,6 +680,21 @@ ${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}
 					const url = `${location.origin}/review/${rid}${sortingPart}`;
 					(window as any).ShareLink?.copy(url, e.currentTarget as HTMLElement, { successText: "✓", resetText: "🔗" });
 				});
+
+				if (isMine) {
+					el.querySelector("[data-action='edit-review']")?.addEventListener("click", () => {
+						openReviewEdit(el, rid, r.score ?? 0, r.content ?? "");
+					});
+					el.querySelector("[data-action='del-review']")?.addEventListener("click", async () => {
+						if (!confirm("리뷰를 삭제할까요?")) return;
+						const res = await extSend({ type: "api", method: "DELETE", path: `/reviews/v2/${rid}/`, statusOnly: true });
+						if (res?.ok || res?.status === 204) {
+							el.remove();
+						} else {
+							alert("삭제에 실패했습니다: " + (res?.error ?? res?.status ?? "알 수 없는 오류"));
+						}
+					});
+				}
 			}
 			container.appendChild(el);
 		}
@@ -812,3 +835,123 @@ function handleRouteChange(): void {
 }
 
 window.addEventListener("hashchange", handleRouteChange);
+
+// ── Extension: review write/edit/delete ──────────────────────────────────────
+let extRevInited = false;
+
+function buildScoreOptions(selected: number): string {
+	const scores = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
+	return scores.map(v =>
+		`<option value="${v}"${v === selected ? " selected" : ""}>★ ${v.toFixed(1)}</option>`
+	).join("");
+}
+
+function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curContent: string): void {
+	const form = document.createElement("div");
+	form.className = "ext-edit-form";
+	form.innerHTML = `
+<select class="ext-score-sel">${buildScoreOptions(curScore || 5.0)}</select>
+<textarea class="ext-textarea" rows="3" placeholder="리뷰 내용...">${esc(curContent)}</textarea>
+<div class="ext-form-row">
+	<button class="ext-action-btn" data-action="save">저장</button>
+	<button class="ext-action-btn" data-action="cancel">취소</button>
+	<span class="ext-err"></span>
+</div>`;
+
+	el.style.display = "none";
+	el.after(form);
+
+	form.querySelector("[data-action='cancel']")?.addEventListener("click", () => {
+		form.remove();
+		el.style.display = "";
+	});
+
+	form.querySelector("[data-action='save']")?.addEventListener("click", async () => {
+		const score = parseFloat((form.querySelector(".ext-score-sel") as HTMLSelectElement).value);
+		const content = (form.querySelector(".ext-textarea") as HTMLTextAreaElement).value.trim();
+		const btn = form.querySelector("[data-action='save']") as HTMLButtonElement;
+		const errEl = form.querySelector(".ext-err") as HTMLElement;
+		btn.disabled = true;
+		errEl.textContent = "";
+		const res = await extSend({
+			type: "api", method: "PATCH",
+			path: `/reviews/v2/${rid}/`,
+			body: JSON.stringify({ content, score }),
+		});
+		if (res?.ok) {
+			form.remove();
+			el.style.display = "";
+			// Refresh the review content in-place
+			const body = el.querySelector(".review-body");
+			if (body) body.innerHTML = esc(content).replaceAll("\n", "<br>");
+			const scoreEl = el.querySelector(".review-score");
+			if (scoreEl) scoreEl.textContent = `★ ${score.toFixed(1)}`;
+		} else {
+			errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
+			btn.disabled = false;
+		}
+	});
+}
+
+function initExtReviews(): void {
+	if (extRevInited) return;
+	extRevInited = true;
+
+	initExt((loggedIn) => {
+		if (!loggedIn) return;
+
+		const revPanel = document.getElementById("tab-reviews");
+		if (!revPanel) return;
+
+		const writeWrap = document.createElement("div");
+		writeWrap.id = "ext-rev-wrap";
+		writeWrap.innerHTML = `
+<div id="ext-rev-form">
+	<div class="ext-form-row">
+		<select class="ext-score-sel" id="ext-rev-score">${buildScoreOptions(5.0)}</select>
+		<span style="font-size:12px;color:#555;margin-left:4px;">라프텔 연동 — 리뷰 작성</span>
+	</div>
+	<textarea id="ext-rev-content" class="ext-textarea" rows="3" placeholder="리뷰 내용을 입력하세요..."></textarea>
+	<div class="ext-form-row">
+		<button class="ext-action-btn" id="ext-rev-submit">등록</button>
+		<span class="ext-err" id="ext-rev-err"></span>
+	</div>
+</div>`;
+
+		const sortBar = document.getElementById("rev-sort");
+		if (sortBar) sortBar.after(writeWrap);
+		else revPanel.prepend(writeWrap);
+
+		document.getElementById("ext-rev-submit")?.addEventListener("click", async () => {
+			const score = parseFloat((document.getElementById("ext-rev-score") as HTMLSelectElement).value);
+			const content = (document.getElementById("ext-rev-content") as HTMLTextAreaElement).value.trim();
+			const btn = document.getElementById("ext-rev-submit") as HTMLButtonElement;
+			const errEl = document.getElementById("ext-rev-err")!;
+			btn.disabled = true; errEl.textContent = "";
+
+			const res = await extSend({
+				type: "api", method: "POST",
+				path: "/reviews/v2/",
+				body: JSON.stringify({ item_id: Number(itemId), content, score }),
+			});
+
+			if (res?.ok) {
+				btn.disabled = false;
+				(document.getElementById("ext-rev-content") as HTMLTextAreaElement).value = "";
+				errEl.textContent = "등록되었습니다. 새로고침 시 반영됩니다.";
+				loadReviews(true);
+			} else {
+				errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
+				btn.disabled = false;
+			}
+		});
+	});
+}
+
+// Trigger ext review init when reviews tab is first opened
+document.querySelectorAll(".tab").forEach((btn) => {
+	btn.addEventListener("click", () => {
+		if ((btn as HTMLElement).dataset["tab"] === "reviews") initExtReviews();
+	});
+});
+if (targetReviewId) initExtReviews();

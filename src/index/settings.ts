@@ -249,6 +249,22 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		return html;
 	}
 
+	const laftelExtToggle = document.getElementById("toggle-laftel-ext") as HTMLInputElement | null;
+	laftelExtToggle?.addEventListener("change", () => {
+		if (laftelExtToggle.checked) {
+			const ok = confirm(
+				"⚠️ 경고: 이 기능은 매우 불안정합니다.\n\n" +
+				"라프텔 연동 기능은 브라우저 확장 프로그램(laftel-ext)을 통해 라프텔 API에 직접 요청을 보냅니다. " +
+				"예기치 않은 오류가 발생하거나 계정에 영향을 줄 수 있습니다.\n\n" +
+				"정말 켜시겠습니까?",
+			);
+			if (!ok) { laftelExtToggle.checked = false; return; }
+			localStorage.setItem("laftel_ext_enabled", "yes");
+		} else {
+			localStorage.removeItem("laftel_ext_enabled");
+		}
+	});
+
 	const tmToggle = document.getElementById("toggle-telemetry") as HTMLInputElement | null;
 	const cvToggle = document.getElementById("toggle-cv") as HTMLInputElement | null;
 	const offlineModeToggle = document.getElementById("toggle-offline-mode") as HTMLInputElement | null;
@@ -401,6 +417,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	}
 
 	function syncSettingsUI() {
+		if (laftelExtToggle) laftelExtToggle.checked = localStorage.getItem("laftel_ext_enabled") === "yes";
 		if (tmToggle) tmToggle.checked = localStorage.getItem("telemetry_consent") === "yes";
 		if (cvToggle) cvToggle.checked = localStorage.getItem("cv_auto") !== "no";
 		if (offlineModeToggle) offlineModeToggle.checked = localStorage.getItem(OFFLINE_MODE_KEY) === "yes";
