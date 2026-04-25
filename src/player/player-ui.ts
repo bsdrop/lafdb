@@ -568,6 +568,35 @@ function showSpeedToast(prev: number, next: number): void {
   }, 800);
 }
 
+let _volumeToastTimer: ReturnType<typeof setTimeout> | null = null;
+function showVolumeToast(video: HTMLVideoElement): void {
+  const box = document.getElementById("video-box");
+  if (!box) return;
+  let toast = document.getElementById("volume-toast") as HTMLDivElement | null;
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "volume-toast";
+    toast.style.cssText = [
+      "position:absolute", "top:50%", "left:50%",
+      "transform:translate(-50%,-50%)",
+      "z-index:30", "pointer-events:none",
+      "background:rgba(0,0,0,.55)", "border-radius:10px",
+      "padding:10px 18px",
+      'font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+      "color:#fff", "text-align:center",
+      "transition:opacity .15s",
+    ].join(";");
+    box.appendChild(toast);
+  }
+  const label = video.muted || video.volume <= 0 ? "음소거" : `볼륨 ${Math.round(video.volume * 100)}%`;
+  toast.innerHTML = `<span style="font-size:18px;font-weight:700;line-height:1.1;">${label}</span>`;
+  toast.style.opacity = "1";
+  if (_volumeToastTimer) clearTimeout(_volumeToastTimer);
+  _volumeToastTimer = setTimeout(() => {
+    if (toast) toast.style.opacity = "0";
+  }, 800);
+}
+
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 document.addEventListener("keydown", (e) => {
   if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
@@ -593,6 +622,21 @@ document.addEventListener("keydown", (e) => {
   if (e.key.toLowerCase() === "s" && !e.shiftKey && v) {
     e.preventDefault();
     return void saveCurrentFramePng(v);
+  }
+  if (e.key.toLowerCase() === "m" && !e.shiftKey && v) {
+    e.preventDefault();
+    v.muted = !v.muted;
+    showVolumeToast(v);
+    return;
+  }
+  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && v) {
+    e.preventDefault();
+    const delta = e.key === "ArrowUp" ? 0.05 : -0.05;
+    const next = Math.max(0, Math.min(1, Math.round((v.volume + delta) * 100) / 100));
+    v.volume = next;
+    v.muted = next <= 0;
+    showVolumeToast(v);
+    return;
   }
   if (e.key.toLowerCase() === "f" && !e.shiftKey && v) {
     if (document.fullscreenElement) {
