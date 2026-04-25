@@ -204,6 +204,31 @@ function showInventoryGuideAfter(el: HTMLElement, text: string): void {
 	el.after(guide);
 }
 
+function buildReviewBodyHtml(content: string | undefined, isSpoiler: boolean): string {
+	const safe = esc(content ?? "").replaceAll("\n", "<br>");
+	if (!safe.trim()) return "";
+	if (!isSpoiler) return `<p class="review-body">${safe}</p>`;
+	return `<p class="review-body"><span class="review-spoiler" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${safe}</span></p>`;
+}
+
+function attachRevealSpoiler(root: ParentNode): void {
+	const spoiler = root.querySelector(".review-spoiler");
+	if (!spoiler) return;
+	const reveal = (e: Event) => {
+		if (spoiler.classList.contains("revealed")) return;
+		e.stopPropagation();
+		spoiler.classList.add("revealed");
+		spoiler.removeAttribute("tabindex");
+	};
+	spoiler.addEventListener("click", reveal);
+	spoiler.addEventListener("keydown", (e) => {
+		if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
+			e.preventDefault();
+			reveal(e);
+		}
+	});
+}
+
 function resetItemView(): void {
 	document.title = "라트펠";
 	const itemName = document.getElementById("item-name");
@@ -673,6 +698,8 @@ async function loadReviews(reset = false): Promise<void> {
 			const date = fmtDateByPref(r.created);
 			const hasScore = r.score > 0;
 			const hasContent = (r.content ?? "").trim().length > 0;
+			const isSpoiler = !!r.is_spoiler;
+			const liked = !!r.is_click_like;
 
 			const avatarHtml = r.profile?.image
 				? `<img class="review-avatar" src="${esc(r.profile.image)}" alt="" loading="lazy">`
@@ -690,9 +717,9 @@ async function loadReviews(reset = false): Promise<void> {
 	<span class="review-user">${esc(r.profile?.name ?? "익명")}</span>
 	${hasScore ? `<span class="review-score">★ ${Number(r.score).toFixed(1)}</span>` : ""}
 </div>
-${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}</p>` : ""}
+${hasContent ? buildReviewBodyHtml(r.content, isSpoiler) : ""}
 <div class="review-footer">
-	${r.count_like > 0 ? `<span class="review-likes">♥ ${r.count_like}</span>` : ""}
+	${r.id ? `<button class="ext-action-btn review-like-btn${liked ? " active" : ""}" data-liked="${liked ? "yes" : "no"}">♥ ${(r.count_like ?? 0).toLocaleString()}</button>` : `${r.count_like > 0 ? `<span class="review-likes">♥ ${r.count_like}</span>` : ""}`}
 	${r.created ? `<span class="review-date" data-ts="${esc(r.created)}">${date}</span>` : ""}
 	${r.id ? `<button class="link-copy-btn review-copy-btn" title="링크 복사" aria-label="리뷰 링크 복사">🔗</button>` : ""}
 	${myActionsHtml}
@@ -700,6 +727,29 @@ ${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}
 
 			if (r.id) {
 				const rid = String(r.id);
+				const likeBtn = el.querySelector(".review-like-btn") as HTMLButtonElement | null;
+				if (likeBtn) {
+					likeBtn.addEventListener("click", async () => {
+						const currentlyLiked = likeBtn.dataset["liked"] === "yes";
+						likeBtn.disabled = true;
+						const res = await extSend({
+							type: "api",
+							method: "PATCH",
+							path: `/reviews/v1/${rid}/like/`,
+							body: JSON.stringify({ is_active: !currentlyLiked }),
+						});
+						if (res?.ok) {
+							const nextLiked = !currentlyLiked;
+							const currentCount = r.count_like ?? 0;
+							r.is_click_like = nextLiked;
+							r.count_like = Math.max(0, currentCount + (nextLiked ? 1 : -1));
+							likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
+							likeBtn.classList.toggle("active", nextLiked);
+							likeBtn.textContent = `♥ ${(r.count_like ?? 0).toLocaleString()}`;
+						}
+						likeBtn.disabled = false;
+					});
+				}
 				el.querySelector(".review-copy-btn")?.addEventListener("click", (e) => {
 					e.stopPropagation();
 					const sortingPart = revSorting
@@ -724,6 +774,7 @@ ${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}
 					});
 				}
 			}
+			attachRevealSpoiler(el);
 			container.appendChild(el);
 		}
 
@@ -883,10 +934,13 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
 </div>
 <textarea class="ext-textarea" rows="3" placeholder="리뷰 내용...">${esc(curContent)}</textarea>
 <div class="ext-form-row">
+	<label class="ext-spoiler-label"><input type="checkbox" class="ext-spoiler-chk"> 스포일러</label>
 	<button class="ext-action-btn" data-action="save">저장</button>
 	<button class="ext-action-btn" data-action="cancel">취소</button>
 	<span class="ext-err"></span>
 </div>`;
+	(form.querySelector(".ext-spoiler-chk") as HTMLInputElement).checked =
+		!!el.querySelector(".review-spoiler");
 
 	el.style.display = "none";
 	el.after(form);
@@ -914,9 +968,14 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
 			el.style.display = "";
 			// Refresh the review content in-place
 			const body = el.querySelector(".review-body");
-			if (body) body.innerHTML = esc(content).replaceAll("\n", "<br>");
+			if (body) {
+				body.outerHTML = buildReviewBodyHtml(content, isSpoiler);
+			} else if (content) {
+				el.querySelector(".review-header")?.insertAdjacentHTML("afterend", buildReviewBodyHtml(content, isSpoiler));
+			}
 			const scoreEl = el.querySelector(".review-score");
 			if (scoreEl) scoreEl.textContent = `★ ${score.toFixed(1)}`;
+			attachRevealSpoiler(el);
 			showInventoryGuideAfter(el, "반영이 늦으면 라프텔 리뷰함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
 		} else {
 			errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
@@ -945,6 +1004,7 @@ function initExtReviews(): void {
 	</div>
 	<textarea id="ext-rev-content" class="ext-textarea" rows="3" placeholder="리뷰 내용을 입력하세요..."></textarea>
 	<div class="ext-form-row">
+		<label class="ext-spoiler-label"><input type="checkbox" id="ext-rev-spoiler"> 스포일러</label>
 		<button class="ext-action-btn" id="ext-rev-submit">등록</button>
 		<span class="ext-err" id="ext-rev-err"></span>
 	</div>
@@ -958,6 +1018,7 @@ function initExtReviews(): void {
 		document.getElementById("ext-rev-submit")?.addEventListener("click", async () => {
 			const score = parseFloat((document.getElementById("ext-rev-score") as HTMLSelectElement).value);
 			const content = (document.getElementById("ext-rev-content") as HTMLTextAreaElement).value.trim();
+			const isSpoiler = (document.getElementById("ext-rev-spoiler") as HTMLInputElement).checked;
 			const btn = document.getElementById("ext-rev-submit") as HTMLButtonElement;
 			const errEl = document.getElementById("ext-rev-err")!;
 			btn.disabled = true; errEl.textContent = "";
@@ -965,12 +1026,13 @@ function initExtReviews(): void {
 			const res = await extSend({
 				type: "api", method: "POST",
 				path: "/reviews/v1/list/",
-				body: JSON.stringify({ item: Number(itemId), content, score, is_spoiler: false }),
+				body: JSON.stringify({ item: Number(itemId), content, score, is_spoiler: isSpoiler }),
 			});
 
 			if (res?.ok) {
 				btn.disabled = false;
 				(document.getElementById("ext-rev-content") as HTMLTextAreaElement).value = "";
+				(document.getElementById("ext-rev-spoiler") as HTMLInputElement).checked = false;
 				errEl.innerHTML = `등록 시도 완료. 반영 여부는 리뷰함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
 				loadReviews(true);
 			} else {

@@ -29,10 +29,64 @@ function apiPathToExtPath(url: string): string {
   return url.startsWith("/api/") ? url.slice(4) : url;
 }
 
+function toCommentSortKeyDate(value: string | undefined): number {
+  const d = value ? new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(value) ? value : value + "+09:00") : null;
+  const t = d?.getTime();
+  return Number.isFinite(t) ? (t as number) : 0;
+}
+
+function sortMergedComments(items: CommentData[], sorting: string): CommentData[] {
+  const out = [...items];
+  out.sort((a, b) => {
+    if (sorting === "oldest") {
+      const byCreated = toCommentSortKeyDate(a.created) - toCommentSortKeyDate(b.created);
+      if (byCreated !== 0) return byCreated;
+      return Number(a.id) - Number(b.id);
+    }
+
+    const byLikes = (b.count_like ?? 0) - (a.count_like ?? 0);
+    if (byLikes !== 0) return byLikes;
+    const byReplies = (b.count_reply_comment ?? 0) - (a.count_reply_comment ?? 0);
+    if (byReplies !== 0) return byReplies;
+    const byCreated = toCommentSortKeyDate(b.created) - toCommentSortKeyDate(a.created);
+    if (byCreated !== 0) return byCreated;
+    return Number(b.id) - Number(a.id);
+  });
+  return out;
+}
+
 async function fetchCommentListRoute<T>(url: string): Promise<T> {
   await ensureExtStatus();
   if (isExtEnabled() && isExtLoggedIn() && getExtRoute() === "direct") {
-    const res = await extSend({ type: "api", method: "GET", path: apiPathToExtPath(url) });
+    const path = apiPathToExtPath(url);
+    const parsed = new URL(path, "https://api.laftel.net");
+    if (parsed.pathname === "/comments/v1/list/" && !parsed.searchParams.has("mine")) {
+      const falseUrl = new URL(parsed.toString());
+      const trueUrl = new URL(parsed.toString());
+      falseUrl.searchParams.set("mine", "false");
+      trueUrl.searchParams.set("mine", "true");
+
+      const [publicRes, mineRes] = await Promise.all([
+        extSend({ type: "api", method: "GET", path: `${falseUrl.pathname}${falseUrl.search}` }),
+        extSend({ type: "api", method: "GET", path: `${trueUrl.pathname}${trueUrl.search}` }),
+      ]);
+      if (!publicRes?.ok) throw new Error(publicRes?.error ?? `HTTP ${publicRes?.status ?? "extension"}`);
+      if (!mineRes?.ok) throw new Error(mineRes?.error ?? `HTTP ${mineRes?.status ?? "extension"}`);
+
+      const merged = new Map<string, CommentData>();
+      for (const item of (publicRes.data?.results ?? []) as CommentData[]) merged.set(String(item.id), item);
+      for (const item of (mineRes.data?.results ?? []) as CommentData[]) merged.set(String(item.id), item);
+
+      const sorting = parsed.searchParams.get("sorting") ?? "top";
+      const mergedResults = sortMergedComments(Array.from(merged.values()), sorting);
+      return {
+        ...(publicRes.data ?? {}),
+        count: (publicRes.data?.count ?? 0) + (mineRes.data?.count ?? 0),
+        results: mergedResults,
+      } as T;
+    }
+
+    const res = await extSend({ type: "api", method: "GET", path });
     if (!res?.ok) throw new Error(res?.error ?? `HTTP ${res?.status ?? "extension"}`);
     return res.data as T;
   }
@@ -1064,6 +1118,7 @@ interface CommentData {
   id: string | number;
   content?: string;
   is_spoiler?: boolean;
+  is_click_like?: boolean;
   created?: string;
   count_like?: number;
   count_reply_comment?: number;
@@ -1158,12 +1213,10 @@ function buildCommentEl(
     ? `<span class="comment-date" data-ts="${esc(c.created)}">${fmtTs(c.created)}</span>`
     : "";
   const likesHtml =
-    (c.count_like ?? 0) > 0
-      ? `<span class="comment-likes">♥ ${c.count_like}</span>`
-      : "";
+    `<button class="ext-action-btn comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`;
   const repliesHtml =
-    !isReply && (c.count_reply_comment ?? 0) > 0
-      ? `<button class="comment-replies-btn">답글 ${c.count_reply_comment}개</button>`
+    !isReply
+      ? `<button class="comment-replies-btn">답글 ${(c.count_reply_comment ?? 0).toLocaleString()}개</button>`
       : "";
 
   const copyBtnHtml = `<button class="link-copy-btn comment-copy-btn" title="링크 복사" aria-label="댓글 링크 복사">🔗</button>`;
@@ -1191,6 +1244,29 @@ function buildCommentEl(
       } else {
         alert("삭제 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류"));
       }
+    });
+  }
+
+  const likeBtn = el.querySelector(".comment-like-btn") as HTMLButtonElement | null;
+  if (likeBtn) {
+    likeBtn.addEventListener("click", async () => {
+      const currentlyLiked = likeBtn.dataset["liked"] === "yes";
+      likeBtn.disabled = true;
+      const res = await extSend({
+        type: "api",
+        method: "PATCH",
+        path: `/comments/v1/${c.id}/like/`,
+        body: JSON.stringify({ is_active: !currentlyLiked }),
+      });
+      if (res?.ok) {
+        const nextLiked = !currentlyLiked;
+        c.is_click_like = nextLiked;
+        c.count_like = Math.max(0, (c.count_like ?? 0) + (nextLiked ? 1 : -1));
+        likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
+        likeBtn.classList.toggle("active", nextLiked);
+        likeBtn.textContent = `♥ ${(c.count_like ?? 0).toLocaleString()}`;
+      }
+      likeBtn.disabled = false;
     });
   }
 
@@ -1247,6 +1323,67 @@ function buildCommentEl(
       rOpened = false,
       rDeepLinked = false;
 
+    function updateRepliesButtonText(): void {
+      repliesBtn!.textContent = `답글 ${(c.count_reply_comment ?? 0).toLocaleString()}개`;
+    }
+
+    function ensureReplyComposer(): HTMLDivElement {
+      let wrap = repliesContainer.querySelector(".ext-reply-wrap") as HTMLDivElement | null;
+      if (wrap) return wrap;
+      wrap = document.createElement("div");
+      wrap.className = "ext-reply-wrap";
+      wrap.innerHTML = `
+<textarea class="ext-textarea ext-reply-content" rows="2" placeholder="답글 작성..."></textarea>
+<div class="ext-form-row">
+  <label class="ext-spoiler-label"><input type="checkbox" class="ext-reply-spoiler"> 스포일러</label>
+  <button class="ext-action-btn ext-reply-submit">등록</button>
+  <span class="ext-err ext-reply-err"></span>
+</div>`;
+      repliesContainer.prepend(wrap);
+      const submitBtn = wrap.querySelector(".ext-reply-submit") as HTMLButtonElement;
+      submitBtn.addEventListener("click", async () => {
+        const contentEl = wrap!.querySelector(".ext-reply-content") as HTMLTextAreaElement;
+        const spoilerEl = wrap!.querySelector(".ext-reply-spoiler") as HTMLInputElement;
+        const errEl = wrap!.querySelector(".ext-reply-err") as HTMLElement;
+        const content = contentEl.value.trim();
+        if (!content) {
+          errEl.textContent = "내용을 입력하세요.";
+          return;
+        }
+        submitBtn.disabled = true;
+        errEl.textContent = "";
+        const res = await extSend({
+          type: "api",
+          method: "POST",
+          path: "/comments/v1/list/",
+          body: JSON.stringify({
+            episode: epId ? Number(epId) : undefined,
+            parent_comment: Number(c.id),
+            content,
+            is_spoiler: spoilerEl.checked,
+          }),
+        });
+        if (res?.ok) {
+          contentEl.value = "";
+          spoilerEl.checked = false;
+          errEl.textContent = "등록 시도 완료";
+          c.count_reply_comment = (c.count_reply_comment ?? 0) + 1;
+          updateRepliesButtonText();
+          if (!rOpened) repliesBtn!.click();
+          if (!rLoading) {
+            rOffset = 0;
+            rTotal = Infinity;
+            repliesContainer.querySelectorAll(".reply, .reply-load-more, .reply-prev-btn").forEach((node) => node.remove());
+            void fetchReplies();
+          }
+        } else {
+          errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
+        }
+        submitBtn.disabled = false;
+      });
+      return wrap;
+    }
+
     async function fetchReplies(): Promise<void> {
       if (rLoading || rOffset >= rTotal) return;
       rLoading = true;
@@ -1299,7 +1436,8 @@ function buildCommentEl(
           more.addEventListener("click", fetchReplies);
           repliesContainer.appendChild(more);
         }
-        repliesBtn!.textContent = `답글 ${rTotal}개`;
+        c.count_reply_comment = Math.max(c.count_reply_comment ?? 0, rTotal);
+        updateRepliesButtonText();
         if (seekReplyId && rOffset < rTotal &&
             !repliesContainer.querySelector(`[data-cid="${seekReplyId}"]`)) {
           setTimeout(fetchReplies, 0);
@@ -1317,10 +1455,13 @@ function buildCommentEl(
         repliesContainer.classList.toggle("open");
       repliesBtn!.classList.toggle("open", isOpen);
       repliesBtn!.setAttribute("aria-expanded", String(isOpen));
+      ensureReplyComposer();
       if (!isOpen || rOpened) return;
       rOpened = true;
       fetchReplies();
     });
+    ensureReplyComposer();
+    updateRepliesButtonText();
   }
   return el;
 }

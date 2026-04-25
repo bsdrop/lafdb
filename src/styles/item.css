@@ -609,6 +609,28 @@
 				color: #aaa;
 				line-height: 1;
 			}
+			.review-spoiler {
+				display: inline;
+				position: relative;
+				cursor: pointer;
+				border-radius: 4px;
+				color: transparent;
+				background: #2a2a2e;
+				transition: background 0.35s ease, color 0.35s ease;
+				box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+				padding: 0 3px;
+				user-select: none;
+			}
+			.review-spoiler:hover:not(.revealed) {
+				background: #3a3a40;
+			}
+			.review-spoiler.revealed {
+				background: rgba(90, 82, 120, 0.35);
+				color: inherit;
+				cursor: default;
+				box-shadow: none;
+				user-select: text;
+			}
 			.review-date {
 				font-size: 11px;
 				color: #777;
@@ -684,6 +706,11 @@
 }
 .ext-action-btn:hover { background: #222; color: var(--text); border-color: #555; }
 .ext-action-btn:disabled { opacity: 0.5; cursor: default; }
+.ext-action-btn.active {
+	background: rgba(229, 255, 0, 0.08);
+	border-color: rgba(229, 255, 0, 0.35);
+	color: var(--accent);
+}
 .ext-action-del { color: #f87171 !important; border-color: #3b1a1a !important; }
 .ext-action-del:hover { background: #2a1010 !important; }
 .ext-err {
