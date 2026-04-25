@@ -712,7 +712,8 @@ class Player {
   static INIT_FETCH_TIMEOUT_MS = 30_000; // init/MPD fetch timeout
   static STALL_MAX_STRIKES = 3;
   static STALL_DECODER_STRIKES = 2;
-  static STALL_BUF_MIN = 0.5;
+  static STALL_BUF_MIN = 0.2;
+  static NEAR_END_EPSILON = 0.1;
   static NUDGE_MAX = 2;
 
   _getVideoSb(): SourceBuffer | null {
@@ -768,6 +769,32 @@ class Player {
     const asb = this.tracks.find((t) => t.type === "audio")?.sb ?? null;
     const audioBufEnd = asb ? this.getBufferedEnd(asb, ct) : bufEnd;
     const audioAhead = audioBufEnd - ct;
+    const duration =
+      this._video?.duration ??
+      (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
+
+    if (Number.isFinite(duration) && duration > 0 && duration - ct <= Player.NEAR_END_EPSILON) {
+      console.warn(
+        `[PLAYER] near-end stall ignored (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
+      );
+      this._clearStallWatchdog();
+      this._stopFetchLoops("near-end stall");
+      try {
+        if (this.ms && this.ms.readyState === "open") {
+          this.ms.endOfStream();
+        }
+      } catch (e) {
+        console.warn(
+          "[PLAYER] endOfStream() during stall finalize failed:",
+          (e as Error).message,
+        );
+      }
+      if (this._video) {
+        this._internalSeek = true;
+        this._video.currentTime = Math.max(0, duration - 0.001);
+      }
+      return;
+    }
 
     if (rs >= 3) {
       this._stallCheckCount = 0;
