@@ -234,6 +234,15 @@
 				max-width: 100vw;
 				max-height: 100vh;
 			}
+			#v:fullscreen,
+			#v:-webkit-full-screen {
+				width: 100vw;
+				height: 100vh;
+				max-width: 100vw;
+				max-height: 100vh;
+				object-fit: contain;
+				background: #000;
+			}
 
 			#ep-info {
 				display: flex;

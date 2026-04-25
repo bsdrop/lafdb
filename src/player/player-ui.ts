@@ -522,6 +522,7 @@ async function initUIForEpisode(id: string): Promise<void> {
   setupMediaSession();
   loadComments(id);
   setupShareButton();
+  setupFullscreenButton();
   setupCaptureButton();
 }
 
@@ -645,22 +646,9 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key.toLowerCase() === "f" && !e.shiftKey && v) {
-    if (document.fullscreenElement) {
-      document.exitFullscreen?.();
-    } else {
-      const box = document.getElementById("video-box");
-      box?.requestFullscreen?.();
-    }
-  }
-});
-
-// 네이티브 컨트롤 fullscreen 버튼이 video를 직접 fullscreen하면 video-box로 교체
-document.addEventListener("fullscreenchange", () => {
-  const el = document.fullscreenElement;
-  const v = document.getElementById("v");
-  const box = document.getElementById("video-box");
-  if (el && el === v && box) {
-    document.exitFullscreen().then(() => box.requestFullscreen()).catch(() => {});
+    e.preventDefault();
+    togglePlayerFullscreen();
+    return;
   }
 });
 
@@ -789,6 +777,25 @@ function setupShareButton(): void {
         getTime: () => video.currentTime,
       });
     });
+}
+
+function togglePlayerFullscreen(): void {
+  const box = document.getElementById("video-box");
+  if (!box) return;
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.();
+  } else {
+    box.requestFullscreen?.();
+  }
+}
+
+function setupFullscreenButton(): void {
+  const btn = document.getElementById("btn-fullscreen") as HTMLButtonElement | null;
+  if (!btn || btn.dataset["bound"] === "yes") return;
+  btn.dataset["bound"] = "yes";
+  btn.addEventListener("click", () => {
+    togglePlayerFullscreen();
+  });
 }
 
 function setupCaptureButton(): void {
