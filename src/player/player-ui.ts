@@ -26,7 +26,10 @@ window.rewriteCDN = rewriteCDN;
 const EXT_INVENTORY_COMMENT_URL = "https://laftel.net/inventory?category=comment";
 
 function apiPathToExtPath(url: string): string {
-  return url.startsWith("/api/") ? url.slice(4) : url;
+  const path = url.startsWith("/api/") ? url.slice(4) : url;
+  const [pathname, search = ""] = path.split("?", 2);
+  const normalizedPath = pathname.endsWith("/") ? pathname : `${pathname}/`;
+  return search ? `${normalizedPath}?${search}` : normalizedPath;
 }
 
 function toCommentSortKeyDate(value: string | undefined): number {

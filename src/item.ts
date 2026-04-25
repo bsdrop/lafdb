@@ -179,7 +179,10 @@ function skelRevs(n = 3): void {
 const EXT_INVENTORY_REVIEW_URL = "https://laftel.net/inventory?category=review";
 
 function apiPathToExtPath(url: string): string {
-	return url.startsWith("/api/") ? url.slice(4) : url;
+	const path = url.startsWith("/api/") ? url.slice(4) : url;
+	const [pathname, search = ""] = path.split("?", 2);
+	const normalizedPath = pathname.endsWith("/") ? pathname : `${pathname}/`;
+	return search ? `${normalizedPath}?${search}` : normalizedPath;
 }
 
 async function fetchReviewListRoute<T>(url: string): Promise<T> {
