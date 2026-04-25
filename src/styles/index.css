@@ -250,6 +250,12 @@
 				background: #1a1a1a;
 				display: block;
 			}
+			.card-thumb-fallback {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				color: var(--muted);
+			}
 			.card-thumb.skel {
 				aspect-ratio: 2/3;
 			}

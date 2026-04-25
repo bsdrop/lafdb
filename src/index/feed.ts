@@ -130,7 +130,7 @@ export function initFeed(): FeedController {
 				? isManualThumbsEnabled()
 					? `<div class="card-thumb card-thumb-manual" data-thumb="${esc(thumb)}">썸네일 불러오기</div>`
 					: `<img class="card-thumb" src="${esc(thumb)}" alt="" loading="lazy" width="170" height="255" decoding="async">`
-				: `<div class="card-thumb" style="display:flex;align-items:center;justify-content:center;color:var(--muted)">▶</div>`;
+				: `<div class="card-thumb card-thumb-fallback">▶</div>`;
 
 			const badges: string[] = [];
 			const accessible = (window as any).isAccessibleItem?.(itemId);

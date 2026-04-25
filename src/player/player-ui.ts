@@ -436,6 +436,8 @@ let _currentEpTitle = "";
 let _currentEpHistoryLabel = "";
 let _currentItemId: string | null = itemId ?? null;
 let mediaSessionAc: AbortController | null = null;
+let markerAc: AbortController | null = null;
+let markerLoadToken = 0;
 
 function formatEpisodeHistoryLabel(title: string, episodeNum: unknown): string {
   const trimmedTitle = String(title ?? "").trim();
@@ -455,6 +457,7 @@ function updateItemBtn(id: string): void {
 if (_currentItemId) updateItemBtn(_currentItemId);
 
 async function initUIForEpisode(id: string): Promise<void> {
+  const loadToken = ++markerLoadToken;
   if (!id) return;
   try {
     const ep = await apiFetch<Record<string, unknown>>(`/api/episodes/v3/${id}`);
@@ -506,9 +509,12 @@ async function initUIForEpisode(id: string): Promise<void> {
     const info = await apiFetch<Record<string, unknown>>(
       `/api/episodes/v3/${id}/video`,
     );
+    if (loadToken !== markerLoadToken || id !== epId) return;
     setupMarkers(info["markers"] as MarkerData | null | undefined);
   } catch (e) {
     console.error("markers fetch:", e);
+    if (loadToken !== markerLoadToken || id !== epId) return;
+    setupMarkers(null);
   }
 
   setupAutoplay(id);
@@ -922,20 +928,32 @@ interface MarkerData {
 }
 
 function setupMarkers(markers: MarkerData | null | undefined): void {
-  if (!markers) return;
-
   const video = document.getElementById("v") as HTMLVideoElement;
   const btnOpen = document.getElementById("skip-opening") as HTMLButtonElement;
   const btnEnd = document.getElementById("skip-ending") as HTMLButtonElement;
+  const timelineTrack = document.getElementById("timeline-track");
+
+  markerAc?.abort();
+  markerAc = new AbortController();
+  const signal = markerAc.signal;
+
+  btnOpen.classList.remove("visible");
+  btnEnd.classList.remove("visible");
+  btnOpen.onclick = null;
+  btnEnd.onclick = null;
+  timelineTrack?.querySelectorAll(".tl-marker").forEach((el) => el.remove());
 
   type SkipPlayer = { skipRanges: Array<{ start: number; end: number }> } | null | undefined;
   const p = (window as Window & { _currentPlayer?: SkipPlayer })._currentPlayer;
   if (p) {
-    p.skipRanges = [
-      ...(markers.opening ? [markers.opening] : []),
-      ...(markers.ending ? [markers.ending] : []),
-    ];
+    p.skipRanges = markers
+      ? [
+          ...(markers.opening ? [markers.opening] : []),
+          ...(markers.ending ? [markers.ending] : []),
+        ]
+      : [];
   }
+  if (!markers) return;
 
   // Don't seek to video.duration — causes MEDIA_ERR_DECODE on some browsers.
   function skipTo(time: number): void {
@@ -971,7 +989,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
     video.addEventListener(
       "loadedmetadata",
       renderTimelineMarkers,
-      { once: true },
+      { once: true, signal },
     );
 
   video.addEventListener("timeupdate", () => {
@@ -981,6 +999,8 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       const inSeg = t >= start && t < end;
       btnOpen.classList.toggle("visible", inSeg);
       if (inSeg && autoSkip) skipTo(end);
+    } else {
+      btnOpen.classList.remove("visible");
     }
     if (markers!.ending) {
       const { start, end } = markers!.ending;
@@ -989,8 +1009,10 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       const inWindow = endingWindow < 0 || (endingWindow > 0 && t - start < endingWindow);
       btnEnd.classList.toggle("visible", inSeg && inWindow);
       if (inSeg && autoSkip) skipTo(end);
+    } else {
+      btnEnd.classList.remove("visible");
     }
-  });
+  }, { signal });
   btnOpen.onclick = () => {
     if (markers!.opening) skipTo(markers!.opening.end);
   };
