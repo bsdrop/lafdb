@@ -734,22 +734,20 @@ ${hasContent ? buildReviewBodyHtml(r.content, isSpoiler) : ""}
 				if (likeBtn) {
 					likeBtn.addEventListener("click", async () => {
 						const currentlyLiked = likeBtn.dataset["liked"] === "yes";
+						const nextLiked = !currentlyLiked;
+						const currentCount = r.count_like ?? 0;
+						r.is_click_like = nextLiked;
+						r.count_like = Math.max(0, currentCount + (nextLiked ? 1 : -1));
+						likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
+						likeBtn.classList.toggle("active", nextLiked);
+						likeBtn.textContent = `♥ ${(r.count_like ?? 0).toLocaleString()}`;
 						likeBtn.disabled = true;
-						const res = await extSend({
+						void extSend({
 							type: "api",
 							method: "PATCH",
 							path: `/reviews/v1/${rid}/like/`,
-							body: JSON.stringify({ is_active: !currentlyLiked }),
-						});
-						if (res?.ok) {
-							const nextLiked = !currentlyLiked;
-							const currentCount = r.count_like ?? 0;
-							r.is_click_like = nextLiked;
-							r.count_like = Math.max(0, currentCount + (nextLiked ? 1 : -1));
-							likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
-							likeBtn.classList.toggle("active", nextLiked);
-							likeBtn.textContent = `♥ ${(r.count_like ?? 0).toLocaleString()}`;
-						}
+							body: JSON.stringify({ is_active: nextLiked }),
+						}).catch((e) => console.error("review like failed:", e));
 						likeBtn.disabled = false;
 					});
 				}

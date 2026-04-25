@@ -1263,22 +1263,20 @@ function buildCommentEl(
   if (likeBtn) {
     likeBtn.addEventListener("click", async () => {
       const currentlyLiked = likeBtn.dataset["liked"] === "yes";
+      const nextLiked = !currentlyLiked;
+      c.is_click_like = nextLiked;
+      c.count_like = Math.max(0, (c.count_like ?? 0) + (nextLiked ? 1 : -1));
+      likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
+      likeBtn.classList.toggle("active", nextLiked);
+      likeBtn.setAttribute("aria-pressed", nextLiked ? "true" : "false");
+      likeBtn.textContent = `♥ ${(c.count_like ?? 0).toLocaleString()}`;
       likeBtn.disabled = true;
-      const res = await extSend({
+      void extSend({
         type: "api",
         method: "PATCH",
         path: `/comments/v1/${c.id}/like/`,
-        body: JSON.stringify({ is_active: !currentlyLiked }),
-      });
-      if (res?.ok) {
-        const nextLiked = !currentlyLiked;
-        c.is_click_like = nextLiked;
-        c.count_like = Math.max(0, (c.count_like ?? 0) + (nextLiked ? 1 : -1));
-        likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
-        likeBtn.classList.toggle("active", nextLiked);
-        likeBtn.setAttribute("aria-pressed", nextLiked ? "true" : "false");
-        likeBtn.textContent = `♥ ${(c.count_like ?? 0).toLocaleString()}`;
-      }
+        body: JSON.stringify({ is_active: nextLiked }),
+      }).catch((e) => console.error("comment like failed:", e));
       likeBtn.disabled = false;
     });
   }

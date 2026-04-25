@@ -754,7 +754,9 @@
 			.comment-like-btn:hover {
 				color: #aaa;
 			}
-			.comment-like-btn.active {
+			.comment-like-btn.active,
+			.comment-like-btn[data-liked="yes"],
+			.comment-like-btn[aria-pressed="true"] {
 				color: #816bff;
 			}
 			.comment-date {
