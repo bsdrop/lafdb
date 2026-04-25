@@ -1176,9 +1176,25 @@
 	padding: 3px 9px;
 	cursor: pointer;
 	font-family: inherit;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 1.2;
+	white-space: nowrap;
+	text-decoration: none;
 }
 .ext-action-btn:hover { background: #222; color: #e0e0e0; border-color: #555; }
+.ext-action-btn:visited { color: #a0a0a0; }
 .ext-action-btn:disabled { opacity: 0.5; cursor: default; }
+.ext-inventory-guide {
+	margin-top: 6px;
+	font-size: 11px;
+	color: #888;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+}
 .ext-action-del { color: #f87171 !important; border-color: #3b1a1a !important; }
 .ext-action-del:hover { background: #2a1010 !important; }
 .ext-form-row {

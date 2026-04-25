@@ -196,14 +196,14 @@ async function fetchReviewListRoute<T>(url: string): Promise<T> {
 }
 
 function buildInventoryGuideHtml(label = "라프텔 리뷰함"): string {
-	return ` <a class="ext-action-btn" href="${EXT_INVENTORY_REVIEW_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+	return `<a class="ext-action-btn" href="${EXT_INVENTORY_REVIEW_URL}" target="_blank" rel="noreferrer">${label}</a>`;
 }
 
 function showInventoryGuideAfter(el: HTMLElement, text: string): void {
 	el.nextElementSibling?.classList.contains("ext-inventory-guide") && el.nextElementSibling.remove();
 	const guide = document.createElement("div");
 	guide.className = "ext-inventory-guide";
-	guide.innerHTML = `${esc(text)}${buildInventoryGuideHtml("수정/삭제하러 가기")}`;
+	guide.innerHTML = `${esc(text)} ${buildInventoryGuideHtml("수정/삭제하러 가기")}`;
 	el.after(guide);
 }
 
@@ -1036,7 +1036,7 @@ function initExtReviews(): void {
 				btn.disabled = false;
 				(document.getElementById("ext-rev-content") as HTMLTextAreaElement).value = "";
 				(document.getElementById("ext-rev-spoiler") as HTMLInputElement).checked = false;
-				errEl.innerHTML = `등록 시도 완료. 반영 여부는 리뷰함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
+				errEl.innerHTML = `등록 시도 완료. 반영 여부는 리뷰함에서 확인할 수 있습니다. ${buildInventoryGuideHtml("바로 열기")}`;
 				loadReviews(true);
 			} else {
 				errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");

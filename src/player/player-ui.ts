@@ -97,14 +97,14 @@ async function fetchCommentListRoute<T>(url: string): Promise<T> {
 }
 
 function buildInventoryGuideHtml(label = "라프텔 댓글함"): string {
-  return ` <a class="ext-action-btn" href="${EXT_INVENTORY_COMMENT_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+  return `<a class="ext-action-btn" href="${EXT_INVENTORY_COMMENT_URL}" target="_blank" rel="noreferrer">${label}</a>`;
 }
 
 function showInventoryGuideAfter(el: HTMLElement, text: string): void {
   el.nextElementSibling?.classList.contains("ext-inventory-guide") && el.nextElementSibling.remove();
   const guide = document.createElement("div");
   guide.className = "ext-inventory-guide";
-  guide.innerHTML = `${esc(text)}${buildInventoryGuideHtml("수정/삭제하러 가기")}`;
+  guide.innerHTML = `${esc(text)} ${buildInventoryGuideHtml("수정/삭제하러 가기")}`;
   el.after(guide);
 }
 
@@ -1233,7 +1233,7 @@ function buildCommentEl(
 	<div class="comment-header">${avatarHtml}<span class="comment-user">${esc(c.profile?.name ?? "익명")}</span></div>
 	${buildCommentTextHtml(c.content, isSpoiler)}
 	<div class="comment-footer">${likesHtml}${repliesHtml}${dateHtml}${copyBtnHtml}${myActionsHtml}</div>
-	${!isReply && (c.count_reply_comment ?? 0) > 0 ? `<div class="replies"></div>` : ""}`;
+	${!isReply ? `<div class="replies"></div>` : ""}`;
 
   if (isMine) {
     el.querySelector("[data-action='edit-comment']")?.addEventListener("click", () => {
@@ -1857,7 +1857,7 @@ function setupExtCommentForm(currentEpId: string): void {
       });
       if (res?.ok) {
         (document.getElementById("ext-comment-content") as HTMLTextAreaElement).value = "";
-        errEl.innerHTML = `등록 시도 완료. 반영 여부는 댓글함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
+        errEl.innerHTML = `등록 시도 완료. 반영 여부는 댓글함에서 확인할 수 있습니다. ${buildInventoryGuideHtml("바로 열기")}`;
         btn.disabled = false;
       } else {
         errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
