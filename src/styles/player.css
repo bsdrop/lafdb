@@ -369,6 +369,14 @@
 				white-space: nowrap;
 				flex-shrink: 0;
 			}
+			.ctrl-icon-btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 36px;
+				height: 36px;
+				padding: 0;
+			}
 			.ctrl-btn:hover:not(:disabled) {
 				color: var(--text);
 				border-color: #333;

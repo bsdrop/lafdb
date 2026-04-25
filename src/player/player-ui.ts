@@ -508,6 +508,7 @@ async function initUIForEpisode(id: string): Promise<void> {
   setupMediaSession();
   loadComments(id);
   setupShareButton();
+  setupCaptureButton();
 }
 
 window.addEventListener("hashchange", () => {
@@ -720,6 +721,16 @@ function setupShareButton(): void {
         getTime: () => video.currentTime,
       });
     });
+}
+
+function setupCaptureButton(): void {
+  const video = document.getElementById("v") as HTMLVideoElement | null;
+  const btn = document.getElementById("btn-capture") as HTMLButtonElement | null;
+  if (!video || !btn || btn.dataset["bound"] === "yes") return;
+  btn.dataset["bound"] = "yes";
+  btn.addEventListener("click", () => {
+    void saveCurrentFramePng(video);
+  });
 }
 
 function buildCurrentMpvCommand(): string | null {
