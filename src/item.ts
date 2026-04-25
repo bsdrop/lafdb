@@ -176,7 +176,7 @@ function skelRevs(n = 3): void {
 	).join("");
 }
 
-const EXT_INVENTORY_RATING_URL = "https://laftel.net/inventory?category=rating";
+const EXT_INVENTORY_REVIEW_URL = "https://laftel.net/inventory?category=review";
 
 function apiPathToExtPath(url: string): string {
 	return url.startsWith("/api/") ? url.slice(4) : url;
@@ -192,8 +192,8 @@ async function fetchReviewListRoute<T>(url: string): Promise<T> {
 	return apiFetch<T>(url);
 }
 
-function buildInventoryGuideHtml(label = "라프텔 평점함"): string {
-	return ` <a class="ext-action-btn" href="${EXT_INVENTORY_RATING_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+function buildInventoryGuideHtml(label = "라프텔 리뷰함"): string {
+	return ` <a class="ext-action-btn" href="${EXT_INVENTORY_REVIEW_URL}" target="_blank" rel="noreferrer">${label}</a>`;
 }
 
 function showInventoryGuideAfter(el: HTMLElement, text: string): void {
@@ -917,7 +917,7 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
 			if (body) body.innerHTML = esc(content).replaceAll("\n", "<br>");
 			const scoreEl = el.querySelector(".review-score");
 			if (scoreEl) scoreEl.textContent = `★ ${score.toFixed(1)}`;
-			showInventoryGuideAfter(el, "반영이 늦으면 라프텔 평점함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
+			showInventoryGuideAfter(el, "반영이 늦으면 라프텔 리뷰함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
 		} else {
 			errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
 			btn.disabled = false;
@@ -971,7 +971,7 @@ function initExtReviews(): void {
 			if (res?.ok) {
 				btn.disabled = false;
 				(document.getElementById("ext-rev-content") as HTMLTextAreaElement).value = "";
-				errEl.innerHTML = `등록되었습니다. 반영이 늦으면 평점함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
+				errEl.innerHTML = `등록 시도 완료. 반영 여부는 리뷰함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
 				loadReviews(true);
 			} else {
 				errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");

@@ -23,7 +23,7 @@ function rewriteCDN(url: string): string {
 }
 window.rewriteCDN = rewriteCDN;
 
-const EXT_INVENTORY_RATING_URL = "https://laftel.net/inventory?category=rating";
+const EXT_INVENTORY_COMMENT_URL = "https://laftel.net/inventory?category=comment";
 
 function apiPathToExtPath(url: string): string {
   return url.startsWith("/api/") ? url.slice(4) : url;
@@ -39,8 +39,8 @@ async function fetchCommentListRoute<T>(url: string): Promise<T> {
   return apiFetch<T>(url);
 }
 
-function buildInventoryGuideHtml(label = "라프텔 평점함"): string {
-  return ` <a class="ext-action-btn" href="${EXT_INVENTORY_RATING_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+function buildInventoryGuideHtml(label = "라프텔 댓글함"): string {
+  return ` <a class="ext-action-btn" href="${EXT_INVENTORY_COMMENT_URL}" target="_blank" rel="noreferrer">${label}</a>`;
 }
 
 function showInventoryGuideAfter(el: HTMLElement, text: string): void {
@@ -1670,7 +1670,7 @@ function openCommentEdit(el: HTMLElement, cid: string, curContent: string, curSp
       el.style.display = "";
       const textEl = el.querySelector(".comment-text");
       if (textEl) textEl.innerHTML = buildCommentTextHtml(content, is_spoiler).replace(/^<div[^>]*>|<\/div>$/g, "");
-      showInventoryGuideAfter(el, "반영이 늦으면 라프텔 평점함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
+      showInventoryGuideAfter(el, "반영이 늦으면 라프텔 댓글함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
     } else {
       errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
       btn.disabled = false;
@@ -1713,7 +1713,7 @@ function setupExtCommentForm(currentEpId: string): void {
       });
       if (res?.ok) {
         (document.getElementById("ext-comment-content") as HTMLTextAreaElement).value = "";
-        errEl.innerHTML = `등록되었습니다. 반영이 늦으면 평점함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
+        errEl.innerHTML = `등록 시도 완료. 반영 여부는 댓글함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
         btn.disabled = false;
       } else {
         errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
