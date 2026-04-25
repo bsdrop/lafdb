@@ -1,4 +1,5 @@
 import { applyImportData, clearAllWatchHistory, getExportData, isExportKey } from "../watch-history";
+import { extSend } from "../shared/ext";
 import { MANUAL_COMMENTS_KEY, MANUAL_THUMBS_KEY, OFFLINE_DB_NAME, OFFLINE_MODE_KEY } from "./constants";
 import {
 	describeOfflineScope,
@@ -250,7 +251,38 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	}
 
 	const laftelExtToggle = document.getElementById("toggle-laftel-ext") as HTMLInputElement | null;
-	laftelExtToggle?.addEventListener("change", () => {
+	const extStatusRow = document.getElementById("ext-status-row") as HTMLElement | null;
+	const extStatusText = document.getElementById("ext-status-text") as HTMLElement | null;
+
+	function setExtStatus(text: string, color: string): void {
+		if (!extStatusRow || !extStatusText) return;
+		extStatusRow.style.display = text ? "" : "none";
+		extStatusText.textContent = text;
+		extStatusText.style.color = color;
+	}
+
+	async function testExtConnection(): Promise<void> {
+		setExtStatus("확장 프로그램에 연결 중...", "#888");
+		try {
+			const status = await extSend({ type: "status" });
+			if (status?.loggedIn) {
+				setExtStatus("✓ 연결됨 — 로그인 상태", "#4ade80");
+			} else if (status !== undefined && status !== null) {
+				setExtStatus("⚠ 연결됨 — 로그인 필요 (팝업에서 로그인하세요)", "#fb923c");
+			} else {
+				setExtStatus("✗ 확장 프로그램이 응답하지 않습니다", "#f87171");
+			}
+		} catch (_) {
+			setExtStatus("✗ 확장 프로그램을 찾을 수 없습니다 (laftel-ext 미설치 또는 이 사이트에 미허용)", "#f87171");
+		}
+	}
+
+	// Show status on load if already enabled
+	if (localStorage.getItem("laftel_ext_enabled") === "yes") {
+		void testExtConnection();
+	}
+
+	laftelExtToggle?.addEventListener("change", async () => {
 		if (laftelExtToggle.checked) {
 			const ok = confirm(
 				"⚠️ 경고: 이 기능은 매우 불안정합니다.\n\n" +
@@ -260,8 +292,10 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 			);
 			if (!ok) { laftelExtToggle.checked = false; return; }
 			localStorage.setItem("laftel_ext_enabled", "yes");
+			await testExtConnection();
 		} else {
 			localStorage.removeItem("laftel_ext_enabled");
+			setExtStatus("", "");
 		}
 	});
 
