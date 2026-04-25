@@ -1386,7 +1386,7 @@ function renderWithTs(text: string): string {
   return esc(text).replace(
     /\b(\d{1,2}:\d{2}(?::\d{2})?(?:\.\d{1,3})?)\b/g,
     (_, ts: string) =>
-      `<button class="ts-btn" data-t="${parseTsSecs(ts)}">${ts}</button>`,
+      `<span class="ts-btn" data-t="${parseTsSecs(ts)}" role="button" tabindex="0">${ts}</span>`,
   );
 }
 
@@ -1865,6 +1865,13 @@ async function loadComments(epId: string): Promise<void> {
     document
       .getElementById("video-box")!
       .scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  list.onkeydown = (e) => {
+    const btn = (e.target as Element).closest(".ts-btn") as HTMLElement | null;
+    if (!btn) return;
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    btn.click();
   };
 
   const sentinel = document.createElement("div");

@@ -494,6 +494,7 @@
 				color: var(--accent);
 			}
 			.ts-btn {
+				display: inline-block;
 				background: rgba(229, 255, 0, 0.15);
 				color: var(--accent);
 				border: none;
