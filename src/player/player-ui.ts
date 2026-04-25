@@ -24,6 +24,13 @@ function rewriteCDN(url: string): string {
 }
 window.rewriteCDN = rewriteCDN;
 
+function isAppleMobileLike(): boolean {
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const touchPoints = navigator.maxTouchPoints || 0;
+  return /\b(iPhone|iPad|iPod)\b/i.test(ua) || (platform === "MacIntel" && touchPoints > 1);
+}
+
 const EXT_INVENTORY_COMMENT_URL = "https://laftel.net/inventory?category=comment";
 
 function apiPathToExtPath(url: string): string {
@@ -428,6 +435,7 @@ const itemId = params.get("itemId");
 let _currentEpTitle = "";
 let _currentEpHistoryLabel = "";
 let _currentItemId: string | null = itemId ?? null;
+let mediaSessionAc: AbortController | null = null;
 
 function formatEpisodeHistoryLabel(title: string, episodeNum: unknown): string {
   const trimmedTitle = String(title ?? "").trim();
@@ -611,6 +619,9 @@ function setupMediaSession(): void {
   if (!("mediaSession" in navigator)) return;
   const video = document.getElementById("v") as HTMLVideoElement;
   const ms = navigator.mediaSession;
+  mediaSessionAc?.abort();
+  mediaSessionAc = new AbortController();
+  const signal = mediaSessionAc.signal;
 
   function syncMetadata(): void {
     try {
@@ -619,13 +630,17 @@ function setupMediaSession(): void {
   }
   syncMetadata();
   const titleEl = document.getElementById("ep-title");
-  if (titleEl) new MutationObserver(syncMetadata).observe(titleEl, { childList: true });
+  if (titleEl) {
+    const observer = new MutationObserver(syncMetadata);
+    observer.observe(titleEl, { childList: true });
+    signal.addEventListener("abort", () => observer.disconnect(), { once: true });
+  }
 
   function syncPlaybackState(): void {
     try { ms.playbackState = video.paused ? "paused" : "playing"; } catch (e) { console.debug("Ignored error:", e); }
   }
-  video.addEventListener("play", syncPlaybackState);
-  video.addEventListener("pause", syncPlaybackState);
+  video.addEventListener("play", syncPlaybackState, { signal });
+  video.addEventListener("pause", syncPlaybackState, { signal });
   syncPlaybackState();
 
   function syncPositionState(): void {
@@ -643,10 +658,15 @@ function setupMediaSession(): void {
   video.addEventListener("timeupdate", () => {
     if (_posTimer) return;
     _posTimer = setTimeout(() => { _posTimer = 0; syncPositionState(); }, 1000);
-  });
-  video.addEventListener("loadedmetadata", syncPositionState);
-  video.addEventListener("seeked",         syncPositionState);
-  video.addEventListener("ratechange",     syncPositionState);
+  }, { signal });
+  signal.addEventListener("abort", () => {
+    if (_posTimer) clearTimeout(_posTimer);
+    _posTimer = 0;
+  }, { once: true });
+  video.addEventListener("loadedmetadata", syncPositionState, { signal });
+  video.addEventListener("durationchange", syncPositionState, { signal });
+  video.addEventListener("seeked",         syncPositionState, { signal });
+  video.addEventListener("ratechange",     syncPositionState, { signal });
 
   function safeSeek(t: number): void {
     try {
@@ -727,7 +747,9 @@ function setupCaptureButton(): void {
   if (!video || !btn || btn.dataset["bound"] === "yes") return;
   btn.dataset["bound"] = "yes";
   btn.addEventListener("click", () => {
-    void saveCurrentFramePng(video);
+    btn.blur();
+    const popup = isAppleMobileLike() ? window.open("", "_blank", "noopener,noreferrer") : null;
+    void saveCurrentFramePng(video, popup);
   });
 }
 
@@ -770,10 +792,11 @@ function formatCaptureTimestamp(seconds: number): string {
   return `${String(h).padStart(2, "0")}-${String(m).padStart(2, "0")}-${String(s).padStart(2, "0")}-${String(ms).padStart(3, "0")}`;
 }
 
-async function saveCurrentFramePng(video: HTMLVideoElement): Promise<void> {
+async function saveCurrentFramePng(video: HTMLVideoElement, popup: Window | null = null): Promise<void> {
   const width = video.videoWidth;
   const height = video.videoHeight;
   if (!width || !height) {
+    popup?.close();
     alert("아직 프레임을 캡처할 수 없습니다.");
     return;
   }
@@ -783,6 +806,7 @@ async function saveCurrentFramePng(video: HTMLVideoElement): Promise<void> {
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) {
+    popup?.close();
     alert("캡처용 캔버스를 만들 수 없습니다.");
     return;
   }
@@ -790,12 +814,14 @@ async function saveCurrentFramePng(video: HTMLVideoElement): Promise<void> {
   try {
     ctx.drawImage(video, 0, 0, width, height);
   } catch (_e) {
+    popup?.close();
     alert("현재 브라우저에서는 이 프레임을 캡처할 수 없습니다.");
     return;
   }
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
   if (!blob) {
+    popup?.close();
     alert("PNG 생성에 실패했습니다.");
     return;
   }
@@ -806,6 +832,17 @@ async function saveCurrentFramePng(video: HTMLVideoElement): Promise<void> {
     .replace(/\s+/g, "_");
   const filename = `${baseTitle || "capture"}_${formatCaptureTimestamp(video.currentTime)}.png`;
   const url = URL.createObjectURL(blob);
+  if (popup) {
+    try {
+      popup.location.href = url;
+      popup.document.title = filename;
+      showMpvCopyToast("새 탭에서 열었습니다. 길게 눌러 저장하세요");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return;
+    } catch (_e) {
+      popup.close();
+    }
+  }
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
@@ -1159,13 +1196,6 @@ function setupAutoplay(epId: string): void {
   async function tryAutoplayNext(trigger: string): Promise<void> {
     if (!autoPlay || autoplayTriggered) return;
     console.log(`[PLAYER] tryAutoplayNext triggered by: ${trigger}`);
-    const inPiP =
-      document.pictureInPictureElement === video ||
-      video.webkitPresentationMode === "picture-in-picture";
-    if (inPiP) {
-      console.log("[PLAYER] Autoplay deferred (PiP active)");
-      return;
-    }
     if (currentIdx < 0 || currentIdx + 1 >= epList.length) {
       if (epList.length === 0) await loadEpList();
       if (currentIdx < 0 || currentIdx + 1 >= epList.length)
@@ -1203,11 +1233,8 @@ function setupAutoplay(epId: string): void {
     const inPiP =
       document.pictureInPictureElement === video ||
       video.webkitPresentationMode === "picture-in-picture";
-    if (inPiP) {
-      pendingPiPAutoNext = true;
-    } else {
-      tryAutoplayNext("ended event").catch(onErr);
-    }
+    pendingPiPAutoNext = inPiP;
+    tryAutoplayNext(inPiP ? "ended event (PiP)" : "ended event").catch(onErr);
   }, { signal });
 
   video.addEventListener("timeupdate", () => {
