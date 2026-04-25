@@ -1214,7 +1214,7 @@ class Player {
     this._sendQualityOptions(
       this.videoReps.map((r) => ({
         id: r.repId,
-        label: `${r.height}p (${Math.round(r.bandwidth / 1000)}kbps)`,
+        label: `${r.height}p (~${Math.round(r.bandwidth / 1000)}kbps)`,
       })),
       this.activeVideoRepId,
     );
