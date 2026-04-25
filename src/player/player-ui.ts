@@ -708,9 +708,10 @@ function setupShareButton(): void {
 
 function buildCurrentMpvCommand(): string | null {
   const p = new URLSearchParams(location.hash.slice(1));
-  const mpdUrl = p.get("mpd");
+  const player = (window as Window & { _currentPlayer?: { _mpdUrl?: string; _keyHex?: string } | null })._currentPlayer;
+  const mpdUrl = p.get("mpd") || player?._mpdUrl || null;
   if (!mpdUrl) return null;
-  const keyHex = p.get("key");
+  const keyHex = p.get("key") || player?._keyHex || "";
   return keyHex
     ? `mpv "ytdl://${mpdUrl}" --ytdl-raw-options=allow-unplayable-formats= --demuxer-lavf-o=decryption_key=${keyHex}`
     : `mpv "ytdl://${mpdUrl}"`;
@@ -718,7 +719,8 @@ function buildCurrentMpvCommand(): string | null {
 
 function setupMpvButton(): void {
   const btn = document.getElementById("btn-mpv") as HTMLButtonElement | null;
-  if (!btn) return;
+  if (!btn || btn.dataset["bound"] === "yes") return;
+  btn.dataset["bound"] = "yes";
   btn.addEventListener("click", async () => {
     const cmd = buildCurrentMpvCommand();
     if (!cmd) {
@@ -727,10 +729,15 @@ function setupMpvButton(): void {
     }
     try {
       await navigator.clipboard.writeText(cmd);
-      const prev = btn.textContent;
-      btn.textContent = "복사됨";
+      btn.classList.add("copied");
+      const prevTitle = btn.title;
+      const prevLabel = btn.getAttribute("aria-label");
+      btn.title = "복사됨";
+      btn.setAttribute("aria-label", "복사됨");
       setTimeout(() => {
-        btn.textContent = prev;
+        btn.classList.remove("copied");
+        btn.title = prevTitle;
+        if (prevLabel) btn.setAttribute("aria-label", prevLabel);
       }, 1500);
     } catch (_e) {
       alert("클립보드 복사에 실패했습니다.");
