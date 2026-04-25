@@ -1218,6 +1218,7 @@ function buildCommentEl(
   el.className = isReply ? "reply" : "comment";
   el.dataset["cid"] = String(c.id);
   const isSpoiler = !!c.is_spoiler;
+  const canExtAct = isExtEnabled() && isExtLoggedIn();
   const avatarHtml = c.profile?.image && !manualCommentThumbs
     ? `<img class="comment-avatar" src="${esc(rewriteCDN(c.profile.image))}" alt="" loading="lazy">`
     : `<div class="comment-avatar"></div>`;
@@ -1225,16 +1226,18 @@ function buildCommentEl(
     ? `<span class="comment-date" data-ts="${esc(c.created)}">${fmtTs(c.created)}</span>`
     : "";
   const likesHtml =
-    `<button class="comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}" aria-pressed="${c.is_click_like ? "true" : "false"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`;
+    canExtAct
+      ? `<button class="comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}" aria-pressed="${c.is_click_like ? "true" : "false"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`
+      : ((c.count_like ?? 0) > 0 ? `<span class="comment-likes">♥ ${(c.count_like ?? 0).toLocaleString()}</span>` : "");
   const repliesHtml =
-    !isReply
+    (!isReply && canExtAct)
       ? `<button class="comment-replies-btn">답글 ${(c.count_reply_comment ?? 0).toLocaleString()}개</button>`
       : "";
 
   const copyBtnHtml = `<button class="link-copy-btn comment-copy-btn" title="링크 복사" aria-label="댓글 링크 복사">🔗</button>`;
   const myName = getMyName();
   const isMine = !!myName && c.profile?.name === myName;
-  const myActionsHtml = isMine
+  const myActionsHtml = (canExtAct && isMine)
     ? `<button class="ext-action-btn" data-action="edit-comment">수정</button><button class="ext-action-btn ext-action-del" data-action="del-comment">삭제</button>`
     : "";
 

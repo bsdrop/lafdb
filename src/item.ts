@@ -708,9 +708,10 @@ async function loadReviews(reset = false): Promise<void> {
 				? `<img class="review-avatar" src="${esc(rewriteCdnUrl(r.profile.image))}" alt="" loading="lazy">`
 				: `<div class="review-avatar"></div>`;
 
+			const canExtAct = isExtEnabled() && isExtLoggedIn();
 			const myName = getMyName();
 			const isMine = !!myName && r.profile?.name === myName;
-			const myActionsHtml = (isMine && r.id)
+			const myActionsHtml = (canExtAct && isMine && r.id)
 				? `<button class="ext-action-btn" data-action="edit-review">수정</button><button class="ext-action-btn ext-action-del" data-action="del-review">삭제</button>`
 				: "";
 
@@ -722,7 +723,7 @@ async function loadReviews(reset = false): Promise<void> {
 </div>
 ${hasContent ? buildReviewBodyHtml(r.content, isSpoiler) : ""}
 <div class="review-footer">
-	${r.id ? `<button class="ext-action-btn review-like-btn${liked ? " active" : ""}" data-liked="${liked ? "yes" : "no"}">♥ ${(r.count_like ?? 0).toLocaleString()}</button>` : `${r.count_like > 0 ? `<span class="review-likes">♥ ${r.count_like}</span>` : ""}`}
+	${(canExtAct && r.id) ? `<button class="ext-action-btn review-like-btn${liked ? " active" : ""}" data-liked="${liked ? "yes" : "no"}">♥ ${(r.count_like ?? 0).toLocaleString()}</button>` : `${r.count_like > 0 ? `<span class="review-likes">♥ ${r.count_like}</span>` : ""}`}
 	${r.created ? `<span class="review-date" data-ts="${esc(r.created)}">${date}</span>` : ""}
 	${r.id ? `<button class="link-copy-btn review-copy-btn" title="링크 복사" aria-label="리뷰 링크 복사">🔗</button>` : ""}
 	${myActionsHtml}
