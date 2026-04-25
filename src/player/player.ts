@@ -722,7 +722,6 @@ class Player {
   _startStallWatchdog(): void {
     this._clearStallWatchdog();
     this._stallCheckCount = 0;
-    this._nudgeCount = 0;
     this._stallSnapshotTime = null;
     this._stallSnapshotBuf = null;
     this._scheduleStallCheck();
@@ -849,6 +848,16 @@ class Player {
         if (this._isFirefox) this._emitCompatibilityWarning("stall");
         this._reinitMediaSource(safeResume).catch((e) =>
           console.error("[PLAYER] watchdog reinit failed:", e),
+        );
+        return;
+      } else if (audioIsBuffering) {
+        console.warn(
+          `[PLAYER] audio stall (video buffer ok, audioAhead=${audioAhead.toFixed(2)}), reinitializing from ${safeResume.toFixed(2)}s`,
+        );
+        if (this._isFirefox) this._emitCompatibilityWarning("stall");
+        this._nudgeCount = 0;
+        this._reinitMediaSource(safeResume).catch((e) =>
+          console.error("[PLAYER] audio-stall reinit failed:", e),
         );
         return;
       } else {
