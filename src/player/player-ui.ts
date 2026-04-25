@@ -717,8 +717,26 @@ function buildCurrentMpvCommand(): string | null {
     : `mpv "ytdl://${mpdUrl}"`;
 }
 
+let _mpvToastTimer: ReturnType<typeof setTimeout> | null = null;
+function showMpvCopyToast(message: string): void {
+  const host = document.getElementById("ep-info");
+  if (!host) return;
+  let toast = document.getElementById("mpv-copy-toast") as HTMLDivElement | null;
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "mpv-copy-toast";
+    toast.className = "ep-copy-toast";
+    host.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add("show");
+  if (_mpvToastTimer) clearTimeout(_mpvToastTimer);
+  _mpvToastTimer = setTimeout(() => {
+    toast?.classList.remove("show");
+  }, 1500);
+}
+
 async function handleMpvCopy(): Promise<void> {
-  const btn = document.getElementById("btn-mpv") as HTMLButtonElement | null;
   const cmd = buildCurrentMpvCommand();
   if (!cmd) {
     alert("현재 재생 정보가 없어 mpv 명령을 만들 수 없습니다.");
@@ -726,18 +744,7 @@ async function handleMpvCopy(): Promise<void> {
   }
   try {
     await navigator.clipboard.writeText(cmd);
-    if (btn) {
-      btn.classList.add("copied");
-      const prevTitle = btn.title;
-      const prevLabel = btn.getAttribute("aria-label");
-      btn.title = "복사됨";
-      btn.setAttribute("aria-label", "복사됨");
-      setTimeout(() => {
-        btn.classList.remove("copied");
-        btn.title = prevTitle;
-        if (prevLabel) btn.setAttribute("aria-label", prevLabel);
-      }, 1500);
-    }
+    showMpvCopyToast("명령이 복사되었습니다");
   } catch (_e) {
     alert("클립보드 복사에 실패했습니다.");
   }

@@ -255,6 +255,9 @@
 				flex: 1;
 				min-width: 0;
 			}
+			#ep-info {
+				position: relative;
+			}
 			.ep-icon-btn {
 				background: none;
 				border: none;
@@ -268,8 +271,27 @@
 			.ep-icon-btn:hover {
 				color: var(--text);
 			}
-			.ep-icon-btn.copied {
-				color: var(--accent);
+			.ep-copy-toast {
+				position: absolute;
+				top: calc(100% + 6px);
+				right: 0;
+				background: rgba(15, 15, 15, 0.96);
+				color: #e5e7eb;
+				border: 1px solid #333;
+				border-radius: 8px;
+				padding: 6px 10px;
+				font-size: 11px;
+				line-height: 1.2;
+				white-space: nowrap;
+				box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+				opacity: 0;
+				transform: translateY(-4px);
+				pointer-events: none;
+				transition: opacity 0.16s ease, transform 0.16s ease;
+			}
+			.ep-copy-toast.show {
+				opacity: 1;
+				transform: translateY(0);
 			}
 
 			#controls {
