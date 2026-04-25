@@ -1219,7 +1219,7 @@ function buildCommentEl(
   el.dataset["cid"] = String(c.id);
   const isSpoiler = !!c.is_spoiler;
   const avatarHtml = c.profile?.image && !manualCommentThumbs
-    ? `<img class="comment-avatar" src="${esc(c.profile.image)}" alt="" loading="lazy">`
+    ? `<img class="comment-avatar" src="${esc(rewriteCDN(c.profile.image))}" alt="" loading="lazy">`
     : `<div class="comment-avatar"></div>`;
   const dateHtml = c.created
     ? `<span class="comment-date" data-ts="${esc(c.created)}">${fmtTs(c.created)}</span>`
