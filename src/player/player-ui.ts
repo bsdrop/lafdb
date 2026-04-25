@@ -789,36 +789,10 @@ function togglePlayerFullscreen(): void {
   }
 }
 
-let pendingBoxFullscreenFromVideo = false;
-let suppressVideoFullscreenSwap = false;
-
 function syncPlayerFullscreenClass(): void {
   const box = document.getElementById("video-box");
-  const video = document.getElementById("v") as HTMLVideoElement | null;
   if (!box) return;
-  const active = document.fullscreenElement;
-  box.classList.toggle("is-box-fullscreen", active === box);
-
-  if (active === video && !suppressVideoFullscreenSwap) {
-    pendingBoxFullscreenFromVideo = true;
-    suppressVideoFullscreenSwap = true;
-    document.exitFullscreen?.().catch(() => {
-      pendingBoxFullscreenFromVideo = false;
-      suppressVideoFullscreenSwap = false;
-    });
-    return;
-  }
-
-  if (!active && pendingBoxFullscreenFromVideo) {
-    pendingBoxFullscreenFromVideo = false;
-    requestAnimationFrame(() => {
-      box.requestFullscreen?.().catch(() => {});
-      suppressVideoFullscreenSwap = false;
-    });
-    return;
-  }
-
-  if (!active) suppressVideoFullscreenSwap = false;
+  box.classList.toggle("is-box-fullscreen", document.fullscreenElement === box);
 }
 
 document.addEventListener("fullscreenchange", syncPlayerFullscreenClass);
