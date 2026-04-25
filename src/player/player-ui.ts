@@ -566,6 +566,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === " ") {
     const v = document.getElementById("v") as HTMLVideoElement | null;
     if (!v) return;
+    if (e.target === v || document.activeElement === v) return;
     e.preventDefault();
     if (v.paused) v.play().catch(() => {});
     else v.pause();
