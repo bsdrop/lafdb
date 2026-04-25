@@ -163,15 +163,17 @@
 				flex-shrink: 1;
 				min-height: 0;
 				display: flex;
+				align-items: center;
 				justify-content: center;
 			}
 
 			#v {
-				width: auto;
+				width: 100%;
 				height: auto;
 				max-width: 100%;
 				display: block;
 				object-fit: contain;
+				background: #000;
 			}
 			@media (min-width: 660px) {
 				#v {
@@ -189,12 +191,6 @@
 				#video-box {
 					border-radius: 12px 12px 0 0;
 				}
-			}
-			#v {
-				width: 100%;
-				height: 100%;
-				display: block;
-				object-fit: contain;
 			}
 
 			.skip-btn {
@@ -223,16 +219,18 @@
 			#video-box:fullscreen,
 			#video-box:-webkit-full-screen {
 				width: 100vw;
-				height: 100vh;
+				height: 100dvh;
 				align-items: center;
+				justify-content: center;
 				border-radius: 0;
 			}
 			#video-box:fullscreen #v,
 			#video-box:-webkit-full-screen #v {
-				width: auto;
-				height: 100%;
+				width: 100vw;
+				height: 100dvh;
 				max-width: 100vw;
-				max-height: 100vh;
+				max-height: 100dvh;
+				object-fit: contain;
 			}
 			#v:fullscreen,
 			#v:-webkit-full-screen {
