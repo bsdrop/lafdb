@@ -560,16 +560,32 @@ function showSpeedToast(prev: number, next: number): void {
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+const FALLBACK_FRAME_SECONDS = 1 / 24;
+
 document.addEventListener("keydown", (e) => {
   if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const v = document.getElementById("v") as HTMLVideoElement | null;
   if (e.key === " ") {
-    const v = document.getElementById("v") as HTMLVideoElement | null;
     if (!v) return;
     if (e.target === v || document.activeElement === v) return;
     e.preventDefault();
     if (v.paused) v.play().catch(() => {});
     else v.pause();
+    return;
+  }
+  if ((e.key === "," || e.key === ".") && v) {
+    e.preventDefault();
+    const frame = FALLBACK_FRAME_SECONDS;
+    const dir = e.key === "." ? 1 : -1;
+    const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
+    const next = Math.max(0, Math.min(dur, v.currentTime + dir * frame));
+    v.currentTime = next;
+    return;
+  }
+  if ((e.key === "s") && v) {
+    e.preventDefault();
+    void saveCurrentFramePng(v);
     return;
   }
   if (e.key === "f" || e.key === "F") {
@@ -735,6 +751,61 @@ function showMpvCopyToast(message: string): void {
   _mpvToastTimer = setTimeout(() => {
     toast?.classList.remove("show");
   }, 1500);
+}
+
+function formatCaptureTimestamp(seconds: number): string {
+  const totalMs = Math.max(0, Math.floor(seconds * 1000));
+  const h = Math.floor(totalMs / 3600000);
+  const m = Math.floor((totalMs % 3600000) / 60000);
+  const s = Math.floor((totalMs % 60000) / 1000);
+  const ms = totalMs % 1000;
+  return `${String(h).padStart(2, "0")}-${String(m).padStart(2, "0")}-${String(s).padStart(2, "0")}-${String(ms).padStart(3, "0")}`;
+}
+
+async function saveCurrentFramePng(video: HTMLVideoElement): Promise<void> {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (!width || !height) {
+    alert("아직 프레임을 캡처할 수 없습니다.");
+    return;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    alert("캡처용 캔버스를 만들 수 없습니다.");
+    return;
+  }
+
+  try {
+    ctx.drawImage(video, 0, 0, width, height);
+  } catch (_e) {
+    alert("현재 브라우저에서는 이 프레임을 캡처할 수 없습니다.");
+    return;
+  }
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) {
+    alert("PNG 생성에 실패했습니다.");
+    return;
+  }
+
+  const baseTitle = (_currentEpTitle || epId || "capture")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .trim()
+    .replace(/\s+/g, "_");
+  const filename = `${baseTitle || "capture"}_${formatCaptureTimestamp(video.currentTime)}.png`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showMpvCopyToast("PNG가 저장되었습니다");
 }
 
 async function handleMpvCopy(): Promise<void> {
