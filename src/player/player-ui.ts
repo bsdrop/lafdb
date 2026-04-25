@@ -507,6 +507,7 @@ async function initUIForEpisode(id: string): Promise<void> {
   setupMediaSession();
   loadComments(id);
   setupShareButton();
+  setupMpvButton();
 }
 
 window.addEventListener("hashchange", () => {
@@ -703,6 +704,38 @@ function setupShareButton(): void {
         getTime: () => video.currentTime,
       });
     });
+}
+
+function buildCurrentMpvCommand(): string | null {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const mpdUrl = p.get("mpd");
+  if (!mpdUrl) return null;
+  const keyHex = p.get("key");
+  return keyHex
+    ? `mpv "ytdl://${mpdUrl}" --ytdl-raw-options=allow-unplayable-formats= --demuxer-lavf-o=decryption_key=${keyHex}`
+    : `mpv "ytdl://${mpdUrl}"`;
+}
+
+function setupMpvButton(): void {
+  const btn = document.getElementById("btn-mpv") as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const cmd = buildCurrentMpvCommand();
+    if (!cmd) {
+      alert("현재 재생 정보가 없어 mpv 명령을 만들 수 없습니다.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(cmd);
+      const prev = btn.textContent;
+      btn.textContent = "복사됨";
+      setTimeout(() => {
+        btn.textContent = prev;
+      }, 1500);
+    } catch (_e) {
+      alert("클립보드 복사에 실패했습니다.");
+    }
+  });
 }
 
 // ── Markers ───────────────────────────────────────────────────────────────────
