@@ -687,7 +687,7 @@ ${hasContent ? `<p class="review-body">${esc(r.content).replaceAll('\n','<br>')}
 					});
 					el.querySelector("[data-action='del-review']")?.addEventListener("click", async () => {
 						if (!confirm("리뷰를 삭제할까요?")) return;
-						const res = await extSend({ type: "api", method: "DELETE", path: `/reviews/v2/${rid}/`, statusOnly: true });
+						const res = await extSend({ type: "api", method: "DELETE", path: `/reviews/v1/${rid}/`, statusOnly: true });
 						if (res?.ok || res?.status === 204) {
 							el.remove();
 						} else {
@@ -850,7 +850,9 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
 	const form = document.createElement("div");
 	form.className = "ext-edit-form";
 	form.innerHTML = `
-<select class="ext-score-sel">${buildScoreOptions(curScore || 5.0)}</select>
+<div class="ext-form-row">
+	<select class="ext-score-sel">${buildScoreOptions(curScore || 5.0)}</select>
+</div>
 <textarea class="ext-textarea" rows="3" placeholder="리뷰 내용...">${esc(curContent)}</textarea>
 <div class="ext-form-row">
 	<button class="ext-action-btn" data-action="save">저장</button>
@@ -869,14 +871,15 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
 	form.querySelector("[data-action='save']")?.addEventListener("click", async () => {
 		const score = parseFloat((form.querySelector(".ext-score-sel") as HTMLSelectElement).value);
 		const content = (form.querySelector(".ext-textarea") as HTMLTextAreaElement).value.trim();
+		const isSpoiler = (form.querySelector(".ext-spoiler-chk") as HTMLInputElement | null)?.checked ?? false;
 		const btn = form.querySelector("[data-action='save']") as HTMLButtonElement;
 		const errEl = form.querySelector(".ext-err") as HTMLElement;
 		btn.disabled = true;
 		errEl.textContent = "";
 		const res = await extSend({
 			type: "api", method: "PATCH",
-			path: `/reviews/v2/${rid}/`,
-			body: JSON.stringify({ content, score }),
+			path: `/reviews/v1/${rid}/`,
+			body: JSON.stringify({ score, content, is_spoiler: isSpoiler }),
 		});
 		if (res?.ok) {
 			form.remove();
@@ -931,8 +934,8 @@ function initExtReviews(): void {
 
 			const res = await extSend({
 				type: "api", method: "POST",
-				path: "/reviews/v2/",
-				body: JSON.stringify({ item_id: Number(itemId), content, score }),
+				path: "/reviews/v1/list/",
+				body: JSON.stringify({ item: Number(itemId), content, score, is_spoiler: false }),
 			});
 
 			if (res?.ok) {

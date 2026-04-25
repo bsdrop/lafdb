@@ -17,13 +17,13 @@ export function getMyName(): string | null { return _myName; }
 export function isExtLoggedIn(): boolean { return _loggedIn; }
 export function isExtInitDone(): boolean { return _initDone; }
 
-export function extSend(msg: Record<string, unknown>): Promise<any> {
+export function extSend(msg: Record<string, unknown>, timeoutMs = 30000): Promise<any> {
   return new Promise((resolve, reject) => {
     const rid = crypto.randomUUID();
     const tid = setTimeout(() => {
       window.removeEventListener("message", h);
       reject(new Error("extension timeout"));
-    }, 8000);
+    }, timeoutMs);
     const h = (e: MessageEvent) => {
       if (e.source !== window || (e.data as any)?.ns !== "lafdb-ext-res" || (e.data as any)?.rid !== rid) return;
       clearTimeout(tid);

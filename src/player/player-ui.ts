@@ -1635,7 +1635,7 @@ function openCommentEdit(el: HTMLElement, cid: string, curContent: string, curSp
     const res = await extSend({
       type: "api", method: "PATCH",
       path: `/comments/v1/${cid}/`,
-      body: JSON.stringify({ content, is_spoiler }),
+      body: JSON.stringify({ content, is_spoiler: is_spoiler }),
     });
     if (res?.ok) {
       form.remove();
@@ -1678,8 +1678,8 @@ function setupExtCommentForm(currentEpId: string): void {
       btn.disabled = true; errEl.textContent = "";
       const res = await extSend({
         type: "api", method: "POST",
-        path: "/comments/v1/",
-        body: JSON.stringify({ episode_id: Number(extCommentFormEpId), content, is_spoiler }),
+        path: "/comments/v1/list/",
+        body: JSON.stringify({ episode: Number(extCommentFormEpId), content, is_spoiler }),
       });
       if (res?.ok) {
         (document.getElementById("ext-comment-content") as HTMLTextAreaElement).value = "";

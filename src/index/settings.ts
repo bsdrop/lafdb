@@ -264,7 +264,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	async function testExtConnection(): Promise<void> {
 		setExtStatus("확장 프로그램에 연결 중...", "#888");
 		try {
-			const status = await extSend({ type: "status" });
+			const status = await extSend({ type: "status" }, 1000);
 			if (status?.loggedIn) {
 				setExtStatus("✓ 연결됨 — 로그인 상태", "#4ade80");
 			} else if (status !== undefined && status !== null) {
