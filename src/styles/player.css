@@ -186,6 +186,13 @@
 				#main-layout.viewport-scroll #v {
 					max-height: none;
 				}
+				#video-box:fullscreen #v,
+				#video-box:-webkit-full-screen #v,
+				#v:fullscreen,
+				#v:-webkit-full-screen {
+					max-height: none !important;
+					height: 100dvh !important;
+				}
 			}
 			@media (min-width: 600px) {
 				#video-box {
