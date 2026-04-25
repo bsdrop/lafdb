@@ -583,12 +583,11 @@ document.addEventListener("keydown", (e) => {
     v.currentTime = next;
     return;
   }
-  if ((e.key === "s") && v) {
+  if (e.key.toLowerCase() === "s" && !e.shiftKey && v) {
     e.preventDefault();
-    void saveCurrentFramePng(v);
-    return;
+    return void saveCurrentFramePng(v);
   }
-  if (e.key === "f" || e.key === "F") {
+  if (e.key.toLowerCase() === "f" && !e.shiftKey && v) {
     if (document.fullscreenElement) {
       document.exitFullscreen?.();
     } else {

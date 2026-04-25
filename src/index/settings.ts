@@ -345,6 +345,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const qualAdvPanel = document.getElementById("quality-adv-panel") as HTMLElement;
 	const qualBpsInput = document.getElementById("qual-bps-input") as HTMLInputElement;
 	const qualPrefSub = document.getElementById("quality-pref-sub") as HTMLElement;
+	const playerAdvRow = document.getElementById("player-adv-row") as HTMLElement | null;
 	const playerAdvBtn = document.getElementById("btn-player-adv") as HTMLButtonElement | null;
 	const playerAdvPanel = document.getElementById("player-adv-panel") as HTMLElement | null;
 	const endingSkipWindowInput = document.getElementById("input-ending-skip-window") as HTMLInputElement | null;
@@ -358,6 +359,42 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const MIN_BUFFER_SECONDS = 18;
 	const MAX_BUFFER_SECONDS = 300;
 	const MAX_BUFFER_PRUNE_DELAY = 60;
+
+	function isManagedMediaSourceEnvironment(): boolean {
+		return typeof (window as typeof window & { ManagedMediaSource?: unknown }).ManagedMediaSource !== "undefined";
+	}
+
+	function isSafariLikeAppleDevice(): boolean {
+		const ua = navigator.userAgent || "";
+		const vendor = navigator.vendor || "";
+		const platform = navigator.platform || "";
+		const touchPoints = navigator.maxTouchPoints || 0;
+		const isiPhoneOrIPad =
+			/\b(iPhone|iPad|iPod)\b/i.test(ua) ||
+			(platform === "MacIntel" && touchPoints > 1);
+		const isSafari =
+			/Apple/i.test(vendor) &&
+			/Safari/i.test(ua) &&
+			!/Chrome|CriOS|EdgiOS|Edg|FxiOS|Firefox|OPiOS|OPT|SamsungBrowser/i.test(ua);
+		return isiPhoneOrIPad || isSafari;
+	}
+
+	function shouldHideBufferSettings(): boolean {
+		return isManagedMediaSourceEnvironment() || isSafariLikeAppleDevice();
+	}
+
+	function applyBufferSettingsVisibility() {
+		if (!shouldHideBufferSettings()) return;
+		if (playerAdvPanel) {
+			playerAdvPanel.style.display = "none";
+		}
+		if (playerAdvBtn) {
+			playerAdvBtn.setAttribute("aria-expanded", "false");
+		}
+		if (playerAdvRow) {
+			playerAdvRow.style.display = "none";
+		}
+	}
 
 	function getBpsPref(): number {
 		return parseInt(localStorage.getItem("quality_pref_bps") || "0", 10);
@@ -457,6 +494,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	}
 
 	function syncSettingsUI() {
+		applyBufferSettingsVisibility();
 		if (laftelExtToggle) laftelExtToggle.checked = localStorage.getItem("laftel_ext_enabled") === "yes";
 		if (tmToggle) tmToggle.checked = localStorage.getItem("telemetry_consent") === "yes";
 		if (cvToggle) cvToggle.checked = localStorage.getItem("cv_auto") !== "no";
