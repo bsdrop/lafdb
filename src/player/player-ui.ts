@@ -745,6 +745,8 @@ function setupMpvButton(): void {
   });
 }
 
+setupMpvButton();
+
 // ── Markers ───────────────────────────────────────────────────────────────────
 interface MarkerData {
   opening?: { start: number; end: number };
