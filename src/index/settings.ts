@@ -251,6 +251,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	}
 
 	const laftelExtToggle = document.getElementById("toggle-laftel-ext") as HTMLInputElement | null;
+	const laftelExtDownloadLink = document.getElementById("link-laftel-ext-download") as HTMLAnchorElement | null;
 	const extStatusRow = document.getElementById("ext-status-row") as HTMLElement | null;
 	const extStatusText = document.getElementById("ext-status-text") as HTMLElement | null;
 
@@ -297,6 +298,11 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 			localStorage.removeItem("laftel_ext_enabled");
 			setExtStatus("", "");
 		}
+	});
+
+	laftelExtDownloadLink?.addEventListener("click", (e) => {
+		e.preventDefault();
+		alert("아직은 다운로드하실 수 없습니다");
 	});
 
 	const tmToggle = document.getElementById("toggle-telemetry") as HTMLInputElement | null;
