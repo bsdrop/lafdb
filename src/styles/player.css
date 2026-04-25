@@ -741,10 +741,21 @@
 				font-size: 12px;
 				color: #aaa;
 			}
+			.comment-like-btn {
+				font: inherit;
+				font-size: 12px;
+				color: #888;
+				background: none;
+				border: none;
+				padding: 0;
+				cursor: pointer;
+				line-height: 1;
+			}
+			.comment-like-btn:hover {
+				color: #aaa;
+			}
 			.comment-like-btn.active {
-				background: rgba(229, 255, 0, 0.08);
-				border-color: rgba(229, 255, 0, 0.35);
-				color: var(--accent);
+				color: #816bff;
 			}
 			.comment-date {
 				font-size: 11px;
@@ -1152,7 +1163,29 @@
 	padding: 8px 10px 4px;
 	border-bottom: 1px solid #1e1e1e;
 }
-#ext-comment-form .ext-textarea {
+.ext-comment-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.ext-inventory-inline {
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+}
+.ext-comment-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+}
+.ext-toolbar-sep {
+	color: #555;
+	font-size: 11px;
+}
+.ext-textarea {
 	display: block;
 	width: 100%;
 	background: #0e0e0e;
@@ -1166,7 +1199,7 @@
 	outline: none;
 	margin-bottom: 6px;
 }
-#ext-comment-form .ext-textarea:focus { border-color: #6e58ff; }
+.ext-textarea:focus { border-color: #6e58ff; }
 .ext-action-btn {
 	background: #1a1a1a;
 	border: 1px solid #333;
@@ -1205,6 +1238,9 @@
 	margin-bottom: 4px;
 }
 .ext-err { font-size: 11px; color: #f87171; }
+#ext-comment-err {
+	flex-basis: 100%;
+}
 .ext-edit-form {
 	padding: 6px 8px;
 	background: #0e0e0e;

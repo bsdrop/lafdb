@@ -84,7 +84,7 @@ async function fetchCommentListRoute<T>(url: string): Promise<T> {
       const mergedResults = sortMergedComments(Array.from(merged.values()), sorting);
       return {
         ...(publicRes.data ?? {}),
-        count: (publicRes.data?.count ?? 0) + (mineRes.data?.count ?? 0),
+        count: Math.max(publicRes.data?.count ?? 0, mineRes.data?.count ?? 0, mergedResults.length),
         results: mergedResults,
       } as T;
     }
@@ -94,6 +94,15 @@ async function fetchCommentListRoute<T>(url: string): Promise<T> {
     return res.data as T;
   }
   return apiFetch<T>(url);
+}
+
+async function fetchCommentCountRoute(epId: string): Promise<number | null> {
+  const url = `/api/comments/v1/count?episode_id=${encodeURIComponent(epId)}`;
+  await ensureExtStatus();
+  if (!(isExtEnabled() && isExtLoggedIn() && getExtRoute() === "direct")) return null;
+  const res = await extSend({ type: "api", method: "GET", path: apiPathToExtPath(url) });
+  if (!res?.ok) throw new Error(res?.error ?? `HTTP ${res?.status ?? "extension"}`);
+  return typeof res.data?.comment_count === "number" ? res.data.comment_count : null;
 }
 
 function buildInventoryGuideHtml(label = "라프텔 댓글함"): string {
@@ -1216,7 +1225,7 @@ function buildCommentEl(
     ? `<span class="comment-date" data-ts="${esc(c.created)}">${fmtTs(c.created)}</span>`
     : "";
   const likesHtml =
-    `<button class="ext-action-btn comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`;
+    `<button class="comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}" aria-pressed="${c.is_click_like ? "true" : "false"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`;
   const repliesHtml =
     !isReply
       ? `<button class="comment-replies-btn">답글 ${(c.count_reply_comment ?? 0).toLocaleString()}개</button>`
@@ -1237,7 +1246,7 @@ function buildCommentEl(
 
   if (isMine) {
     el.querySelector("[data-action='edit-comment']")?.addEventListener("click", () => {
-      openCommentEdit(el, String(c.id), c.content ?? "", !!c.is_spoiler);
+      openCommentEdit(el, c);
     });
     el.querySelector("[data-action='del-comment']")?.addEventListener("click", async () => {
       if (!confirm("댓글을 삭제할까요?")) return;
@@ -1267,6 +1276,7 @@ function buildCommentEl(
         c.count_like = Math.max(0, (c.count_like ?? 0) + (nextLiked ? 1 : -1));
         likeBtn.dataset["liked"] = nextLiked ? "yes" : "no";
         likeBtn.classList.toggle("active", nextLiked);
+        likeBtn.setAttribute("aria-pressed", nextLiked ? "true" : "false");
         likeBtn.textContent = `♥ ${(c.count_like ?? 0).toLocaleString()}`;
       }
       likeBtn.disabled = false;
@@ -1422,7 +1432,7 @@ function buildCommentEl(
           `/api/comments/v1/list?parent_comment_id=${c.id}&sorting=oldest&offset=${rOffset}&limit=${REPLY_PAGE}`,
         );
         const replies = data.results ?? [];
-        rTotal = data.count ?? replies.length;
+        rTotal = c.count_reply_comment ?? data.count ?? replies.length;
         repliesContainer
           .querySelector(".reply-load-more")
           ?.remove();
@@ -1592,6 +1602,14 @@ async function loadComments(epId: string): Promise<void> {
     deepLinked = false,
     cHighlighted = false;
 
+  void fetchCommentCountRoute(epId).then((count) => {
+    if (loadToken !== activeCommentsLoadToken || count == null) return;
+    total = count;
+    toggle.textContent = `댓글 ${count.toLocaleString()}개`;
+  }).catch((e) => {
+    console.debug("comment count fetch ignored:", e);
+  });
+
   sortBar.querySelectorAll(".csort-btn").forEach((b) => {
     const isActive = (b as HTMLElement).dataset["sorting"] === sorting;
     b.classList.toggle("active", isActive);
@@ -1694,7 +1712,11 @@ async function loadComments(epId: string): Promise<void> {
       );
       if (loadToken !== activeCommentsLoadToken) return;
       const items = data.results ?? [];
-      total = data.count ?? items.length;
+      if (!(isExtEnabled() && isExtLoggedIn() && getExtRoute() === "direct")) {
+        total = data.count ?? items.length;
+      } else if (!Number.isFinite(total)) {
+        total = data.count ?? items.length;
+      }
       toggle.textContent = `댓글 ${total.toLocaleString()}개`;
       if (offset === 0 && items.length === 0) {
         list.innerHTML =
@@ -1778,13 +1800,13 @@ function esc(s: string): string {
 }
 
 // ── Extension: comment write/edit ─────────────────────────────────────────────
-function openCommentEdit(el: HTMLElement, cid: string, curContent: string, curSpoiler: boolean): void {
+function openCommentEdit(el: HTMLElement, comment: CommentData): void {
   const form = document.createElement("div");
   form.className = "ext-edit-form";
   form.innerHTML = `
-<textarea class="ext-textarea" rows="3">${esc(curContent)}</textarea>
+<textarea class="ext-textarea" rows="3">${esc(comment.content ?? "")}</textarea>
 <div class="ext-form-row">
-  <label class="ext-spoiler-label"><input type="checkbox" class="ext-spoiler-chk"${curSpoiler ? " checked" : ""}> 스포일러</label>
+  <label class="ext-spoiler-label"><input type="checkbox" class="ext-spoiler-chk"${comment.is_spoiler ? " checked" : ""}> 스포일러</label>
   <button class="ext-action-btn" data-action="save">저장</button>
   <button class="ext-action-btn" data-action="cancel">취소</button>
   <span class="ext-err"></span>
@@ -1806,12 +1828,14 @@ function openCommentEdit(el: HTMLElement, cid: string, curContent: string, curSp
     btn.disabled = true; errEl.textContent = "";
     const res = await extSend({
       type: "api", method: "PATCH",
-      path: `/comments/v1/${cid}/`,
+      path: `/comments/v1/${comment.id}/`,
       body: JSON.stringify({ content, is_spoiler: is_spoiler }),
     });
     if (res?.ok) {
       form.remove();
       el.style.display = "";
+      comment.content = content;
+      comment.is_spoiler = is_spoiler;
       const textEl = el.querySelector(".comment-text");
       if (textEl) textEl.innerHTML = buildCommentTextHtml(content, is_spoiler).replace(/^<div[^>]*>|<\/div>$/g, "");
       showInventoryGuideAfter(el, "반영이 늦으면 라프텔 댓글함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
@@ -1833,12 +1857,15 @@ function setupExtCommentForm(currentEpId: string): void {
     wrap.innerHTML = `
 <div id="ext-comment-form">
   <textarea id="ext-comment-content" class="ext-textarea" rows="2" placeholder="댓글 작성 (라프텔 연동)..."></textarea>
-  <div class="ext-form-row">
-    <label class="ext-spoiler-label"><input type="checkbox" id="ext-comment-spoiler"> 스포일러</label>
-    <button class="ext-action-btn" id="ext-comment-submit">등록</button>
+  <div class="ext-comment-toolbar">
+    <div class="ext-inventory-inline">${buildInventoryGuideHtml()}</div>
+    <div class="ext-comment-actions">
+      <label class="ext-spoiler-label"><input type="checkbox" id="ext-comment-spoiler"> 스포일러</label>
+      <span class="ext-toolbar-sep">|</span>
+      <button class="ext-action-btn" id="ext-comment-submit">등록</button>
+    </div>
     <span class="ext-err" id="ext-comment-err"></span>
   </div>
-  <div class="ext-form-row">${buildInventoryGuideHtml()}</div>
 </div>`;
     const list = document.getElementById("comments-list");
     list?.before(wrap);
