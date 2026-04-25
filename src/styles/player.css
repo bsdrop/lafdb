@@ -176,10 +176,6 @@
 				background: #000;
 			}
 			@media (min-width: 660px) {
-				#v {
-					/* Scale video based on viewport height, maintaining its own aspect ratio */
-					max-height: calc(100dvh - 160px);
-				}
 				#main-layout.comments-below #v {
 					max-height: none;
 				}
