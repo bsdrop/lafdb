@@ -561,8 +561,6 @@ function showSpeedToast(prev: number, next: number): void {
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
-const FALLBACK_FRAME_SECONDS = 1 / 24;
-
 document.addEventListener("keydown", (e) => {
   if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -577,7 +575,7 @@ document.addEventListener("keydown", (e) => {
   }
   if ((e.key === "," || e.key === ".") && v) {
     e.preventDefault();
-    const frame = FALLBACK_FRAME_SECONDS;
+    const frame = 1 / 24; // FUCK
     const dir = e.key === "." ? 1 : -1;
     const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
     const next = Math.max(0, Math.min(dur, v.currentTime + dir * frame));
