@@ -2,7 +2,7 @@ import { escapeHtml } from "./shared/text";
 import { formatDateTimeKo, formatRelativeTimeKo, formatRuntimeKo } from "./shared/time";
 import { rewriteCdnUrl } from "./shared/cdn";
 import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
-import { initExt, extSend, getMyName } from "./shared/ext";
+import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "./shared/ext";
 
 if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
 function getRouteParams() {
@@ -174,6 +174,34 @@ function skelRevs(n = 3): void {
 		{ length: n },
 		() => '<div class="review skel"></div>',
 	).join("");
+}
+
+const EXT_INVENTORY_RATING_URL = "https://laftel.net/inventory?category=rating";
+
+function apiPathToExtPath(url: string): string {
+	return url.startsWith("/api/") ? url.slice(4) : url;
+}
+
+async function fetchReviewListRoute<T>(url: string): Promise<T> {
+	await ensureExtStatus();
+	if (isExtEnabled() && isExtLoggedIn() && getExtRoute() === "direct") {
+		const res = await extSend({ type: "api", method: "GET", path: apiPathToExtPath(url) });
+		if (!res?.ok) throw new Error(res?.error ?? `HTTP ${res?.status ?? "extension"}`);
+		return res.data as T;
+	}
+	return apiFetch<T>(url);
+}
+
+function buildInventoryGuideHtml(label = "라프텔 평점함"): string {
+	return ` <a class="ext-action-btn" href="${EXT_INVENTORY_RATING_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+}
+
+function showInventoryGuideAfter(el: HTMLElement, text: string): void {
+	el.nextElementSibling?.classList.contains("ext-inventory-guide") && el.nextElementSibling.remove();
+	const guide = document.createElement("div");
+	guide.className = "ext-inventory-guide";
+	guide.innerHTML = `${esc(text)}${buildInventoryGuideHtml("수정/삭제하러 가기")}`;
+	el.after(guide);
 }
 
 function resetItemView(): void {
@@ -623,7 +651,7 @@ async function loadReviews(reset = false): Promise<void> {
 	if (revOffset === 0) skelRevs();
 
 	try {
-		const data = await apiFetch<any>(
+		const data = await fetchReviewListRoute<any>(
 			`/api/reviews/v2/list?item_id=${itemId}&offset=${revOffset}&limit=${REV_PAGE}&sorting=${revSorting}`,
 		);
 		const items = data.results ?? [];
@@ -889,6 +917,7 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
 			if (body) body.innerHTML = esc(content).replaceAll("\n", "<br>");
 			const scoreEl = el.querySelector(".review-score");
 			if (scoreEl) scoreEl.textContent = `★ ${score.toFixed(1)}`;
+			showInventoryGuideAfter(el, "반영이 늦으면 라프텔 평점함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
 		} else {
 			errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
 			btn.disabled = false;
@@ -919,6 +948,7 @@ function initExtReviews(): void {
 		<button class="ext-action-btn" id="ext-rev-submit">등록</button>
 		<span class="ext-err" id="ext-rev-err"></span>
 	</div>
+	<div class="ext-form-row">${buildInventoryGuideHtml()}</div>
 </div>`;
 
 		const sortBar = document.getElementById("rev-sort");
@@ -941,7 +971,7 @@ function initExtReviews(): void {
 			if (res?.ok) {
 				btn.disabled = false;
 				(document.getElementById("ext-rev-content") as HTMLTextAreaElement).value = "";
-				errEl.textContent = "등록되었습니다. 새로고침 시 반영됩니다.";
+				errEl.innerHTML = `등록되었습니다. 반영이 늦으면 평점함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
 				loadReviews(true);
 			} else {
 				errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");

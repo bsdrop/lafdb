@@ -1,6 +1,6 @@
 import { WatchHistory, updateEpisodeHistoryMeta } from "../watch-history";
 import { rewriteCdnUrl } from "../shared/cdn";
-import { initExt, extSend, getMyName } from "../shared/ext";
+import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "../shared/ext";
 
 declare global {
   interface Window {
@@ -22,6 +22,34 @@ function rewriteCDN(url: string): string {
   return rewriteCdnUrl(url);
 }
 window.rewriteCDN = rewriteCDN;
+
+const EXT_INVENTORY_RATING_URL = "https://laftel.net/inventory?category=rating";
+
+function apiPathToExtPath(url: string): string {
+  return url.startsWith("/api/") ? url.slice(4) : url;
+}
+
+async function fetchCommentListRoute<T>(url: string): Promise<T> {
+  await ensureExtStatus();
+  if (isExtEnabled() && isExtLoggedIn() && getExtRoute() === "direct") {
+    const res = await extSend({ type: "api", method: "GET", path: apiPathToExtPath(url) });
+    if (!res?.ok) throw new Error(res?.error ?? `HTTP ${res?.status ?? "extension"}`);
+    return res.data as T;
+  }
+  return apiFetch<T>(url);
+}
+
+function buildInventoryGuideHtml(label = "라프텔 평점함"): string {
+  return ` <a class="ext-action-btn" href="${EXT_INVENTORY_RATING_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+}
+
+function showInventoryGuideAfter(el: HTMLElement, text: string): void {
+  el.nextElementSibling?.classList.contains("ext-inventory-guide") && el.nextElementSibling.remove();
+  const guide = document.createElement("div");
+  guide.className = "ext-inventory-guide";
+  guide.innerHTML = `${esc(text)}${buildInventoryGuideHtml("수정/삭제하러 가기")}`;
+  el.after(guide);
+}
 
 // ── Share sheet ──────────────────────────────────────────────────────────────
 const ShareSheet = (() => {
@@ -1250,7 +1278,7 @@ function buildCommentEl(
             }
           } catch (e) { console.debug("Ignored error:", e); }
         }
-        const data = await apiFetch<{ results?: CommentData[]; count?: number }>(
+        const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number }>(
           `/api/comments/v1/list?parent_comment_id=${c.id}&sorting=oldest&offset=${rOffset}&limit=${REPLY_PAGE}`,
         );
         const replies = data.results ?? [];
@@ -1517,7 +1545,7 @@ async function loadComments(epId: string): Promise<void> {
     }
 
     try {
-      const data = await apiFetch<{ results?: CommentData[]; count?: number }>(
+      const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number }>(
         `/api/comments/v1/list?episode_id=${epId}&offset=${offset}&limit=${PAGE}&sorting=${sorting}`,
       );
       if (loadToken !== activeCommentsLoadToken) return;
@@ -1642,6 +1670,7 @@ function openCommentEdit(el: HTMLElement, cid: string, curContent: string, curSp
       el.style.display = "";
       const textEl = el.querySelector(".comment-text");
       if (textEl) textEl.innerHTML = buildCommentTextHtml(content, is_spoiler).replace(/^<div[^>]*>|<\/div>$/g, "");
+      showInventoryGuideAfter(el, "반영이 늦으면 라프텔 평점함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
     } else {
       errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
       btn.disabled = false;
@@ -1665,6 +1694,7 @@ function setupExtCommentForm(currentEpId: string): void {
     <button class="ext-action-btn" id="ext-comment-submit">등록</button>
     <span class="ext-err" id="ext-comment-err"></span>
   </div>
+  <div class="ext-form-row">${buildInventoryGuideHtml()}</div>
 </div>`;
     const list = document.getElementById("comments-list");
     list?.before(wrap);
@@ -1683,7 +1713,7 @@ function setupExtCommentForm(currentEpId: string): void {
       });
       if (res?.ok) {
         (document.getElementById("ext-comment-content") as HTMLTextAreaElement).value = "";
-        errEl.textContent = "등록되었습니다. 새로고침 시 반영됩니다.";
+        errEl.innerHTML = `등록되었습니다. 반영이 늦으면 평점함에서 확인할 수 있습니다.${buildInventoryGuideHtml("바로 열기")}`;
         btn.disabled = false;
       } else {
         errEl.textContent = "실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
