@@ -14,7 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-const dataDir = "./laftel"
+var dataDir = "./laftel"
 
 type ogInfo struct {
 	Title        string
@@ -388,7 +388,7 @@ func (a *App) handleSitemap(c fiber.Ctx) error {
 	a.mu.RUnlock()
 
 	// XML-encode the base URL so a crafted Host header cannot inject XML.
-	baseURL := escapeHTML(proto+"://"+host)
+	baseURL := escapeHTML(proto + "://" + host)
 
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
@@ -585,12 +585,9 @@ func selectEpisodeThumbnailAtTime(thumbnailPath, runningTime string, seconds flo
 		return thumbnailPath
 	}
 	frameDigits := thumbnailPath[start:dot]
-	frameCount, err := maxThumbnailFrameCount(thumbnailPath)
-	if err != nil || frameCount <= 0 {
-		frameCount, err = strconv.Atoi(frameDigits)
-		if err != nil || frameCount <= 0 {
-			return thumbnailPath
-		}
+	frameRange, err := detectThumbnailFrameRange(thumbnailPath)
+	if err != nil {
+		return thumbnailPath
 	}
 	totalSeconds, ok := parseEpisodeRunningTimeSeconds(runningTime)
 	if !ok || totalSeconds <= 0 {
@@ -599,13 +596,18 @@ func selectEpisodeThumbnailAtTime(thumbnailPath, runningTime string, seconds flo
 	if seconds > totalSeconds {
 		seconds = totalSeconds
 	}
-	frameIndex := int(seconds*float64(frameCount)/totalSeconds) + 1
-	if frameIndex < 1 {
-		frameIndex = 1
+	frameSpan := frameRange.End - frameRange.Start + 1
+	if frameSpan <= 0 {
+		return thumbnailPath
 	}
-	if frameIndex > frameCount {
-		frameIndex = frameCount
+	frameOffset := int(seconds * float64(frameSpan) / totalSeconds)
+	if frameOffset < 0 {
+		frameOffset = 0
 	}
+	if frameOffset >= frameSpan {
+		frameOffset = frameSpan - 1
+	}
+	frameIndex := frameRange.Start + frameOffset
 	replacement := strconv.Itoa(frameIndex)
 	if len(replacement) < len(frameDigits) {
 		replacement = strings.Repeat("0", len(frameDigits)-len(replacement)) + replacement
@@ -635,16 +637,21 @@ func parseEpisodeRunningTimeSeconds(s string) (float64, bool) {
 
 var thumbnailFilePattern = regexp.MustCompile(`^Thumbnail\.(\d+)\.jpg$`)
 
-func maxThumbnailFrameCount(thumbnailPath string) (int, error) {
+type thumbnailFrameRange struct {
+	Start int
+	End   int
+}
+
+func detectThumbnailFrameRange(thumbnailPath string) (thumbnailFrameRange, error) {
 	u, err := url.Parse(thumbnailPath)
 	if err != nil {
-		return 0, err
+		return thumbnailFrameRange{}, err
 	}
 	localPath := filepath.Join(dataDir, "thumbnail", filepath.FromSlash(strings.TrimPrefix(u.Path, "/")))
 	dir := filepath.Dir(localPath)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, err
+		return thumbnailFrameRange{}, err
 	}
 	frames := make([]int, 0, len(entries))
 	for _, entry := range entries {
@@ -656,20 +663,24 @@ func maxThumbnailFrameCount(thumbnailPath string) (int, error) {
 			continue
 		}
 		frame, convErr := strconv.Atoi(matches[1])
-		if convErr == nil && frame > 0 {
+		if convErr == nil && frame >= 0 {
 			frames = append(frames, frame)
 		}
 	}
 	if len(frames) == 0 {
-		return 0, fmt.Errorf("thumbnail frames not found")
+		return thumbnailFrameRange{}, fmt.Errorf("thumbnail frames not found")
 	}
 	sort.Ints(frames)
-	return lastContinuousThumbnailFrame(frames), nil
+	frameRange, ok := detectContinuousThumbnailFrameRange(frames)
+	if !ok {
+		return thumbnailFrameRange{}, fmt.Errorf("continuous thumbnail frame range not found")
+	}
+	return frameRange, nil
 }
 
-func lastContinuousThumbnailFrame(frames []int) int {
+func detectContinuousThumbnailFrameRange(frames []int) (thumbnailFrameRange, bool) {
 	if len(frames) == 0 {
-		return 0
+		return thumbnailFrameRange{}, false
 	}
 	bestStart, bestEnd := frames[0], frames[0]
 	runStart, runEnd := frames[0], frames[0]
@@ -690,22 +701,31 @@ func lastContinuousThumbnailFrame(frames []int) int {
 	if shouldPreferThumbnailRun(runStart, runEnd, bestStart, bestEnd) {
 		bestStart, bestEnd = runStart, runEnd
 	}
-	return bestEnd
+	if bestStart != 0 && bestStart != 1 {
+		return thumbnailFrameRange{}, false
+	}
+	return thumbnailFrameRange{Start: bestStart, End: bestEnd}, true
 }
 
 func shouldPreferThumbnailRun(start, end, bestStart, bestEnd int) bool {
 	if bestEnd < bestStart {
 		return true
 	}
-	runStartsAtOne := start == 1
-	bestStartsAtOne := bestStart == 1
-	if runStartsAtOne != bestStartsAtOne {
-		return runStartsAtOne
+	runStartsNormally := start == 0 || start == 1
+	bestStartsNormally := bestStart == 0 || bestStart == 1
+	if runStartsNormally != bestStartsNormally {
+		return runStartsNormally
 	}
-	runLen := end - start
-	bestLen := bestEnd - bestStart
+	if !runStartsNormally {
+		return false
+	}
+	runLen := end - start + 1
+	bestLen := bestEnd - bestStart + 1
 	if runLen != bestLen {
 		return runLen > bestLen
+	}
+	if start != bestStart {
+		return start < bestStart
 	}
 	return end > bestEnd
 }
