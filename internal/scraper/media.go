@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
-	regexp "regexp"
 	"strconv"
 	"strings"
 
@@ -13,7 +12,6 @@ import (
 )
 
 var baseThumb = "https://thumbnail.laftel.net"
-var thumbnailSequencePattern = regexp.MustCompile(`^Thumbnail\.(\d+)\.jpg$`)
 
 func thumbURL(u string) string {
 	if strings.HasPrefix(u, "/thumbnail/") {
@@ -64,13 +62,11 @@ func (s *Scraper) downloadThumbnailSequence(realURL string) (string, bool) {
 	if err != nil {
 		return "err", true
 	}
-	baseName := path.Base(u.Path)
-	matches := thumbnailSequencePattern.FindStringSubmatch(baseName)
-	if matches == nil {
+	_, width, ok := parseThumbnailFrameName(path.Base(u.Path))
+	if !ok {
 		return "", false
 	}
 
-	width := len(matches[1])
 	sequenceStatus := "skip"
 	for frame := 0; ; frame++ {
 		frameName := fmt.Sprintf("Thumbnail.%0*d.jpg", width, frame)
@@ -114,4 +110,25 @@ func mergeDownloadStatus(current, next string) string {
 		return current
 	}
 	return next
+}
+
+func parseThumbnailFrameName(name string) (frame int, width int, ok bool) {
+	const prefix = "Thumbnail."
+	const suffix = ".jpg"
+	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+		return 0, 0, false
+	}
+	digits := name[len(prefix) : len(name)-len(suffix)]
+	if digits == "" {
+		return 0, 0, false
+	}
+	value := 0
+	for i := 0; i < len(digits); i++ {
+		ch := digits[i]
+		if ch < '0' || ch > '9' {
+			return 0, 0, false
+		}
+		value = value*10 + int(ch-'0')
+	}
+	return value, len(digits), true
 }

@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	regexp "regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -635,8 +634,6 @@ func parseEpisodeRunningTimeSeconds(s string) (float64, bool) {
 	return float64(hours*3600+minutes*60) + seconds, true
 }
 
-var thumbnailFilePattern = regexp.MustCompile(`^Thumbnail\.(\d+)\.jpg$`)
-
 type thumbnailFrameRange struct {
 	Start int
 	End   int
@@ -658,14 +655,11 @@ func detectThumbnailFrameRange(thumbnailPath string) (thumbnailFrameRange, error
 		if entry.IsDir() {
 			continue
 		}
-		matches := thumbnailFilePattern.FindStringSubmatch(entry.Name())
-		if matches == nil {
+		frame, _, ok := parseThumbnailFrameName(entry.Name())
+		if !ok {
 			continue
 		}
-		frame, convErr := strconv.Atoi(matches[1])
-		if convErr == nil && frame >= 0 {
-			frames = append(frames, frame)
-		}
+		frames = append(frames, frame)
 	}
 	if len(frames) == 0 {
 		return thumbnailFrameRange{}, fmt.Errorf("thumbnail frames not found")
@@ -728,4 +722,25 @@ func shouldPreferThumbnailRun(start, end, bestStart, bestEnd int) bool {
 		return start < bestStart
 	}
 	return end > bestEnd
+}
+
+func parseThumbnailFrameName(name string) (frame int, width int, ok bool) {
+	const prefix = "Thumbnail."
+	const suffix = ".jpg"
+	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+		return 0, 0, false
+	}
+	digits := name[len(prefix) : len(name)-len(suffix)]
+	if digits == "" {
+		return 0, 0, false
+	}
+	value := 0
+	for i := 0; i < len(digits); i++ {
+		ch := digits[i]
+		if ch < '0' || ch > '9' {
+			return 0, 0, false
+		}
+		value = value*10 + int(ch-'0')
+	}
+	return value, len(digits), true
 }
