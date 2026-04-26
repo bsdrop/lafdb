@@ -52,7 +52,13 @@ func (m *MemSource) EpisodeItemID(epID int64) (int64, bool) {
 }
 func (m *MemSource) GetReviewCount(id int64) ([]byte, bool) {
 	v, ok := m.d.ReviewCountByItemID[id]
-	return v, ok
+	if ok {
+		return v, true
+	}
+	if raw, ok := m.d.ReviewListByItemID[id]; ok {
+		return DeriveReviewCountJSON(raw)
+	}
+	return nil, false
 }
 func (m *MemSource) GetReviewList(id int64) ([]byte, bool) {
 	v, ok := m.d.ReviewListByItemID[id]

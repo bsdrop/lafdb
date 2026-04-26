@@ -107,7 +107,7 @@ func NewDiskSourceWithOptions(dataDir string, opts DiskSourceOptions) (*DiskSour
 	return ds, nil
 }
 
-// BuildIndexFromDisk reads items, review counts and statistics from disk to
+// BuildIndexFromDisk reads items, review lists and statistics from disk to
 // build the search index. The temporary byte maps are GC'd after Build returns.
 func BuildIndexFromDisk(dataDir string) (*searchpkg.Index, error) {
 	items := make(map[int64][]byte, 8192)
@@ -131,7 +131,7 @@ func BuildIndexFromDisk(dataDir string) (*searchpkg.Index, error) {
 		return nil
 	})
 
-	_ = filepath.WalkDir(filepath.Join(dataDir, "reviews/v1/count"), func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(filepath.Join(dataDir, "reviews/v2/list"), func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || filepath.Ext(path) != ".json" {
 			return nil
 		}
@@ -143,7 +143,9 @@ func BuildIndexFromDisk(dataDir string) (*searchpkg.Index, error) {
 		if err != nil {
 			return nil
 		}
-		reviewCounts[id] = b
+		if countJSON, ok := DeriveReviewCountJSON(b); ok {
+			reviewCounts[id] = countJSON
+		}
 		return nil
 	})
 
@@ -188,7 +190,11 @@ func (d *DiskSource) EpisodeItemID(epID int64) (int64, bool) {
 	return v, ok
 }
 func (d *DiskSource) GetReviewCount(id int64) ([]byte, bool) {
-	return d.readJSONID("reviews/v1/count", id)
+	raw, ok := d.readJSONID("reviews/v2/list", id)
+	if !ok {
+		return nil, false
+	}
+	return DeriveReviewCountJSON(raw)
 }
 func (d *DiskSource) GetReviewList(id int64) ([]byte, bool) {
 	return d.readJSONID("reviews/v2/list", id)

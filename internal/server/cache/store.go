@@ -35,7 +35,7 @@ type Store struct {
 	EndingItemIDs   map[int64]struct{} // items where is_ending == true
 	PlayableItemIDs map[int64]struct{} // items with at least one episode that has a DRM key
 
-	// review counts: laftel/reviews/v1/count/{item_id}.json
+	// review counts: derived from laftel/reviews/v2/list/{item_id}.json
 	ReviewCountByItemID map[int64][]byte
 
 	// raw JSON blobs
@@ -90,20 +90,75 @@ func (s *Store) SaveToFile(path string) error {
 	// v6 skips ReviewShareByReviewID and CommentShareByCommentID — they are
 	// rebuilt from the raw list maps by initNilMaps() on load.
 	type step struct {
-		fn  func() error
+		fn func() error
 	}
 	steps := []step{
-		{func() error { e := encode("EpisodesListByItemID", s.EpisodesListByItemID); s.EpisodesListByItemID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("EpisodeByEpisodeID", s.EpisodeByEpisodeID); s.EpisodeByEpisodeID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("ItemByItemID", s.ItemByItemID); s.ItemByItemID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("SeriesBySeriesID", s.SeriesBySeriesID); s.SeriesBySeriesID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("EpisodeToItemID", s.EpisodeToItemID); s.EpisodeToItemID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("ReviewCountByItemID", s.ReviewCountByItemID); s.ReviewCountByItemID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("ReviewListByItemID", s.ReviewListByItemID); s.ReviewListByItemID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("StatisticsByItemID", s.StatisticsByItemID); s.StatisticsByItemID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("CommentListByEpisodeID", s.CommentListByEpisodeID); s.CommentListByEpisodeID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("CommentRepliesByParentID", s.CommentRepliesByParentID); s.CommentRepliesByParentID = nil; runtime.GC(); return e }},
-		{func() error { e := encode("DRMKeyByEpisodeID", s.DRMKeyByEpisodeID); s.DRMKeyByEpisodeID = nil; runtime.GC(); return e }},
+		{func() error {
+			e := encode("EpisodesListByItemID", s.EpisodesListByItemID)
+			s.EpisodesListByItemID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("EpisodeByEpisodeID", s.EpisodeByEpisodeID)
+			s.EpisodeByEpisodeID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("ItemByItemID", s.ItemByItemID)
+			s.ItemByItemID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("SeriesBySeriesID", s.SeriesBySeriesID)
+			s.SeriesBySeriesID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("EpisodeToItemID", s.EpisodeToItemID)
+			s.EpisodeToItemID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("ReviewCountByItemID", s.ReviewCountByItemID)
+			s.ReviewCountByItemID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("ReviewListByItemID", s.ReviewListByItemID)
+			s.ReviewListByItemID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("StatisticsByItemID", s.StatisticsByItemID)
+			s.StatisticsByItemID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("CommentListByEpisodeID", s.CommentListByEpisodeID)
+			s.CommentListByEpisodeID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("CommentRepliesByParentID", s.CommentRepliesByParentID)
+			s.CommentRepliesByParentID = nil
+			runtime.GC()
+			return e
+		}},
+		{func() error {
+			e := encode("DRMKeyByEpisodeID", s.DRMKeyByEpisodeID)
+			s.DRMKeyByEpisodeID = nil
+			runtime.GC()
+			return e
+		}},
 	}
 	for _, st := range steps {
 		if err := st.fn(); err != nil {
@@ -240,6 +295,7 @@ func (s *Store) initNilMaps() {
 	if len(s.CommentShareByCommentID) == 0 && (len(s.CommentListByEpisodeID) > 0 || len(s.CommentRepliesByParentID) > 0) {
 		s.buildCommentShareIndex()
 	}
+	s.buildReviewCountIndex()
 	if len(s.ReviewShareByReviewID) == 0 && len(s.ReviewListByItemID) > 0 {
 		s.buildReviewShareIndex()
 	}
@@ -377,25 +433,7 @@ func NewStore() (*Store, error) {
 	}
 	log.Printf("episodes/v3/list done: %d files", len(s.EpisodesListByItemID))
 
-	// 5) review counts
-	log.Printf("loading reviews/v1/count ...")
-	if err := WalkJSONDirProgress("reviews/v1/count", "./laftel/reviews/v1/count", func(path string) error {
-		id, err := FileIDFromPath(path)
-		if err != nil {
-			return err
-		}
-		b, _, err := loadAndNormalizeJSON(path)
-		if err != nil {
-			return err
-		}
-		s.ReviewCountByItemID[id] = b
-		return nil
-	}); err != nil {
-		log.Printf("warning: reviews/v1/count load failed (skipping): %v", err)
-	}
-	log.Printf("reviews/v1/count done: %d files", len(s.ReviewCountByItemID))
-
-	// 6) review lists
+	// 5) review lists
 	if err := WalkJSONDirProgress("reviews/v2/list", "./laftel/reviews/v2/list", func(path string) error {
 		id, err := FileIDFromPath(path)
 		if err != nil {
@@ -411,8 +449,10 @@ func NewStore() (*Store, error) {
 		log.Printf("warning: reviews/v2/list load failed (skipping): %v", err)
 	}
 	log.Printf("reviews/v2/list done: %d files", len(s.ReviewListByItemID))
+	s.buildReviewCountIndex()
+	log.Printf("derived: review counts ready (%d items)", len(s.ReviewCountByItemID))
 
-	// 7) statistics (laftel/items/v1/{id}/statistics.json)
+	// 6) statistics (laftel/items/v1/{id}/statistics.json)
 	if err := WalkFilesProgress("items/v1/statistics", "./laftel/items/v1", func(path string, d fs.DirEntry) bool {
 		return filepath.Base(path) == "statistics.json"
 	}, func(path string) error {
@@ -432,7 +472,7 @@ func NewStore() (*Store, error) {
 	}
 	log.Printf("items/v1/statistics done: %d files", len(s.StatisticsByItemID))
 
-	// 8) comment lists
+	// 7) comment lists
 	log.Printf("loading comments/v1/list ...")
 	if err := WalkJSONDirProgress("comments/v1/list", "./laftel/comments/v1/list", func(path string) error {
 		id, err := FileIDFromPath(path)
@@ -450,7 +490,7 @@ func NewStore() (*Store, error) {
 	}
 	log.Printf("comments/v1/list done: %d files", len(s.CommentListByEpisodeID))
 
-	// 9) comment replies
+	// 8) comment replies
 	log.Printf("loading comments/v1/replies ...")
 	if err := WalkJSONDirProgress("comments/v1/replies", "./laftel/comments/v1/replies", func(path string) error {
 		id, err := FileIDFromPath(path)
@@ -468,7 +508,7 @@ func NewStore() (*Store, error) {
 	}
 	log.Printf("comments/v1/replies done: %d files", len(s.CommentRepliesByParentID))
 
-	// 10) DRM keys
+	// 9) DRM keys
 	log.Printf("loading mediacloud/keys ...")
 	if err := WalkJSONDirProgress("mediacloud/keys", "./laftel/mediacloud/keys", func(path string) error {
 		id, err := FileIDFromPath(path)
@@ -509,6 +549,19 @@ func (s *Store) buildCommentShareIndex() {
 	for _, raw := range s.CommentRepliesByParentID {
 		for _, entry := range sourcepkg.ParseCommentShareEntries(raw, 0, s.EpisodeToItemID) {
 			s.CommentShareByCommentID[entry.CommentID] = entry
+		}
+	}
+}
+
+func (s *Store) buildReviewCountIndex() {
+	if s.ReviewCountByItemID == nil {
+		s.ReviewCountByItemID = make(map[int64][]byte, len(s.ReviewListByItemID))
+	} else {
+		clear(s.ReviewCountByItemID)
+	}
+	for itemID, raw := range s.ReviewListByItemID {
+		if countJSON, ok := sourcepkg.DeriveReviewCountJSON(raw); ok {
+			s.ReviewCountByItemID[itemID] = countJSON
 		}
 	}
 }

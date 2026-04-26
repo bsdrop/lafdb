@@ -210,7 +210,7 @@ func (s *Scraper) Run() error {
 	}
 	for _, d := range []string{
 		"items/v4", "episodes/v3", "episodes/v3/list",
-		"thumbnail", "reviews/v1/count", "reviews/v2/list",
+		"thumbnail", "reviews/v2/list",
 		"items/v1", "comments/v1/list", "comments/v1/replies", "comments/v1/.stamps",
 	} {
 		_ = os.MkdirAll(s.dir(d), 0750)
@@ -226,7 +226,6 @@ func (s *Scraper) Run() error {
 	}
 	if !s.flags.SkipReviews {
 		itemIDs, _ := existingIDs(s.dir("items/v4"))
-		s.runPool(itemIDs, s.fetchReviewCount, "review-count")
 		s.runPool(itemIDs, s.fetchReviews, "reviews")
 	}
 	if !s.flags.SkipStatistics {

@@ -303,13 +303,6 @@ func (s *Scraper) fetchEpisodeDetail(epID int64) string {
 	return "200"
 }
 
-func (s *Scraper) fetchReviewCount(itemID int64) string {
-	return s.fetchSimple(
-		fmt.Sprintf("%s/reviews/v1/count/?item_id=%d", baseAPI, itemID),
-		filepath.Join(s.dir("reviews/v1/count"), fmt.Sprintf("%d.json", itemID)),
-	)
-}
-
 func (s *Scraper) fetchReviews(itemID int64) string {
 	path := filepath.Join(s.dir("reviews/v2/list"), fmt.Sprintf("%d.json", itemID))
 	all := s.fetchPaginated(fmt.Sprintf(
