@@ -187,7 +187,7 @@ class Player {
   _pendingVideoRepId: string | null;
   _objectUrl: string | null;
   skipRanges: SkipRange[];
-  _stallSuppressUntil: number;
+  _resumeInProgress: boolean;
 
   static _readBufferPref(key: string, fallback: number): number {
     const raw = parseInt(localStorage.getItem(key) || String(fallback), 10);
@@ -277,7 +277,7 @@ class Player {
     this._pendingVideoRepId = null;
     this._objectUrl = null;
     this.skipRanges = [];
-    this._stallSuppressUntil = 0;
+    this._resumeInProgress = false;
   }
 
   // ── Video state getters ───────────────────────────────────────────────────
@@ -285,7 +285,9 @@ class Player {
     if (this._video) {
       const vct = this._video.currentTime;
       if (this._pendingResumeTime != null) {
-        if (vct >= 0.5) this._pendingResumeTime = null;
+        if (Math.abs(vct - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
+          this._pendingResumeTime = null;
+        }
         else return this._pendingResumeTime;
       }
       return vct;
@@ -306,7 +308,7 @@ class Player {
     if (this._video) {
       const vct = this._video.currentTime;
       if (this._pendingResumeTime != null) {
-        if (vct >= 0.5) {
+        if (Math.abs(vct - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
           this._pendingResumeTime = null;
           return vct;
         }
@@ -715,14 +717,15 @@ class Player {
   static STALL_MAX_STRIKES = 3;
   static STALL_DECODER_STRIKES = 2;
   static STALL_BUF_MIN = 0.2;
-  static NEAR_END_EPSILON = 0.1;
+  static AUTO_TIME_EPSILON = 0.075;
   static NUDGE_MAX = 2;
-  static GAP_JUMP_MAX = 0.08;
-  static SEEK_STALL_SUPPRESS_MS = 1200;
-  static REINIT_STALL_SUPPRESS_MS = 2000;
 
   _getVideoSb(): SourceBuffer | null {
     return this.tracks.find((t) => t.type === "video")?.sb ?? null;
+  }
+
+  _hasInflightSegments(): boolean {
+    return this.tracks.some((track) => track.inflight.size > 0);
   }
 
   _startStallWatchdog(): void {
@@ -749,7 +752,7 @@ class Player {
       this._scheduleStallCheck();
       return;
     }
-    if (Date.now() < this._stallSuppressUntil || this._pendingResumeTime != null) {
+    if (this._resumeInProgress || this._pendingResumeTime != null) {
       this._scheduleStallCheck();
       return;
     }
@@ -782,7 +785,7 @@ class Player {
       this._video?.duration ??
       (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
 
-    if (Number.isFinite(duration) && duration > 0 && duration - ct <= Player.NEAR_END_EPSILON) {
+    if (Number.isFinite(duration) && duration > 0 && duration - ct <= Player.AUTO_TIME_EPSILON) {
       console.warn(
         `[PLAYER] near-end stall ignored (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
       );
@@ -817,23 +820,18 @@ class Player {
     // Gap jumper: if stuck at a gap but there's buffer just a bit further ahead.
     // Confirm on two consecutive checks to avoid jumping over transient false gaps
     // (Firefox MSE sometimes briefly reports a gap right after a remove/append).
-    const now =
-      typeof performance !== "undefined" ? performance.now() : Date.now();
-    const recentlySettledSeek =
-      this._seekSettledAt !== undefined &&
-      now - this._seekSettledAt < Player.SEEK_STALL_SUPPRESS_MS;
-    if (vsb && rs === 2 && ahead < 0.1 && !recentlySettledSeek) {
+    if (vsb && rs === 2 && ahead < Player.AUTO_TIME_EPSILON) {
       let gapStart = -1;
       for (let i = 0; i < vsb.buffered.length; i++) {
         const start = vsb.buffered.start(i);
-        if (start > ct && start < ct + Player.GAP_JUMP_MAX) { gapStart = start; break; }
+        if (start > ct && start - ct <= Player.AUTO_TIME_EPSILON) { gapStart = start; break; }
       }
       if (gapStart >= 0) {
-        if (Math.abs(this._gapCandidateStart - gapStart) < 0.1) {
+        if (Math.abs(this._gapCandidateStart - gapStart) <= Player.AUTO_TIME_EPSILON) {
           console.warn(`[PLAYER] Gap detected, jumping to ${gapStart.toFixed(3)}s`);
           this._gapCandidateStart = -1;
           this._internalSeek = true;
-          this._seekTo(gapStart + 0.01);
+          this._seekTo(gapStart);
           this._emitGapJump();
         } else {
           console.log(`[PLAYER] Gap candidate ${gapStart.toFixed(3)}s, confirming next check`);
@@ -850,6 +848,14 @@ class Player {
     const strikeLimit = ahead >= Player.STALL_BUF_MIN && !audioIsBuffering
       ? Player.STALL_DECODER_STRIKES
       : Player.STALL_MAX_STRIKES;
+
+    if (ahead < Player.STALL_BUF_MIN && this._hasInflightSegments()) {
+      this._stallCheckCount = 0;
+      this._stallSnapshotTime = ct;
+      this._stallSnapshotBuf = bufEnd;
+      this._scheduleStallCheck();
+      return;
+    }
 
     const prevTime = this._stallSnapshotTime;
     const prevBuf = this._stallSnapshotBuf;
@@ -1329,7 +1335,6 @@ class Player {
     );
     this._lastReinitAt = Date.now();
     this._lastReinitTime = resumeTime;
-    this._stallSuppressUntil = Date.now() + Player.REINIT_STALL_SUPPRESS_MS;
 
     this.generation++;
     this._endOfStreamCalled = false;
@@ -1706,6 +1711,12 @@ class Player {
     const generation = this.generation;
     const mediaSource = this.ms;
     const audioTrack = this.tracks.find((t) => t.type === "audio") ?? null;
+    const finishResume = () => {
+      if (generation === this.generation && mediaSource === this.ms) {
+        this._resumeInProgress = false;
+      }
+    };
+    this._resumeInProgress = true;
 
     const duration =
       this._video?.duration ??
@@ -1725,6 +1736,7 @@ class Player {
         mediaSource !== this.ms ||
         this._destroyed
       ) {
+        finishResume();
         return;
       }
 
@@ -1749,11 +1761,15 @@ class Player {
       mediaSource !== this.ms ||
       this._destroyed
     ) {
+      finishResume();
       return;
     }
 
     const videoSb = this._getVideoSb();
-    if (!videoSb) return;
+    if (!videoSb) {
+      finishResume();
+      return;
+    }
 
     const videoEnd = this.getBufferedEnd(videoSb, requestedTime);
     const audioEnd = audioTrack
@@ -1764,9 +1780,12 @@ class Player {
     let safeSeekTime = requestedTime;
 
     // 아직 requestedTime을 완전히 커버 못했으면
-    // 공유 버퍼 안쪽으로 살짝 물러난다.
+    // 공유 버퍼 안쪽으로 아주 살짝만 물러난다.
     if (sharedEnd <= requestedTime + 0.02) {
-      safeSeekTime = Math.max(0, sharedEnd - 0.05);
+      safeSeekTime = Math.min(
+        requestedTime,
+        Math.max(0, Math.max(requestedTime - Player.AUTO_TIME_EPSILON, sharedEnd)),
+      );
       console.warn(
         `[PLAYER] resume target ${requestedTime.toFixed(3)}s not fully buffered; fallback to ${safeSeekTime.toFixed(3)}s`,
       );
@@ -1778,6 +1797,7 @@ class Player {
     this._seekTo(safeSeekTime);
 
     if (autoPlay) this._play();
+    finishResume();
   }
 
   _pruneAppended(track: Track): void {
@@ -1826,10 +1846,10 @@ class Player {
       this.tracks.every((track) => {
         const sb = this._getLiveTrackSb(track);
         if (!sb) return false;
-        const probeTime = Math.max(0, dur - 0.05);
-        return this.getBufferedEnd(sb, probeTime) >= dur - 0.01;
+        const probeTime = Math.max(0, dur - Player.AUTO_TIME_EPSILON);
+        return this.getBufferedEnd(sb, probeTime) >= dur - Player.AUTO_TIME_EPSILON;
       });
-    if (isFinite(dur) && dur > 0 && dur - ct > 0.5) {
+    if (isFinite(dur) && dur > 0 && dur - ct > Player.AUTO_TIME_EPSILON) {
       if (!(this._isFirefox && bufferedToEnd)) return;
       console.log(
         `[PLAYER] Firefox tail fully buffered at ct=${ct.toFixed(3)} / dur=${dur.toFixed(3)}, calling endOfStream() early`,
@@ -1892,17 +1912,9 @@ class Player {
   }
 
   _getDecodeRecoveryTime(time: number): number {
-    if (!this._isFirefox) return Math.max(0, time + 0.25);
-    const track = this._getVideoTrackForResume();
-    if (!track?.timeline?.length) return Math.max(0, time + 0.5);
-
-    const segNum = this.timeToSegmentNumber(track, time);
-    const nextRange = this.segmentNumberToTimeRange(track, segNum + 1);
-    if (!nextRange) return Math.max(0, time + 0.5);
-
-    const safe = Math.max(0, nextRange.start + 0.01);
+    const safe = Math.max(0, time + Player.AUTO_TIME_EPSILON);
     console.warn(
-      `[PLAYER] Firefox decode recovery ${time.toFixed(3)}s -> next segment ${safe.toFixed(3)}s`,
+      `[PLAYER] decode recovery ${time.toFixed(3)}s -> ${safe.toFixed(3)}s`,
     );
     return safe;
   }
@@ -2159,7 +2171,6 @@ class Player {
       );
       this.lastSeekTime = seekTime;
       this._pendingResumeTime = seekTime;
-      this._stallSuppressUntil = Date.now() + Player.REINIT_STALL_SUPPRESS_MS;
       if (!this._recovering && !this._reinitInProgress) {
         this._reinitMediaSource(seekTime).catch((e) =>
           console.error("[PLAYER] error-state seek reinit failed:", e),
@@ -2170,7 +2181,6 @@ class Player {
     if (this._recovering || this._reinitInProgress) {
       this.lastSeekTime = seekTime;
       this._pendingResumeTime = seekTime;
-      this._stallSuppressUntil = Date.now() + Player.REINIT_STALL_SUPPRESS_MS;
       console.log(
         `[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`,
       );
@@ -2211,7 +2221,6 @@ class Player {
     this.lastSeekTime = seekTime;
     this._ct = seekTime;
     this._pendingResumeTime = null;
-    this._stallSuppressUntil = Date.now() + Player.SEEK_STALL_SUPPRESS_MS;
     this.seekInProgress = true;
     this._clearStallWatchdog();
 
@@ -2331,7 +2340,11 @@ class Player {
 
       // Firefox 등에서 영상 끝부분 decode EOF를 에러로 올리는 경우가 있어
       // 끝 재생 구간이면 재초기화 루프 대신 정상 종료로 정리한다.
-      if (Number.isFinite(duration) && duration > 0 && ct >= duration - 3) {
+      if (
+        Number.isFinite(duration) &&
+        duration > 0 &&
+        duration - ct <= Player.AUTO_TIME_EPSILON
+      ) {
         console.warn(
           `[PLAYER] MediaError near end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
         );
