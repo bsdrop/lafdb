@@ -387,6 +387,21 @@ class Player {
       Math.abs(currentTime - this.lastSeekTime) <= 0.25;
   }
 
+  _hasExplicitTailResumeIntent(currentTime: number, duration: number): boolean {
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    if (this._wasRecentUserSeekNearTail(currentTime, duration)) return true;
+    if (this._pendingResumeTime == null) return false;
+    const remainingAtResume = duration - this._pendingResumeTime;
+    if (
+      remainingAtResume <= Player.AUTO_TIME_EPSILON ||
+      remainingAtResume > Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
+    ) {
+      return false;
+    }
+    return this._now() - this._pendingResumeSetAt < 10000 &&
+      Math.abs(currentTime - this._pendingResumeTime) <= 0.25;
+  }
+
   _emitCompatibilityWarning(
     reason: "decode" | "stall" | "anonymous-codec",
   ): void {
@@ -2425,11 +2440,11 @@ class Player {
             ? Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
             : Player.AUTO_TIME_EPSILON)
       ) {
-        const recentTailSeek =
-          this._isFirefox && this._wasRecentUserSeekNearTail(ct, duration);
-        if (recentTailSeek) {
+        const explicitTailIntent =
+          this._isFirefox && this._hasExplicitTailResumeIntent(ct, duration);
+        if (explicitTailIntent) {
           console.warn(
-            `[PLAYER] MediaError near tail after explicit seek (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), preserving playhead`,
+            `[PLAYER] MediaError near tail after explicit target (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), preserving playhead`,
           );
           this._clearStallWatchdog();
           this._stopFetchLoops("tail-seek media error");
