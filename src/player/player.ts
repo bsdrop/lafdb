@@ -2454,46 +2454,48 @@ class Player {
       const bufEnd = vsb ? this.getBufferedEnd(vsb, ct) : ct;
       const ahead = Math.max(0, bufEnd - ct);
 
-      // Firefox 등에서 영상 끝부분 decode EOF를 에러로 올리는 경우가 있어
-      // 끝 재생 구간이면 재초기화 루프 대신 정상 종료로 정리한다.
-      if (
-        Number.isFinite(duration) &&
-        duration > 0 &&
-        duration - ct <=
-          (this._isFirefox
-            ? Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
-            : Player.AUTO_TIME_EPSILON)
-      ) {
-        const explicitTailIntent =
-          this._isFirefox && this._hasExplicitTailResumeIntent(ct, duration);
-        if (explicitTailIntent) {
+      // Firefox는 tail decode EOF를 실제 종료보다 훨씬 이르게 올릴 수 있다.
+      // 따라서 "끝 3초 이내"만으로 종료 처리하지 말고, 거의 실제 끝일 때만 finalize한다.
+      if (Number.isFinite(duration) && duration > 0) {
+        const remaining = duration - ct;
+        const inFirefoxTailWindow =
+          this._isFirefox && remaining <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS;
+        const atActualEnd = remaining <= Player.AUTO_TIME_EPSILON;
+
+        if (inFirefoxTailWindow && !atActualEnd) {
+          const reason = this._hasExplicitTailResumeIntent(ct, duration)
+            ? "tail-explicit-target media error"
+            : "tail-firefox media error";
           console.warn(
-            `[PLAYER] MediaError near tail after explicit target (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), preserving playhead`,
+            `[PLAYER] Firefox tail MediaError before actual end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), preserving playhead`,
           );
           this._clearStallWatchdog();
-          this._stopFetchLoops("tail-seek media error");
+          this._stopFetchLoops(reason);
           return;
         }
-        console.warn(
-          `[PLAYER] MediaError near end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
-        );
-        this._clearStallWatchdog();
-        this._stopFetchLoops("near-end media error");
-        try {
-          if (this.ms && this.ms.readyState === "open") {
-            this.ms.endOfStream();
-          }
-        } catch (e) {
-          console.error(
-            "[PLAYER] endOfStream() during error finalize failed:",
-            (e as Error).message,
+
+        if ((!this._isFirefox && atActualEnd) || (this._isFirefox && atActualEnd)) {
+          console.warn(
+            `[PLAYER] MediaError at actual end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
           );
+          this._clearStallWatchdog();
+          this._stopFetchLoops("near-end media error");
+          try {
+            if (this.ms && this.ms.readyState === "open") {
+              this.ms.endOfStream();
+            }
+          } catch (e) {
+            console.error(
+              "[PLAYER] endOfStream() during error finalize failed:",
+              (e as Error).message,
+            );
+          }
+          if (this._video) {
+            this._internalSeek = true;
+            this._video.currentTime = Math.max(0, duration - 0.001);
+          }
+          return;
         }
-        if (this._video) {
-          this._internalSeek = true;
-          this._video.currentTime = Math.max(0, duration - 0.001);
-        }
-        return;
       }
 
       // 같은 지점에서 매우 짧은 간격으로 다시 에러가 나면 재초기화 폭주만 막고,
