@@ -1879,6 +1879,20 @@ class Player {
     const segNum = this.timeToSegmentNumber(track, time);
     const range = this.segmentNumberToTimeRange(track, segNum);
     if (!range) return time;
+    const lastSegNum = track.startNumber + track.timeline.length - 1;
+    const lastRange = this.segmentNumberToTimeRange(track, lastSegNum);
+    if (lastRange) {
+      const tailRemaining = lastRange.end - time;
+      if (tailRemaining > 0 && tailRemaining <= 3) {
+        const safe = Math.max(0, range.start + 0.01);
+        if (safe < time) {
+          console.log(
+            `[PLAYER] Firefox near-end seek normalize ${time.toFixed(3)}s -> seg ${segNum} start ${safe.toFixed(3)}s`,
+          );
+          return safe;
+        }
+      }
+    }
     const remaining = range.end - time;
     if (remaining < 0 || remaining >= 0.35) return time;
 
