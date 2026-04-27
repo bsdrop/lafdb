@@ -116,7 +116,6 @@ body {
   #player-col {
     flex: 1 1 0;
     min-width: 0;
-    align-self: flex-start;
     position: sticky;
     top: 16px;
     /* Limit height to fit in viewport in side-mode */
@@ -144,6 +143,7 @@ body {
 @media (min-width: 660px) {
   #player-core {
     /* Ensure player fits in viewport in side-mode */
+    height: 100%;
     max-height: calc(100dvh - 32px);
   }
   #main-layout.comments-below #player-core {
@@ -159,7 +159,7 @@ body {
   width: 100%;
   background: #000;
   overflow: hidden;
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   align-items: center;
