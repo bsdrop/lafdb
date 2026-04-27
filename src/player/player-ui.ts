@@ -315,8 +315,25 @@ const ShareSheet = (() => {
 // ── Options ───────────────────────────────────────────────────────────────────
 let autoSkip = localStorage.getItem("player_autoskip") === "on";
 let autoPlay = localStorage.getItem("player_autoplay") !== "off";
+const AUTO_SKIP_EPSILON_SECONDS = 0.075;
+const AUTO_SKIP_NEAR_END_GRACE_SECONDS = 5;
+const AUTO_SKIP_NEAR_END_WINDOW_SECONDS = 3;
 const btnAutoSkip = document.getElementById("btn-autoskip") as HTMLButtonElement;
 const btnAutoPlay = document.getElementById("btn-autoplay") as HTMLButtonElement;
+const autoSkipDelayInput = document.getElementById("input-autoskip-delay") as HTMLInputElement | null;
+function getAutoSkipDelaySeconds(): number {
+  const raw = parseFloat(localStorage.getItem("player_autoskip_delay") ?? "0");
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, raw);
+}
+function setAutoSkipDelaySeconds(value: number): void {
+  const next = Number.isFinite(value) ? Math.max(0, Math.round(value * 10) / 10) : 0;
+  if (next === 0) localStorage.removeItem("player_autoskip_delay");
+  else localStorage.setItem("player_autoskip_delay", String(next));
+  if (autoSkipDelayInput) {
+    autoSkipDelayInput.value = Number.isInteger(next) ? String(next) : next.toFixed(1);
+  }
+}
 function syncOptBtns(): void {
   btnAutoSkip.classList.toggle("on", autoSkip);
   btnAutoSkip.textContent = autoSkip ? "켜짐" : "꺼짐";
@@ -324,6 +341,7 @@ function syncOptBtns(): void {
   btnAutoPlay.classList.toggle("on", autoPlay);
   btnAutoPlay.textContent = autoPlay ? "켜짐" : "꺼짐";
   btnAutoPlay.setAttribute("aria-pressed", String(autoPlay));
+  if (autoSkipDelayInput) setAutoSkipDelaySeconds(getAutoSkipDelaySeconds());
 }
 syncOptBtns();
 btnAutoSkip.addEventListener("click", () => {
@@ -341,6 +359,15 @@ btnAutoPlay.addEventListener("click", () => {
     autoPlay ? "on" : "off",
   );
   syncOptBtns();
+});
+autoSkipDelayInput?.addEventListener("change", () => {
+  setAutoSkipDelaySeconds(parseFloat(autoSkipDelayInput.value));
+});
+autoSkipDelayInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") autoSkipDelayInput.blur();
+});
+autoSkipDelayInput?.addEventListener("blur", () => {
+  setAutoSkipDelaySeconds(parseFloat(autoSkipDelayInput.value));
 });
 
 // ── Speed control ─────────────────────────────────────────────────────────────
@@ -970,11 +997,61 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   }
   if (!markers) return;
 
-  // Don't seek to video.duration — causes MEDIA_ERR_DECODE on some browsers.
-  function skipTo(time: number): void {
+  let autoSkipAc: AbortController | null = null;
+  let pendingAutoSkipKey: string | null = null;
+
+  function cancelScheduledAutoSkip(): void {
+    autoSkipAc?.abort();
+    autoSkipAc = null;
+    pendingAutoSkipKey = null;
+  }
+  signal.addEventListener("abort", cancelScheduledAutoSkip, { once: true });
+
+  function normalizeSkipTarget(time: number): number {
     const dur = video.duration;
-    if (isFinite(dur) && time >= dur - 0.07) return;
-    video.currentTime = time;
+    if (isFinite(dur) && dur > 0 && time >= dur - AUTO_SKIP_EPSILON_SECONDS) {
+      return Math.max(0, dur - AUTO_SKIP_EPSILON_SECONDS);
+    }
+    return Math.max(0, time);
+  }
+
+  function skipTo(time: number): void {
+    cancelScheduledAutoSkip();
+    video.currentTime = normalizeSkipTarget(time);
+  }
+
+  function scheduleAutoSkip(
+    kind: "opening" | "ending",
+    seg: { start: number; end: number },
+    currentTime: number,
+  ): void {
+    const target = normalizeSkipTarget(seg.end);
+    if (target <= currentTime + AUTO_SKIP_EPSILON_SECONDS) return;
+
+    const dur = video.duration;
+    const nearEndEntry =
+      kind === "ending" &&
+      isFinite(dur) &&
+      dur > 0 &&
+      dur - currentTime <= AUTO_SKIP_NEAR_END_WINDOW_SECONDS;
+    const delaySeconds = nearEndEntry
+      ? AUTO_SKIP_NEAR_END_GRACE_SECONDS
+      : getAutoSkipDelaySeconds();
+    const key = `${kind}:${seg.start}:${seg.end}:${target}:${delaySeconds}`;
+    if (pendingAutoSkipKey === key) return;
+
+    cancelScheduledAutoSkip();
+    pendingAutoSkipKey = key;
+    const ac = new AbortController();
+    autoSkipAc = ac;
+    const timer = setTimeout(() => {
+      if (ac.signal.aborted) return;
+      autoSkipAc = null;
+      pendingAutoSkipKey = null;
+      const t = video.currentTime;
+      if (t >= seg.start && t < seg.end) video.currentTime = target;
+    }, delaySeconds * 1000);
+    ac.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
   }
 
   function renderTimelineMarkers(): void {
@@ -1007,26 +1084,33 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       { once: true, signal },
     );
 
+  video.addEventListener("seeking", cancelScheduledAutoSkip, { signal });
+  video.addEventListener("ended", cancelScheduledAutoSkip, { signal });
+
   video.addEventListener("timeupdate", () => {
     const t = video.currentTime;
+    let inAnySkipRange = false;
     if (markers!.opening) {
       const { start, end } = markers!.opening;
       const inSeg = t >= start && t < end;
+      inAnySkipRange ||= inSeg;
       btnOpen.classList.toggle("visible", inSeg);
-      if (inSeg && autoSkip) skipTo(end);
+      if (inSeg && autoSkip) scheduleAutoSkip("opening", markers!.opening, t);
     } else {
       btnOpen.classList.remove("visible");
     }
     if (markers!.ending) {
       const { start, end } = markers!.ending;
       const inSeg = t >= start && t < end;
+      inAnySkipRange ||= inSeg;
       const endingWindow = parseFloat(localStorage.getItem("player_ending_skip_window") ?? "10");
       const inWindow = endingWindow < 0 || (endingWindow > 0 && t - start < endingWindow);
       btnEnd.classList.toggle("visible", inSeg && inWindow);
-      if (inSeg && autoSkip) skipTo(end);
+      if (inSeg && autoSkip) scheduleAutoSkip("ending", markers!.ending, t);
     } else {
       btnEnd.classList.remove("visible");
     }
+    if (!inAnySkipRange || !autoSkip) cancelScheduledAutoSkip();
   }, { signal });
   btnOpen.onclick = () => {
     if (markers!.opening) skipTo(markers!.opening.end);
@@ -1288,11 +1372,12 @@ function setupAutoplay(epId: string): void {
     console.log(`[PLAYER] tryAutoplayNext triggered by: ${trigger}`);
     if (currentIdx < 0 || currentIdx + 1 >= epList.length) {
       if (epList.length === 0) await loadEpList();
-      if (currentIdx < 0 || currentIdx + 1 >= epList.length)
+      if (currentIdx < 0 || currentIdx + 1 >= epList.length) {
+        pendingPiPAutoNext = false;
         return;
+      }
     }
     autoplayTriggered = true;
-    pendingPiPAutoNext = false;
     const url = await buildEpUrl(
       epList[currentIdx + 1].id,
       { resetNearEndProgress: true },
@@ -1300,27 +1385,29 @@ function setupAutoplay(epId: string): void {
       console.error("buildEpUrl (autoplay):", e);
       return null;
     });
-    if (url) {
-      console.log("[PLAYER] Navigating to next episode:", url);
-      const hashIdx = url.indexOf("#");
-      if (hashIdx !== -1) {
-        const newHash = url.substring(hashIdx + 1);
-        if (location.hash !== "#" + newHash) {
-          location.hash = newHash;
-        } else {
-          // If hash is same, manually trigger route logic
-          console.log("[PLAYER] Hash identical, forcing re-route");
-          window.dispatchEvent(new HashChangeEvent("hashchange"));
-        }
+    if (!url) {
+      autoplayTriggered = false;
+      return;
+    }
+    pendingPiPAutoNext = false;
+    console.log("[PLAYER] Navigating to next episode:", url);
+    const hashIdx = url.indexOf("#");
+    if (hashIdx !== -1) {
+      const newHash = url.substring(hashIdx + 1);
+      if (location.hash !== "#" + newHash) {
+        location.hash = newHash;
       } else {
-        location.href = url;
+        // If hash is same, manually trigger route logic
+        console.log("[PLAYER] Hash identical, forcing re-route");
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
       }
+    } else {
+      location.href = url;
     }
   }
 
   const onErr = (e: unknown) => console.error("tryAutoplayNext:", e);
   video.addEventListener("ended", () => {
-    autoplayTriggered = false;
     const inPiP =
       document.pictureInPictureElement === video ||
       video.webkitPresentationMode === "picture-in-picture";

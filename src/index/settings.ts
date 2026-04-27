@@ -349,10 +349,12 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	const playerAdvBtn = document.getElementById("btn-player-adv") as HTMLButtonElement | null;
 	const playerAdvPanel = document.getElementById("player-adv-panel") as HTMLElement | null;
 	const endingSkipWindowInput = document.getElementById("input-ending-skip-window") as HTMLInputElement | null;
+	const autoSkipDelayInput = document.getElementById("input-autoskip-delay") as HTMLInputElement | null;
 	const bufferAheadInput = document.getElementById("input-buffer-ahead") as HTMLInputElement | null;
 	const bufferBehindInput = document.getElementById("input-buffer-behind") as HTMLInputElement | null;
 	const bufferPruneDelayInput = document.getElementById("input-buffer-prune-delay") as HTMLInputElement | null;
 	const DEFAULT_ENDING_SKIP_WINDOW = 10;
+	const DEFAULT_AUTOSKIP_DELAY = 0;
 	const DEFAULT_BUFFER_AHEAD = 40;
 	const DEFAULT_BUFFER_BEHIND = 25;
 	const DEFAULT_BUFFER_PRUNE_DELAY = 5;
@@ -424,6 +426,27 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (next === DEFAULT_ENDING_SKIP_WINDOW) localStorage.removeItem("player_ending_skip_window");
 		else localStorage.setItem("player_ending_skip_window", String(next));
 		updateEndingSkipWindowUI(next);
+	}
+
+	function normalizeAutoSkipDelay(value: number): number {
+		if (!Number.isFinite(value)) return DEFAULT_AUTOSKIP_DELAY;
+		return Math.max(0, Math.round(value * 10) / 10);
+	}
+
+	function getAutoSkipDelayPref(): number {
+		return normalizeAutoSkipDelay(parseFloat(localStorage.getItem("player_autoskip_delay") ?? String(DEFAULT_AUTOSKIP_DELAY)));
+	}
+
+	function updateAutoSkipDelayUI(value: number) {
+		if (!autoSkipDelayInput) return;
+		autoSkipDelayInput.value = Number.isInteger(value) ? String(value) : value.toFixed(1);
+	}
+
+	function applyAutoSkipDelay(value: number) {
+		const next = normalizeAutoSkipDelay(value);
+		if (next === DEFAULT_AUTOSKIP_DELAY) localStorage.removeItem("player_autoskip_delay");
+		else localStorage.setItem("player_autoskip_delay", String(next));
+		updateAutoSkipDelayUI(next);
 	}
 
 	function clampBufferSeconds(value: number, fallback: number): number {
@@ -504,6 +527,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (apToggle) apToggle.checked = localStorage.getItem("player_autoplay") !== "off";
 		if (asToggle) asToggle.checked = localStorage.getItem("player_autoskip") === "on";
 		updateEndingSkipWindowUI(getEndingSkipWindowPref());
+		updateAutoSkipDelayUI(getAutoSkipDelayPref());
 		if (tpToggle) tpToggle.checked = (localStorage.getItem("time_pref") || "relative") === "relative";
 		if (shareLaftelToggle) shareLaftelToggle.checked = localStorage.getItem("share_laftel_url") === "yes";
 		setQualVal(localStorage.getItem("quality_pref") || "");
@@ -640,6 +664,15 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	});
 	endingSkipWindowInput?.addEventListener("blur", () => {
 		applyEndingSkipWindow(parseFloat(endingSkipWindowInput.value));
+	});
+	autoSkipDelayInput?.addEventListener("change", () => {
+		applyAutoSkipDelay(parseFloat(autoSkipDelayInput.value));
+	});
+	autoSkipDelayInput?.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+	});
+	autoSkipDelayInput?.addEventListener("blur", () => {
+		applyAutoSkipDelay(parseFloat(autoSkipDelayInput.value));
 	});
 	tpToggle?.addEventListener("change", () => {
 		localStorage.setItem("time_pref", tpToggle.checked ? "relative" : "absolute");
