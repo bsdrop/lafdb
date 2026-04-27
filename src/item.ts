@@ -15,6 +15,9 @@ function getRouteParams() {
 }
 
 let { itemId, targetReviewId, reviewSorting } = getRouteParams();
+if (!itemId) {
+	location.replace("/");
+}
 const manualThumbs =
 	localStorage.getItem("offline_metadata_mode") === "yes" &&
 	localStorage.getItem("manual_thumbnail_load") === "yes";
@@ -282,8 +285,6 @@ function resetItemView(): void {
 // ── Item info ─────────────────────────────────────────────────────────────────
 async function loadItem(): Promise<void> {
 	if (!itemId) {
-		document.getElementById("item-name")!.textContent =
-			"항목을 찾을 수 없습니다.";
 		return;
 	}
 	skelEps();

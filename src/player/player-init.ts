@@ -385,8 +385,14 @@ async function handleRoute() {
   const tParam = params.get("t");
   const resumeTime =
     tParam !== null && Number.isFinite(parseFloat(tParam))
-      ? parseFloat(tParam)
-      : null;
+	      ? parseFloat(tParam)
+	      : null;
+
+  if (!mpdParam && !epId) {
+    console.warn("[ROUTE] missing player route info; redirecting to index");
+    location.replace("/");
+    return;
+  }
 
   if (mpdParam) {
     const mpdUrl = rewriteCDN(mpdParam);
@@ -408,7 +414,11 @@ async function handleRoute() {
         apiFetch<any>(`/api/episodes/v3/${epId}/video`),
         apiFetch<any>(`/api/episodes/v3/${epId}`),
       ]);
-        if (!info?.dash_url) return;
+        if (!info?.dash_url) {
+          console.error("[ROUTE] episode has no DASH URL; redirecting to index");
+          location.replace("/");
+          return;
+        }
         const mpdUrl = rewriteCDN(info.dash_url);
         const kid = info.keys?.[0]?.key_id ?? "";
         const key = info.keys?.[0]?.key ?? "";

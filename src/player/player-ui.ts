@@ -325,18 +325,19 @@ const AUTO_SKIP_NEAR_END_GRACE_SECONDS = 5;
 const AUTO_SKIP_NEAR_END_WINDOW_SECONDS = 3;
 const btnAutoSkip = document.getElementById("btn-autoskip") as HTMLButtonElement;
 const btnAutoPlay = document.getElementById("btn-autoplay") as HTMLButtonElement;
-const autoSkipDelayInput = document.getElementById("input-autoskip-delay") as HTMLInputElement | null;
-function getAutoSkipDelaySeconds(): number {
-  const raw = parseFloat(localStorage.getItem("player_autoskip_delay") ?? "0");
+const autoPlayDelayInput = document.getElementById("input-autoplay-delay") as HTMLInputElement | null;
+function getAutoPlayDelaySeconds(): number {
+  const raw = parseFloat(localStorage.getItem("player_autoplay_delay") ?? localStorage.getItem("player_autoskip_delay") ?? "0");
   if (!Number.isFinite(raw)) return 0;
   return Math.max(0, raw);
 }
-function setAutoSkipDelaySeconds(value: number): void {
+function setAutoPlayDelaySeconds(value: number): void {
   const next = Number.isFinite(value) ? Math.max(0, Math.round(value * 10) / 10) : 0;
-  if (next === 0) localStorage.removeItem("player_autoskip_delay");
-  else localStorage.setItem("player_autoskip_delay", String(next));
-  if (autoSkipDelayInput) {
-    autoSkipDelayInput.value = Number.isInteger(next) ? String(next) : next.toFixed(1);
+  localStorage.removeItem("player_autoskip_delay");
+  if (next === 0) localStorage.removeItem("player_autoplay_delay");
+  else localStorage.setItem("player_autoplay_delay", String(next));
+  if (autoPlayDelayInput) {
+    autoPlayDelayInput.value = Number.isInteger(next) ? String(next) : next.toFixed(1);
   }
 }
 function syncOptBtns(): void {
@@ -346,7 +347,7 @@ function syncOptBtns(): void {
   btnAutoPlay.classList.toggle("on", autoPlay);
   btnAutoPlay.textContent = autoPlay ? "켜짐" : "꺼짐";
   btnAutoPlay.setAttribute("aria-pressed", String(autoPlay));
-  if (autoSkipDelayInput) setAutoSkipDelaySeconds(getAutoSkipDelaySeconds());
+  if (autoPlayDelayInput) setAutoPlayDelaySeconds(getAutoPlayDelaySeconds());
 }
 syncOptBtns();
 btnAutoSkip.addEventListener("click", () => {
@@ -365,14 +366,14 @@ btnAutoPlay.addEventListener("click", () => {
   );
   syncOptBtns();
 });
-autoSkipDelayInput?.addEventListener("change", () => {
-  setAutoSkipDelaySeconds(parseFloat(autoSkipDelayInput.value));
+autoPlayDelayInput?.addEventListener("change", () => {
+  setAutoPlayDelaySeconds(parseFloat(autoPlayDelayInput.value));
 });
-autoSkipDelayInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") autoSkipDelayInput.blur();
+autoPlayDelayInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") autoPlayDelayInput.blur();
 });
-autoSkipDelayInput?.addEventListener("blur", () => {
-  setAutoSkipDelaySeconds(parseFloat(autoSkipDelayInput.value));
+autoPlayDelayInput?.addEventListener("blur", () => {
+  setAutoPlayDelaySeconds(parseFloat(autoPlayDelayInput.value));
 });
 
 // ── Speed control ─────────────────────────────────────────────────────────────
@@ -1044,7 +1045,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       dur - currentTime <= AUTO_SKIP_NEAR_END_WINDOW_SECONDS;
     const delaySeconds = nearEndEntry
       ? AUTO_SKIP_NEAR_END_GRACE_SECONDS
-      : getAutoSkipDelaySeconds();
+      : 0;
     const key = `${kind}:${seg.start}:${seg.end}:${target}:${delaySeconds}`;
     if (pendingAutoSkipKey === key) return;
 
@@ -1388,7 +1389,16 @@ function setupAutoplay(epId: string): void {
 
   let autoplayTriggered = false;
   let pendingPiPAutoNext = false;
+  let autoplayNextTimer: ReturnType<typeof setTimeout> | null = null;
   video._prevWebkitMode = video.webkitPresentationMode ?? "inline";
+
+  function cancelPendingAutoplayNext(): void {
+    if (autoplayNextTimer !== null) {
+      clearTimeout(autoplayNextTimer);
+      autoplayNextTimer = null;
+    }
+  }
+  signal.addEventListener("abort", cancelPendingAutoplayNext, { once: true });
 
   async function tryAutoplayNext(trigger: string): Promise<void> {
     if (!autoPlay || autoplayTriggered) return;
@@ -1413,18 +1423,38 @@ function setupAutoplay(epId: string): void {
       return;
     }
     pendingPiPAutoNext = false;
+    cancelPendingAutoplayNext();
     console.log("[PLAYER] Navigating to next episode:", url);
     navigateToBuiltUrl(url);
   }
 
   const onErr = (e: unknown) => console.error("tryAutoplayNext:", e);
+  function isNearEnd(): boolean {
+    const dur = video.duration;
+    return isFinite(dur) && dur > 0 && (video.ended || dur - video.currentTime < 2);
+  }
+  function requestAutoplayNext(trigger: string): void {
+    if (!autoPlay || autoplayTriggered || autoplayNextTimer !== null) return;
+    const delaySeconds = getAutoPlayDelaySeconds();
+    if (delaySeconds <= 0) {
+      tryAutoplayNext(trigger).catch(onErr);
+      return;
+    }
+    console.log(`[PLAYER] scheduling autoplay next in ${delaySeconds}s (${trigger})`);
+    autoplayNextTimer = setTimeout(() => {
+      autoplayNextTimer = null;
+      if (!isNearEnd()) return;
+      tryAutoplayNext(`${trigger}, delayed ${delaySeconds}s`).catch(onErr);
+    }, delaySeconds * 1000);
+  }
   video.addEventListener("ended", () => {
     const inPiP =
       document.pictureInPictureElement === video ||
       video.webkitPresentationMode === "picture-in-picture";
     pendingPiPAutoNext = inPiP;
-    tryAutoplayNext(inPiP ? "ended event (PiP)" : "ended event").catch(onErr);
+    requestAutoplayNext(inPiP ? "ended event (PiP)" : "ended event");
   }, { signal });
+  video.addEventListener("seeking", cancelPendingAutoplayNext, { signal });
 
   video.addEventListener("timeupdate", () => {
     const dur = video.duration;
@@ -1449,16 +1479,12 @@ function setupAutoplay(epId: string): void {
     if (dur - bufferedEnd > 0.2) return;
     if (bufferedEnd - ct > 0.2) return;
 
-    tryAutoplayNext("timeupdate threshold").catch(onErr);
+    requestAutoplayNext("timeupdate threshold");
   }, { signal });
 
-  function isNearEnd(): boolean {
-    const dur = video.duration;
-    return isFinite(dur) && dur > 0 && (video.ended || dur - video.currentTime < 2);
-  }
   function onLeavePiP(): void {
     if (pendingPiPAutoNext || isNearEnd())
-      tryAutoplayNext("leave PiP").catch(onErr);
+      requestAutoplayNext("leave PiP");
   }
   video.addEventListener("leavepictureinpicture", onLeavePiP, { signal });
   video.addEventListener("webkitpresentationmodechanged", () => {

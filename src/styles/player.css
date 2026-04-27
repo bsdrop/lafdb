@@ -431,12 +431,12 @@
 				position: relative;
 				flex-shrink: 0;
 			}
-			#settings-panel {
-				display: none;
-				position: absolute;
-				bottom: calc(100% + 6px);
-				right: 0;
-				width: 180px;
+				#settings-panel {
+					display: none;
+					position: absolute;
+					bottom: calc(100% + 6px);
+					right: 0;
+					width: 190px;
 				background: #161616;
 				border: 1px solid var(--border);
 				border-radius: 10px;
@@ -447,16 +447,59 @@
 			#settings-panel.open {
 				display: block;
 			}
-			.settings-row {
-				display: flex;
-				align-items: center;
+				.settings-row {
+					display: flex;
+					align-items: center;
 				justify-content: space-between;
 				padding: 8px 14px;
 				font-size: 13px;
-				color: var(--text);
-				gap: 12px;
-			}
-			.settings-row a {
+					color: var(--text);
+					gap: 12px;
+				}
+				.settings-row-stack {
+					align-items: flex-start;
+					flex-direction: column;
+					gap: 6px;
+				}
+				.settings-row-title {
+					font-size: 13px;
+					color: var(--text);
+				}
+				.settings-number-control {
+					display: inline-flex;
+					align-items: center;
+					gap: 6px;
+					height: 30px;
+					padding: 0 8px;
+					border: 1px solid #2a2a2a;
+					border-radius: 8px;
+					background: #0d0d0d;
+					color: var(--muted);
+					font-size: 12px;
+				}
+				.settings-number-control:focus-within {
+					border-color: var(--accent);
+					box-shadow: 0 0 0 2px rgba(229, 255, 0, 0.09);
+				}
+				.settings-number-control input {
+					width: 54px;
+					border: none;
+					outline: none;
+					background: transparent;
+					color: var(--text);
+					font: inherit;
+					text-align: right;
+					-moz-appearance: textfield;
+				}
+				.settings-number-control input::-webkit-outer-spin-button,
+				.settings-number-control input::-webkit-inner-spin-button {
+					-webkit-appearance: none;
+					margin: 0;
+				}
+				.settings-number-control span {
+					color: #777;
+				}
+				.settings-row a {
 				color: var(--muted);
 				text-decoration: none;
 				font-size: 13px;
