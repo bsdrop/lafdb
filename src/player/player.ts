@@ -1805,7 +1805,21 @@ class Player {
     // Wait until playback is actually near the end to avoid "End of file" decode errors
     const ct = this._currentTime;
     const dur = this.ms.duration;
-    if (isFinite(dur) && dur > 0 && dur - ct > 1.5) return;
+    const bufferedToEnd =
+      isFinite(dur) &&
+      dur > 0 &&
+      this.tracks.every((track) => {
+        const sb = this._getLiveTrackSb(track);
+        if (!sb) return false;
+        const probeTime = Math.max(0, dur - 0.05);
+        return this.getBufferedEnd(sb, probeTime) >= dur - 0.01;
+      });
+    if (isFinite(dur) && dur > 0 && dur - ct > 0.5) {
+      if (!(this._isFirefox && bufferedToEnd)) return;
+      console.log(
+        `[PLAYER] Firefox tail fully buffered at ct=${ct.toFixed(3)} / dur=${dur.toFixed(3)}, calling endOfStream() early`,
+      );
+    }
 
     this._endOfStreamCalled = true;
     try {
