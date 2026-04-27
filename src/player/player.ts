@@ -2463,14 +2463,25 @@ class Player {
         const atActualEnd = remaining <= Player.AUTO_TIME_EPSILON;
 
         if (inFirefoxTailWindow && !atActualEnd) {
-          const reason = this._hasExplicitTailResumeIntent(ct, duration)
-            ? "tail-explicit-target media error"
-            : "tail-firefox media error";
+          const explicitTailIntent = this._hasExplicitTailResumeIntent(ct, duration);
+          const backoff = explicitTailIntent ? 0.15 : 0.25;
+          const recoveryTime = Math.max(
+            0,
+            Math.min(ct, duration - Player.AUTO_TIME_EPSILON) - backoff,
+          );
           console.warn(
-            `[PLAYER] Firefox tail MediaError before actual end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), preserving playhead`,
+            `[PLAYER] Firefox tail MediaError before actual end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), reinitializing from ${recoveryTime.toFixed(3)}s`,
           );
           this._clearStallWatchdog();
-          this._stopFetchLoops(reason);
+          this._lastErrorTime = recoveryTime;
+          this._stopFetchLoops(
+            explicitTailIntent
+              ? "tail-explicit-target media error"
+              : "tail-firefox media error",
+          );
+          this._reinitMediaSource(recoveryTime).catch((e) =>
+            console.error("[PLAYER] Firefox tail recovery reinit failed:", e),
+          );
           return;
         }
 
