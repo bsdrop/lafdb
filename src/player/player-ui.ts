@@ -131,6 +131,7 @@ const ShareSheet = (() => {
   const sheet = document.getElementById("share-sheet")!;
   const timeRow = document.getElementById("share-time-row")!;
   const timeToggle = document.getElementById("share-time-toggle") as HTMLInputElement;
+  const laftelToggle = document.getElementById("share-laftel-toggle") as HTMLInputElement;
   const rowsEl = document.getElementById("share-rows")!;
 
   let _epId: string | null = null,
@@ -150,6 +151,12 @@ const ShareSheet = (() => {
     _getTime = getTime ?? null;
 
     timeToggle.checked = true;
+    laftelToggle.checked = localStorage.getItem("share_laftel_url") !== "no";
+    laftelToggle.onchange = () => {
+      if (laftelToggle.checked) localStorage.removeItem("share_laftel_url");
+      else localStorage.setItem("share_laftel_url", "no");
+      render();
+    };
     render();
     timeToggle.onchange = render;
 
@@ -166,7 +173,7 @@ const ShareSheet = (() => {
 
   function buildUrls(): Array<{ label: string; url: string; withTime?: boolean }> {
     const base = location.origin;
-    const useLaftel = localStorage.getItem("share_laftel_url") === "yes";
+    const useLaftel = localStorage.getItem("share_laftel_url") !== "no";
     const laftelBase = "https://laftel.net";
     const urls: Array<{ label: string; url: string; withTime?: boolean }> = [];
 
@@ -209,7 +216,7 @@ const ShareSheet = (() => {
   }
 
   function render(): void {
-    const useLaftel = localStorage.getItem("share_laftel_url") === "yes";
+    const useLaftel = localStorage.getItem("share_laftel_url") !== "no";
     timeRow.style.display = _epId && !useLaftel ? "" : "none";
     rowsEl.innerHTML = "";
     const urls = buildUrls();
@@ -459,6 +466,14 @@ document.addEventListener("click", () =>
   setSettingsPanelOpen(false),
 );
 settingsPanel.addEventListener("click", (e) => e.stopPropagation());
+
+// Auto-open settings on first visit (telemetry consent not yet answered)
+{
+  const consent = localStorage.getItem("telemetry_consent");
+  if (consent !== "yes" && consent !== "no") {
+    setSettingsPanelOpen(true);
+  }
+}
 
 // ── Episode info ──────────────────────────────────────────────────────────────
 const params = new URLSearchParams(location.hash.slice(1));

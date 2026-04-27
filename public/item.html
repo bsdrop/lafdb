@@ -14,8 +14,33 @@
 	</head>
 	<body>
 		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
+		<!-- ── Share sheet ── -->
+		<div id="share-overlay"></div>
+		<div id="share-sheet" aria-modal="true" role="dialog" aria-labelledby="share-title" aria-hidden="true">
+			<div id="share-handle" aria-hidden="true"></div>
+			<div id="share-title">공유</div>
+			<div class="share-toggle-row" id="share-laftel-row">
+				<span class="share-toggle-label">라프텔 공식 링크로 공유</span>
+				<label class="s-toggle" aria-label="라프텔 공식 링크로 공유">
+					<input type="checkbox" id="share-laftel-toggle" />
+					<span class="s-toggle-track"></span>
+					<span class="s-toggle-thumb"></span>
+				</label>
+			</div>
+			<div id="share-rows"></div>
+		</div>
+
 		<div id="top-actions">
 			<a id="back" href="/">← 검색</a>
+			<button id="btn-share-item" title="공유" aria-label="공유">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<circle cx="18" cy="5" r="3" />
+					<circle cx="6" cy="12" r="3" />
+					<circle cx="18" cy="19" r="3" />
+					<line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+					<line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+				</svg>
+			</button>
 		</div>
 		<div id="item-header">
 			<div id="item-thumb" class="skel"></div>

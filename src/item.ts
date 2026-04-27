@@ -16,7 +16,12 @@ function getRouteParams() {
 
 let { itemId, targetReviewId, reviewSorting } = getRouteParams();
 if (!itemId) {
-	location.replace("/");
+	const msg = document.createElement("p");
+	msg.textContent = "잘못된 접근입니다. 잠시 후 검색 페이지로 이동합니다...";
+	msg.style.cssText = "padding:40px 16px;color:#555;font-size:14px;text-align:center;";
+	document.body.appendChild(msg);
+	setTimeout(() => location.replace("/"), 1500);
+	throw new Error("No itemId in hash");
 }
 const manualThumbs =
 	localStorage.getItem("offline_metadata_mode") === "yes" &&
@@ -1053,3 +1058,108 @@ document.querySelectorAll(".tab").forEach((btn) => {
 	});
 });
 if (targetReviewId) initExtReviews();
+
+// ── Share sheet ────────────────────────────────────────────────────────────────
+(function initItemShare() {
+	const overlay = document.getElementById("share-overlay");
+	const sheet = document.getElementById("share-sheet");
+	const laftelToggle = document.getElementById("share-laftel-toggle") as HTMLInputElement | null;
+	const rowsEl = document.getElementById("share-rows");
+	const btnShare = document.getElementById("btn-share-item");
+	if (!overlay || !sheet || !rowsEl || !btnShare) return;
+	const _overlay: HTMLElement = overlay;
+	const _sheet: HTMLElement = sheet;
+	const _rowsEl: HTMLElement = rowsEl;
+
+	function buildUrl(): string {
+		const useLaftel = localStorage.getItem("share_laftel_url") !== "no";
+		if (useLaftel && itemId) return `https://laftel.net/item/${itemId}`;
+		return `${location.origin}/item.html#id=${itemId}`;
+	}
+
+	function renderRows(): void {
+		const url = buildUrl();
+		const row = document.createElement("div");
+		row.className = "share-row";
+		const left = document.createElement("div");
+		left.className = "share-row-left";
+		const label = document.createElement("span");
+		label.className = "share-row-label";
+		label.textContent = "작품 페이지 공유";
+		const urlSpan = document.createElement("span");
+		urlSpan.className = "share-row-url";
+		urlSpan.textContent = url.replace(location.origin, "");
+		left.append(label, urlSpan);
+		const btns = document.createElement("div");
+		btns.className = "share-btns";
+		if (typeof navigator.share === "function") {
+			const nativeBtn = document.createElement("button");
+			nativeBtn.className = "share-btn";
+			nativeBtn.dataset["action"] = "native";
+			nativeBtn.textContent = "공유";
+			btns.appendChild(nativeBtn);
+		}
+		const copyBtn = document.createElement("button");
+		copyBtn.className = "share-btn primary";
+		copyBtn.dataset["action"] = "copy";
+		copyBtn.textContent = "복사";
+		btns.appendChild(copyBtn);
+		row.append(left, btns);
+		_rowsEl.innerHTML = "";
+		_rowsEl.appendChild(row);
+	}
+
+	_rowsEl.addEventListener("click", async (e) => {
+		const btn = (e.target as Element).closest("[data-action]") as HTMLElement | null;
+		if (!btn) return;
+		const url = buildUrl();
+		if (btn.dataset["action"] === "copy") {
+			try { await navigator.clipboard.writeText(url); } catch {
+				const ta = document.createElement("textarea");
+				ta.value = url;
+				ta.style.cssText = "position:fixed;top:-9999px";
+				document.body.appendChild(ta);
+				ta.select();
+				try { document.execCommand("copy"); } catch { /* ignore */ }
+				ta.remove();
+			}
+			btn.textContent = "✓ 복사됨";
+			btn.classList.add("copied");
+			setTimeout(() => { btn.textContent = "복사"; btn.classList.remove("copied"); }, 2000);
+		} else if (btn.dataset["action"] === "native") {
+			try { await navigator.share({ title: document.title, url }); } catch { /* ignore */ }
+		}
+	});
+
+	function openSheet(): void {
+		if (laftelToggle) {
+			laftelToggle.checked = localStorage.getItem("share_laftel_url") !== "no";
+			laftelToggle.onchange = () => {
+				if (laftelToggle.checked) localStorage.removeItem("share_laftel_url");
+				else localStorage.setItem("share_laftel_url", "no");
+				renderRows();
+			};
+		}
+		renderRows();
+		_overlay.classList.add("open");
+		_sheet.classList.add("open");
+		_sheet.setAttribute("aria-hidden", "false");
+	}
+
+	function closeSheet(): void {
+		_overlay.classList.remove("open");
+		_sheet.classList.remove("open");
+		_sheet.setAttribute("aria-hidden", "true");
+	}
+
+	btnShare.addEventListener("click", openSheet);
+	overlay.addEventListener("click", closeSheet);
+	document.addEventListener("keydown", (e) => {
+		if (e.key === "Escape" && sheet.classList.contains("open")) closeSheet();
+	});
+	let touchStartY = 0;
+	_sheet.addEventListener("touchstart", (e) => { touchStartY = e.touches[0].clientY; }, { passive: true });
+	_sheet.addEventListener("touchend", (e) => {
+		if (e.changedTouches[0].clientY - touchStartY > 60) closeSheet();
+	}, { passive: true });
+}());

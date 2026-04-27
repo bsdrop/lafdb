@@ -532,7 +532,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		updateEndingSkipWindowUI(getEndingSkipWindowPref());
 			updateAutoPlayDelayUI(getAutoPlayDelayPref());
 		if (tpToggle) tpToggle.checked = (localStorage.getItem("time_pref") || "relative") === "relative";
-		if (shareLaftelToggle) shareLaftelToggle.checked = localStorage.getItem("share_laftel_url") === "yes";
+		if (shareLaftelToggle) shareLaftelToggle.checked = localStorage.getItem("share_laftel_url") !== "no";
 		setQualVal(localStorage.getItem("quality_pref") || "");
 		updateBpsUI(getBpsPref());
 		updateBufferUI(
@@ -681,8 +681,8 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		localStorage.setItem("time_pref", tpToggle.checked ? "relative" : "absolute");
 	});
 	shareLaftelToggle?.addEventListener("change", () => {
-		if (shareLaftelToggle.checked) localStorage.setItem("share_laftel_url", "yes");
-		else localStorage.removeItem("share_laftel_url");
+		if (shareLaftelToggle.checked) localStorage.removeItem("share_laftel_url");
+		else localStorage.setItem("share_laftel_url", "no");
 	});
 	qualRadios().forEach((r) =>
 		r.addEventListener("change", () => {
