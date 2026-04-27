@@ -190,6 +190,8 @@ class Player {
   _resumeInProgress: boolean;
   _pendingResumeSetAt: number;
   _queuedSeekTime: number | null;
+  _lastExplicitTargetTime: number;
+  _lastExplicitTargetAt: number;
 
   static _readBufferPref(key: string, fallback: number): number {
     const raw = parseInt(localStorage.getItem(key) || String(fallback), 10);
@@ -282,6 +284,8 @@ class Player {
     this._resumeInProgress = false;
     this._pendingResumeSetAt = 0;
     this._queuedSeekTime = null;
+    this._lastExplicitTargetTime = -1;
+    this._lastExplicitTargetAt = 0;
   }
 
   // ── Video state getters ───────────────────────────────────────────────────
@@ -351,6 +355,11 @@ class Player {
     this._pendingResumeSetAt = 0;
   }
 
+  _rememberExplicitTarget(time: number): void {
+    this._lastExplicitTargetTime = Math.max(0, time);
+    this._lastExplicitTargetAt = this._now();
+  }
+
   _isPendingResumeStale(): boolean {
     if (this._pendingResumeTime == null) return false;
     if (this._resumeInProgress || this._hasInflightSegments()) return false;
@@ -390,6 +399,19 @@ class Player {
   _hasExplicitTailResumeIntent(currentTime: number, duration: number): boolean {
     if (!Number.isFinite(duration) || duration <= 0) return false;
     if (this._wasRecentUserSeekNearTail(currentTime, duration)) return true;
+    if (
+      this._lastExplicitTargetTime >= 0 &&
+      this._now() - this._lastExplicitTargetAt < 10000
+    ) {
+      const remainingAtTarget = duration - this._lastExplicitTargetTime;
+      if (
+        remainingAtTarget > Player.AUTO_TIME_EPSILON &&
+        remainingAtTarget <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS &&
+        Math.abs(currentTime - this._lastExplicitTargetTime) <= 0.25
+      ) {
+        return true;
+      }
+    }
     if (this._pendingResumeTime == null) return false;
     const remainingAtResume = duration - this._pendingResumeTime;
     if (
@@ -1778,6 +1800,7 @@ class Player {
     if (resumeTime != null && resumeTime > 0.5) {
       this._setPendingResumeTime(resumeTime);
       this.lastSeekTime = resumeTime;
+      this._rememberExplicitTarget(resumeTime);
     }
 
     this._startFetchLoopsInner();
@@ -2314,6 +2337,7 @@ class Player {
 
     console.log(`[PLAYER] seeking → ${seekTime.toFixed(3)}s`);
     this.lastSeekTime = seekTime;
+    this._rememberExplicitTarget(seekTime);
     this._ct = seekTime;
     this._clearPendingResumeTime();
     this.seekInProgress = true;
