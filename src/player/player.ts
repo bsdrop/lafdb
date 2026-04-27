@@ -187,6 +187,7 @@ class Player {
   _pendingVideoRepId: string | null;
   _objectUrl: string | null;
   skipRanges: SkipRange[];
+  _stallSuppressUntil: number;
 
   static _readBufferPref(key: string, fallback: number): number {
     const raw = parseInt(localStorage.getItem(key) || String(fallback), 10);
@@ -276,6 +277,7 @@ class Player {
     this._pendingVideoRepId = null;
     this._objectUrl = null;
     this.skipRanges = [];
+    this._stallSuppressUntil = 0;
   }
 
   // ── Video state getters ───────────────────────────────────────────────────
@@ -715,6 +717,9 @@ class Player {
   static STALL_BUF_MIN = 0.2;
   static NEAR_END_EPSILON = 0.1;
   static NUDGE_MAX = 2;
+  static GAP_JUMP_MAX = 0.08;
+  static SEEK_STALL_SUPPRESS_MS = 1200;
+  static REINIT_STALL_SUPPRESS_MS = 2000;
 
   _getVideoSb(): SourceBuffer | null {
     return this.tracks.find((t) => t.type === "video")?.sb ?? null;
@@ -741,6 +746,10 @@ class Player {
 
   _stallCheck(): void {
     if (this._recovering) {
+      this._scheduleStallCheck();
+      return;
+    }
+    if (Date.now() < this._stallSuppressUntil || this._pendingResumeTime != null) {
       this._scheduleStallCheck();
       return;
     }
@@ -808,11 +817,16 @@ class Player {
     // Gap jumper: if stuck at a gap but there's buffer just a bit further ahead.
     // Confirm on two consecutive checks to avoid jumping over transient false gaps
     // (Firefox MSE sometimes briefly reports a gap right after a remove/append).
-    if (vsb && rs === 2 && ahead < 0.1) {
+    const now =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    const recentlySettledSeek =
+      this._seekSettledAt !== undefined &&
+      now - this._seekSettledAt < Player.SEEK_STALL_SUPPRESS_MS;
+    if (vsb && rs === 2 && ahead < 0.1 && !recentlySettledSeek) {
       let gapStart = -1;
       for (let i = 0; i < vsb.buffered.length; i++) {
         const start = vsb.buffered.start(i);
-        if (start > ct && start < ct + 0.3) { gapStart = start; break; }
+        if (start > ct && start < ct + Player.GAP_JUMP_MAX) { gapStart = start; break; }
       }
       if (gapStart >= 0) {
         if (Math.abs(this._gapCandidateStart - gapStart) < 0.1) {
@@ -1315,6 +1329,7 @@ class Player {
     );
     this._lastReinitAt = Date.now();
     this._lastReinitTime = resumeTime;
+    this._stallSuppressUntil = Date.now() + Player.REINIT_STALL_SUPPRESS_MS;
 
     this.generation++;
     this._endOfStreamCalled = false;
@@ -1873,46 +1888,7 @@ class Player {
   }
 
   _getSeekPlaybackTime(time: number): number {
-    if (!this._isFirefox) return time;
-    const track = this._getVideoTrackForResume();
-    if (!track?.timeline?.length) return time;
-    const segNum = this.timeToSegmentNumber(track, time);
-    const range = this.segmentNumberToTimeRange(track, segNum);
-    if (!range) return time;
-    const lastSegNum = track.startNumber + track.timeline.length - 1;
-    const lastRange = this.segmentNumberToTimeRange(track, lastSegNum);
-    if (lastRange) {
-      const tailRemaining = lastRange.end - time;
-      if (tailRemaining > 0 && tailRemaining <= 3) {
-        const safe = Math.max(0, range.start + 0.01);
-        if (safe < time) {
-          console.log(
-            `[PLAYER] Firefox near-end seek normalize ${time.toFixed(3)}s -> seg ${segNum} start ${safe.toFixed(3)}s`,
-          );
-          return safe;
-        }
-      }
-    }
-    const remaining = range.end - time;
-    if (remaining < 0 || remaining >= 0.35) return time;
-
-    const nextRange = this.segmentNumberToTimeRange(track, segNum + 1);
-    if (!nextRange) {
-      const safe = Math.max(range.start + 0.01, range.end - 0.35);
-      if (safe < time) {
-        console.log(
-          `[PLAYER] Firefox seek tail normalize ${time.toFixed(3)}s -> ${safe.toFixed(3)}s`,
-        );
-        return safe;
-      }
-      return time;
-    }
-
-    const safe = Math.max(0, nextRange.start + 0.01);
-    console.log(
-      `[PLAYER] Firefox seek tail normalize ${time.toFixed(3)}s -> ${safe.toFixed(3)}s`,
-    );
-    return safe;
+    return time;
   }
 
   _getDecodeRecoveryTime(time: number): number {
@@ -2177,6 +2153,29 @@ class Player {
 
   _handleSeeking(seekTime: number): void {
     if (this._destroyed) return;
+    if (this._video?.error) {
+      console.warn(
+        `[PLAYER] seeking while media element is in error state; reinitializing to ${seekTime.toFixed(3)}s`,
+      );
+      this.lastSeekTime = seekTime;
+      this._pendingResumeTime = seekTime;
+      this._stallSuppressUntil = Date.now() + Player.REINIT_STALL_SUPPRESS_MS;
+      if (!this._recovering && !this._reinitInProgress) {
+        this._reinitMediaSource(seekTime).catch((e) =>
+          console.error("[PLAYER] error-state seek reinit failed:", e),
+        );
+      }
+      return;
+    }
+    if (this._recovering || this._reinitInProgress) {
+      this.lastSeekTime = seekTime;
+      this._pendingResumeTime = seekTime;
+      this._stallSuppressUntil = Date.now() + Player.REINIT_STALL_SUPPRESS_MS;
+      console.log(
+        `[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`,
+      );
+      return;
+    }
     if (this._video?.ended) {
       console.log(`[PLAYER] seeking ignored (video ended) at ${seekTime.toFixed(3)}s`);
       return;
@@ -2212,6 +2211,7 @@ class Player {
     this.lastSeekTime = seekTime;
     this._ct = seekTime;
     this._pendingResumeTime = null;
+    this._stallSuppressUntil = Date.now() + Player.SEEK_STALL_SUPPRESS_MS;
     this.seekInProgress = true;
     this._clearStallWatchdog();
 
