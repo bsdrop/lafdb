@@ -373,6 +373,20 @@ class Player {
     return false;
   }
 
+  _wasRecentUserSeekNearTail(currentTime: number, duration: number): boolean {
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    if (this._seekSettledAt === undefined || this.lastSeekTime < 0) return false;
+    const remainingAtSeek = duration - this.lastSeekTime;
+    if (
+      remainingAtSeek <= Player.AUTO_TIME_EPSILON ||
+      remainingAtSeek > Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
+    ) {
+      return false;
+    }
+    return this._now() - this._seekSettledAt < 5000 &&
+      Math.abs(currentTime - this.lastSeekTime) <= 0.25;
+  }
+
   _emitCompatibilityWarning(
     reason: "decode" | "stall" | "anonymous-codec",
   ): void {
@@ -2411,6 +2425,16 @@ class Player {
             ? Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
             : Player.AUTO_TIME_EPSILON)
       ) {
+        const recentTailSeek =
+          this._isFirefox && this._wasRecentUserSeekNearTail(ct, duration);
+        if (recentTailSeek) {
+          console.warn(
+            `[PLAYER] MediaError near tail after explicit seek (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), preserving playhead`,
+          );
+          this._clearStallWatchdog();
+          this._stopFetchLoops("tail-seek media error");
+          return;
+        }
         console.warn(
           `[PLAYER] MediaError near end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
         );
