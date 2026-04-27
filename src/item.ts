@@ -1066,10 +1066,10 @@ if (targetReviewId) initExtReviews();
 	const laftelToggle = document.getElementById("share-laftel-toggle") as HTMLInputElement | null;
 	const rowsEl = document.getElementById("share-rows");
 	const btnShare = document.getElementById("btn-share-item");
-	if (!overlay || !sheet || !rowsEl || !btnShare) return;
-	const _overlay: HTMLElement = overlay;
-	const _sheet: HTMLElement = sheet;
-	const _rowsEl: HTMLElement = rowsEl;
+	if (!overlay || !sheet || !rowsEl || !btnShare) {
+		console.error("[SHARE] 공유 시트 필수 DOM 요소가 없습니다.", { overlay, sheet, rowsEl, btnShare });
+		return;
+	}
 
 	function buildUrl(): string {
 		const useLaftel = localStorage.getItem("share_laftel_url") !== "no";
@@ -1078,6 +1078,7 @@ if (targetReviewId) initExtReviews();
 	}
 
 	function renderRows(): void {
+		if (!rowsEl) { console.error("[SHARE] rowsEl missing in renderRows"); return; }
 		const url = buildUrl();
 		const row = document.createElement("div");
 		row.className = "share-row";
@@ -1105,33 +1106,45 @@ if (targetReviewId) initExtReviews();
 		copyBtn.textContent = "복사";
 		btns.appendChild(copyBtn);
 		row.append(left, btns);
-		_rowsEl.innerHTML = "";
-		_rowsEl.appendChild(row);
+		rowsEl.innerHTML = "";
+		rowsEl.appendChild(row);
 	}
 
-	_rowsEl.addEventListener("click", async (e) => {
+	rowsEl.addEventListener("click", async (e) => {
 		const btn = (e.target as Element).closest("[data-action]") as HTMLElement | null;
 		if (!btn) return;
 		const url = buildUrl();
 		if (btn.dataset["action"] === "copy") {
-			try { await navigator.clipboard.writeText(url); } catch {
+			let copied = false;
+			try {
+				await navigator.clipboard.writeText(url);
+				copied = true;
+			} catch (clipErr) {
+				console.error("[SHARE] clipboard API 실패, execCommand 폴백 시도:", clipErr);
 				const ta = document.createElement("textarea");
 				ta.value = url;
 				ta.style.cssText = "position:fixed;top:-9999px";
 				document.body.appendChild(ta);
 				ta.select();
-				try { document.execCommand("copy"); } catch { /* ignore */ }
+				try { document.execCommand("copy"); copied = true; } catch (execErr) {
+					console.error("[SHARE] execCommand 폴백도 실패:", execErr);
+				}
 				ta.remove();
 			}
-			btn.textContent = "✓ 복사됨";
-			btn.classList.add("copied");
-			setTimeout(() => { btn.textContent = "복사"; btn.classList.remove("copied"); }, 2000);
+			if (copied) {
+				btn.textContent = "✓ 복사됨";
+				btn.classList.add("copied");
+				setTimeout(() => { btn.textContent = "복사"; btn.classList.remove("copied"); }, 2000);
+			}
 		} else if (btn.dataset["action"] === "native") {
-			try { await navigator.share({ title: document.title, url }); } catch { /* ignore */ }
+			try { await navigator.share({ title: document.title, url }); } catch (err) {
+				if ((err as Error).name !== "AbortError") console.error("[SHARE] navigator.share 실패:", err);
+			}
 		}
 	});
 
 	function openSheet(): void {
+		if (!overlay || !sheet) { console.error("[SHARE] openSheet: 요소 없음"); return; }
 		if (laftelToggle) {
 			laftelToggle.checked = localStorage.getItem("share_laftel_url") !== "no";
 			laftelToggle.onchange = () => {
@@ -1141,15 +1154,16 @@ if (targetReviewId) initExtReviews();
 			};
 		}
 		renderRows();
-		_overlay.classList.add("open");
-		_sheet.classList.add("open");
-		_sheet.setAttribute("aria-hidden", "false");
+		overlay.classList.add("open");
+		sheet.classList.add("open");
+		sheet.setAttribute("aria-hidden", "false");
 	}
 
 	function closeSheet(): void {
-		_overlay.classList.remove("open");
-		_sheet.classList.remove("open");
-		_sheet.setAttribute("aria-hidden", "true");
+		if (!overlay || !sheet) { console.error("[SHARE] closeSheet: 요소 없음"); return; }
+		overlay.classList.remove("open");
+		sheet.classList.remove("open");
+		sheet.setAttribute("aria-hidden", "true");
 	}
 
 	btnShare.addEventListener("click", openSheet);
@@ -1158,8 +1172,8 @@ if (targetReviewId) initExtReviews();
 		if (e.key === "Escape" && sheet.classList.contains("open")) closeSheet();
 	});
 	let touchStartY = 0;
-	_sheet.addEventListener("touchstart", (e) => { touchStartY = e.touches[0].clientY; }, { passive: true });
-	_sheet.addEventListener("touchend", (e) => {
+	sheet.addEventListener("touchstart", (e) => { touchStartY = e.touches[0].clientY; }, { passive: true });
+	sheet.addEventListener("touchend", (e) => {
 		if (e.changedTouches[0].clientY - touchStartY > 60) closeSheet();
 	}, { passive: true });
 }());

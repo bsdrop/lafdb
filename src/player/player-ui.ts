@@ -248,14 +248,10 @@ const ShareSheet = (() => {
   }
 
   async function copyToClipboard(text: string, btn: HTMLElement): Promise<void> {
+    let copied = false;
     try {
       await navigator.clipboard.writeText(text);
-      btn.textContent = "✓ 복사됨";
-      btn.classList.add("copied");
-      setTimeout(() => {
-        btn.textContent = "복사";
-        btn.classList.remove("copied");
-      }, 2000);
+      copied = true;
     } catch (e) {
       console.error("[PLAYER] clipboard write failed; falling back to execCommand:", e);
       const ta = document.createElement("textarea");
@@ -265,10 +261,13 @@ const ShareSheet = (() => {
       ta.select();
       try {
         document.execCommand("copy");
+        copied = true;
       } catch (fallbackError) {
         console.error("[PLAYER] clipboard fallback failed:", fallbackError);
       }
       ta.remove();
+    }
+    if (copied) {
       btn.textContent = "✓ 복사됨";
       btn.classList.add("copied");
       setTimeout(() => {
