@@ -466,14 +466,6 @@ document.addEventListener("click", () =>
 );
 settingsPanel.addEventListener("click", (e) => e.stopPropagation());
 
-// Auto-open settings on first visit (telemetry consent not yet answered)
-{
-  const consent = localStorage.getItem("telemetry_consent");
-  if (consent !== "yes" && consent !== "no") {
-    setSettingsPanelOpen(true);
-  }
-}
-
 // ── Episode info ──────────────────────────────────────────────────────────────
 const params = new URLSearchParams(location.hash.slice(1));
 let epId = params.get("epId");
