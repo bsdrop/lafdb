@@ -388,10 +388,9 @@ async function handleRoute() {
 	      ? parseFloat(tParam)
 	      : null;
 
-  if (!mpdParam && !epId) {
+  if (!mpdParam && !epId) { // TODO: notify user
     console.warn("[ROUTE] missing player route info; redirecting to index");
-    showError("플레이어 주소가 올바르지 않습니다. 잠시 후 검색 페이지로 이동합니다...");
-    setTimeout(() => location.replace("/"), 1500);
+    location.replace("/");
     return;
   }
 

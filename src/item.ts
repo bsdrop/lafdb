@@ -15,12 +15,8 @@ function getRouteParams() {
 }
 
 let { itemId, targetReviewId, reviewSorting } = getRouteParams();
-if (!itemId) {
-	const msg = document.createElement("p");
-	msg.textContent = "잘못된 접근입니다. 잠시 후 검색 페이지로 이동합니다...";
-	msg.style.cssText = "padding:40px 16px;color:#555;font-size:14px;text-align:center;";
-	document.body.appendChild(msg);
-	setTimeout(() => location.replace("/"), 1500);
+if (!itemId) { // notify user
+	location.replace("/");
 	throw new Error("No itemId in hash");
 }
 const manualThumbs =
