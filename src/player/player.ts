@@ -718,6 +718,7 @@ class Player {
   static STALL_DECODER_STRIKES = 2;
   static STALL_BUF_MIN = 0.2;
   static AUTO_TIME_EPSILON = 0.075;
+  static FIREFOX_TAIL_DECODE_EOF_SECONDS = 3;
   static NUDGE_MAX = 2;
 
   _getVideoSb(): SourceBuffer | null {
@@ -1840,20 +1841,8 @@ class Player {
     // Wait until playback is actually near the end to avoid "End of file" decode errors
     const ct = this._currentTime;
     const dur = this.ms.duration;
-    const bufferedToEnd =
-      isFinite(dur) &&
-      dur > 0 &&
-      this.tracks.every((track) => {
-        const sb = this._getLiveTrackSb(track);
-        if (!sb) return false;
-        const probeTime = Math.max(0, dur - Player.AUTO_TIME_EPSILON);
-        return this.getBufferedEnd(sb, probeTime) >= dur - Player.AUTO_TIME_EPSILON;
-      });
     if (isFinite(dur) && dur > 0 && dur - ct > Player.AUTO_TIME_EPSILON) {
-      if (!(this._isFirefox && bufferedToEnd)) return;
-      console.log(
-        `[PLAYER] Firefox tail fully buffered at ct=${ct.toFixed(3)} / dur=${dur.toFixed(3)}, calling endOfStream() early`,
-      );
+      return;
     }
 
     this._endOfStreamCalled = true;
@@ -2343,7 +2332,10 @@ class Player {
       if (
         Number.isFinite(duration) &&
         duration > 0 &&
-        duration - ct <= Player.AUTO_TIME_EPSILON
+        duration - ct <=
+          (this._isFirefox
+            ? Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
+            : Player.AUTO_TIME_EPSILON)
       ) {
         console.warn(
           `[PLAYER] MediaError near end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), finalizing playback`,
