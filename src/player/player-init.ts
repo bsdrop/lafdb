@@ -90,7 +90,7 @@ function showAutoplayPrompt(): void {
   btn.style.cssText =
     "position:absolute;inset:0;width:100%;height:100%;background:rgba(0,0,0,.55);color:#fff;font-size:20px;border:none;cursor:pointer;z-index:30;";
   btn.addEventListener("click", () => {
-    video.play().catch(e => console.debug("Ignored promise rejection:", e));
+    video.play().catch(e => console.error("[PLAYER] autoplay prompt play failed:", e));
     btn.remove();
   }, { once: true });
   box.appendChild(btn);
@@ -400,7 +400,7 @@ async function handleRoute() {
             window._dlDurSecs = +parts[0] * 3600 + +parts[1] * 60 + parseFloat(parts[2]);
           }
         })
-        .catch((e: any) => console.debug("Ignored promise rejection:", e));
+        .catch((e: any) => console.error("[PLAYER] episode running_time fetch failed:", e));
     }
   } else if (epId) {
     try {

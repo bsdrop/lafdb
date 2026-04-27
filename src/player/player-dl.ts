@@ -204,12 +204,15 @@ async function _dlRun(repId: string, onProgress: (p: ProgressInfo) => void): Pro
     const epId = new URLSearchParams(location.hash.slice(1)).get('epId');
     if (epId) {
       try {
-        const ep = await apiFetch<{ running_time?: string }>(`/api/episodes/v3/${epId}`).catch(() => null);
+        const ep = await apiFetch<{ running_time?: string }>(`/api/episodes/v3/${epId}`).catch((e: Error) => {
+          console.error("[PLAYER] running_time fetch failed:", e);
+          return null;
+        });
         if (ep?.running_time) {
           const p = ep.running_time.split(':');
           if (p.length === 3) window._dlDurSecs = +p[0]*3600 + +p[1]*60 + parseFloat(p[2]);
         }
-      } catch (e) { console.debug("Ignored error:", e); }
+      } catch (e) { console.error("[PLAYER] running_time parse failed:", e); }
     }
   }
 

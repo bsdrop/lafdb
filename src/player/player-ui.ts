@@ -249,13 +249,18 @@ const ShareSheet = (() => {
         btn.textContent = "복사";
         btn.classList.remove("copied");
       }, 2000);
-    } catch (_e) {
+    } catch (e) {
+      console.error("[PLAYER] clipboard write failed; falling back to execCommand:", e);
       const ta = document.createElement("textarea");
       ta.value = text;
       ta.style.cssText = "position:fixed;top:-9999px";
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand("copy");
+      try {
+        document.execCommand("copy");
+      } catch (fallbackError) {
+        console.error("[PLAYER] clipboard fallback failed:", fallbackError);
+      }
       ta.remove();
       btn.textContent = "✓ 복사됨";
       btn.classList.add("copied");
@@ -282,7 +287,7 @@ const ShareSheet = (() => {
         });
       } catch (err) {
         if ((err as Error).name !== "AbortError")
-          console.warn("share:", err);
+          console.error("[PLAYER] native share failed:", err);
       }
     }
   });
@@ -640,7 +645,7 @@ document.addEventListener("keydown", (e) => {
     if (!v) return;
     if (e.target === v || document.activeElement === v) return;
     e.preventDefault();
-    if (v.paused) v.play().catch(() => {});
+    if (v.paused) v.play().catch((err) => console.error("[PLAYER] keyboard play failed:", err));
     else v.pause();
     return;
   }
@@ -691,7 +696,7 @@ function setupMediaSession(): void {
   function syncMetadata(): void {
     try {
       ms.metadata = new MediaMetadata({ title: _currentEpTitle || document.title });
-    } catch (e) { console.debug("Ignored error:", e); }
+    } catch (e) { console.error("[PLAYER] media session metadata update failed:", e); }
   }
   syncMetadata();
   const titleEl = document.getElementById("ep-title");
@@ -702,7 +707,7 @@ function setupMediaSession(): void {
   }
 
   function syncPlaybackState(): void {
-    try { ms.playbackState = video.paused ? "paused" : "playing"; } catch (e) { console.debug("Ignored error:", e); }
+    try { ms.playbackState = video.paused ? "paused" : "playing"; } catch (e) { console.error("[PLAYER] media session playbackState update failed:", e); }
   }
   video.addEventListener("play", syncPlaybackState, { signal });
   video.addEventListener("pause", syncPlaybackState, { signal });
@@ -717,7 +722,7 @@ function setupMediaSession(): void {
         playbackRate: video.playbackRate || 1,
         position:     Math.min(video.currentTime, dur),
       });
-    } catch (e) { console.debug("Ignored error:", e); }
+    } catch (e) { console.error("[PLAYER] media session positionState update failed:", e); }
   }
   let _posTimer: ReturnType<typeof setTimeout> | 0 = 0;
   video.addEventListener("timeupdate", () => {
@@ -738,20 +743,20 @@ function setupMediaSession(): void {
       const dur = video.duration;
       if (!dur || !isFinite(dur)) return;
       video.currentTime = Math.max(0, Math.min(t, dur));
-    } catch (e) { console.debug("Ignored error:", e); }
+    } catch (e) { console.error("[PLAYER] media session seek failed:", e); }
   }
 
   const videoWithFastSeek = video as HTMLVideoElement & { fastSeek?: (t: number) => void };
 
   const handlers: Record<string, (details?: MediaSessionActionDetails | null) => void> = {
-    play:         () => { try { video.play().catch(() => {}); } catch (e) { console.debug("Ignored error:", e); } },
-    pause:        () => { try { video.pause(); } catch (e) { console.debug("Ignored error:", e); } },
+    play:         () => { try { video.play().catch((err) => console.error("[PLAYER] media session play failed:", err)); } catch (e) { console.error("[PLAYER] media session play threw:", e); } },
+    pause:        () => { try { video.pause(); } catch (e) { console.error("[PLAYER] media session pause failed:", e); } },
     seekforward:  (details) => safeSeek(video.currentTime + (details?.seekOffset ?? 10)),
     seekbackward: (details) => safeSeek(video.currentTime - (details?.seekOffset ?? 10)),
     seekto:       (details) => {
       if (details?.seekTime == null) return;
       if (details.fastSeek && videoWithFastSeek.fastSeek) {
-        try { videoWithFastSeek.fastSeek(details.seekTime); } catch (_) { safeSeek(details.seekTime); }
+        try { videoWithFastSeek.fastSeek(details.seekTime); } catch (e) { console.error("[PLAYER] media session fastSeek failed:", e); safeSeek(details.seekTime); }
       } else {
         safeSeek(details.seekTime);
       }
@@ -759,7 +764,7 @@ function setupMediaSession(): void {
   };
 
   for (const [action, handler] of Object.entries(handlers)) {
-    try { ms.setActionHandler(action as MediaSessionAction, handler); } catch (e) { console.debug("Ignored error:", e); }
+    try { ms.setActionHandler(action as MediaSessionAction, handler); } catch (e) { console.error(`[PLAYER] media session action handler failed (${action}):`, e); }
   }
 }
 
@@ -905,7 +910,8 @@ async function saveCurrentFramePng(video: HTMLVideoElement, popup: Window | null
 
   try {
     ctx.drawImage(video, 0, 0, width, height);
-  } catch (_e) {
+  } catch (e) {
+    console.error("[PLAYER] capture drawImage failed:", e);
     popup?.close();
     alert("현재 브라우저에서는 이 프레임을 캡처할 수 없습니다.");
     return;
@@ -931,7 +937,8 @@ async function saveCurrentFramePng(video: HTMLVideoElement, popup: Window | null
       showMpvCopyToast("새 탭에서 열었습니다. 길게 눌러 저장하세요");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
       return;
-    } catch (_e) {
+    } catch (e) {
+      console.error("[PLAYER] capture popup navigation failed:", e);
       popup.close();
     }
   }
@@ -954,7 +961,8 @@ async function handleMpvCopy(): Promise<void> {
   try {
     await navigator.clipboard.writeText(cmd);
     showMpvCopyToast("명령이 복사되었습니다");
-  } catch (_e) {
+  } catch (e) {
+    console.error("[PLAYER] mpv command clipboard copy failed:", e);
     alert("클립보드 복사에 실패했습니다.");
   }
 }
@@ -1147,7 +1155,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       saveHash(0);
       WatchHistory.clearProgress(epId!);
     }
-    if (wasPlaying) video.play().catch(() => {});
+    if (wasPlaying) video.play().catch((err) => console.error("[PLAYER] timeline resume play failed:", err));
   }
 
   let dragging = false;
@@ -1235,7 +1243,8 @@ async function buildEpUrl(id: string | number, opts?: { resetNearEndProgress?: b
     if (_currentItemId) url += `&itemId=${_currentItemId}`;
     if (opts?.resetNearEndProgress && shouldResetNearEndProgress(id)) url += "&t=0";
     return url;
-  } catch (_) {
+  } catch (e) {
+    console.error("[PLAYER] build episode URL failed:", e);
     return null;
   }
 }
@@ -1278,14 +1287,28 @@ function setupAutoplay(epId: string): void {
     }, 2000);
   }
 
+  function navigateToBuiltUrl(url: string): void {
+    const hashIdx = url.indexOf("#");
+    if (hashIdx !== -1) {
+      const newHash = url.substring(hashIdx + 1);
+      if (location.hash !== "#" + newHash) {
+        location.hash = newHash;
+      } else {
+        console.log("[PLAYER] Hash identical, forcing re-route");
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      }
+    } else {
+      location.href = url;
+    }
+  }
+
   async function navigate(id: string | number): Promise<void> {
     const url = await buildEpUrl(id, { resetNearEndProgress: true }).catch((e: Error) => {
       console.error("buildEpUrl:", e);
       return null;
     });
     if (url) {
-      location.href = url;
-      location.reload();
+      navigateToBuiltUrl(url);
     } else showToast("재생 불가 (영상 파일이 없습니다)");
   }
 
@@ -1391,19 +1414,7 @@ function setupAutoplay(epId: string): void {
     }
     pendingPiPAutoNext = false;
     console.log("[PLAYER] Navigating to next episode:", url);
-    const hashIdx = url.indexOf("#");
-    if (hashIdx !== -1) {
-      const newHash = url.substring(hashIdx + 1);
-      if (location.hash !== "#" + newHash) {
-        location.hash = newHash;
-      } else {
-        // If hash is same, manually trigger route logic
-        console.log("[PLAYER] Hash identical, forcing re-route");
-        window.dispatchEvent(new HashChangeEvent("hashchange"));
-      }
-    } else {
-      location.href = url;
-    }
+    navigateToBuiltUrl(url);
   }
 
   const onErr = (e: unknown) => console.error("tryAutoplayNext:", e);
@@ -1430,7 +1441,8 @@ function setupAutoplay(epId: string): void {
         if (buf.end(i) > bufferedEnd)
           bufferedEnd = buf.end(i);
       }
-    } catch (_e) {
+    } catch (e) {
+      console.error("[PLAYER] autoplay buffered range read failed:", e);
       return;
     }
 
@@ -1742,7 +1754,10 @@ function buildCommentEl(
           try {
             const pos = await apiFetch<{ offset?: number }>(
               `/api/comments/v1/reply-position?parent_comment_id=${c.id}&id=${seekReplyId}`,
-            ).catch(() => null);
+            ).catch((e: Error) => {
+              console.error("[PLAYER] reply position fetch failed:", e);
+              return null;
+            });
             if (pos?.offset != null) {
               const pageStart = Math.floor(pos.offset / REPLY_PAGE) * REPLY_PAGE;
               if (pageStart > 0) {
@@ -1761,7 +1776,7 @@ function buildCommentEl(
                 repliesContainer.before(prev);
               }
             }
-          } catch (e) { console.debug("Ignored error:", e); }
+          } catch (e) { console.error("[PLAYER] deep-link reply setup failed:", e); }
         }
         const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number }>(
           `/api/comments/v1/list?parent_comment_id=${c.id}&sorting=oldest&offset=${rOffset}&limit=${REPLY_PAGE}`,
@@ -1942,7 +1957,7 @@ async function loadComments(epId: string): Promise<void> {
     total = count;
     toggle.textContent = `댓글 ${count.toLocaleString()}개`;
   }).catch((e) => {
-    console.debug("comment count fetch ignored:", e);
+    console.error("[PLAYER] comment count fetch failed:", e);
   });
 
   sortBar.querySelectorAll(".csort-btn").forEach((b) => {
@@ -1963,7 +1978,7 @@ async function loadComments(epId: string): Promise<void> {
       return;
     const video = document.getElementById("v") as HTMLVideoElement;
     video.currentTime = parseFloat(btn.dataset["t"]!);
-    video.play().catch(() => {});
+    video.play().catch((err) => console.error("[PLAYER] comment seek play failed:", err));
     document
       .getElementById("video-box")!
       .scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2022,7 +2037,10 @@ async function loadComments(epId: string): Promise<void> {
       try {
         const pos = await apiFetch<{ offset?: number }>(
           `/api/comments/v1/position?episode_id=${epId}&id=${targetCid}&sorting=${sorting}`,
-        ).catch(() => null);
+        ).catch((e: Error) => {
+          console.error("[PLAYER] comment position fetch failed:", e);
+          return null;
+        });
         if (loadToken !== activeCommentsLoadToken) return;
         if (pos?.offset != null) {
           const pageStart = Math.floor(pos.offset / PAGE) * PAGE;
@@ -2043,7 +2061,8 @@ async function loadComments(epId: string): Promise<void> {
         } else {
           deepLinked = false;
         }
-      } catch (_) {
+      } catch (e) {
+        console.error("[PLAYER] deep-link comment position handling failed:", e);
         deepLinked = false;
       }
     }

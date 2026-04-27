@@ -273,7 +273,8 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 			} else {
 				setExtStatus("✗ 확장 프로그램이 응답하지 않습니다", "#f87171");
 			}
-		} catch (_) {
+		} catch (e) {
+			console.error("[SETTINGS] extension status check failed:", e);
 			setExtStatus("✗ 확장 프로그램을 찾을 수 없습니다 (laftel-ext 미설치 또는 이 사이트에 미허용)", "#f87171");
 		}
 	}
@@ -787,7 +788,8 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 			let payload: any;
 			try {
 				payload = JSON.parse(await file.text());
-			} catch {
+			} catch (e) {
+				console.error("[SETTINGS] settings import JSON parse failed:", e);
 				alert("파일을 읽을 수 없습니다. 올바른 JSON 파일인지 확인해주세요.");
 				return;
 			}

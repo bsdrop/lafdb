@@ -188,6 +188,8 @@ class Player {
   _objectUrl: string | null;
   skipRanges: SkipRange[];
   _resumeInProgress: boolean;
+  _pendingResumeSetAt: number;
+  _queuedSeekTime: number | null;
 
   static _readBufferPref(key: string, fallback: number): number {
     const raw = parseInt(localStorage.getItem(key) || String(fallback), 10);
@@ -278,6 +280,8 @@ class Player {
     this._objectUrl = null;
     this.skipRanges = [];
     this._resumeInProgress = false;
+    this._pendingResumeSetAt = 0;
+    this._queuedSeekTime = null;
   }
 
   // ── Video state getters ───────────────────────────────────────────────────
@@ -285,9 +289,7 @@ class Player {
     if (this._video) {
       const vct = this._video.currentTime;
       if (this._pendingResumeTime != null) {
-        if (Math.abs(vct - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
-          this._pendingResumeTime = null;
-        }
+        if (this._maybeClearPendingResume(vct)) return vct;
         else return this._pendingResumeTime;
       }
       return vct;
@@ -308,11 +310,7 @@ class Player {
     if (this._video) {
       const vct = this._video.currentTime;
       if (this._pendingResumeTime != null) {
-        if (Math.abs(vct - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
-          this._pendingResumeTime = null;
-          return vct;
-        }
-        return this._pendingResumeTime;
+        if (!this._maybeClearPendingResume(vct)) return this._pendingResumeTime;
       }
       if (
         vct === 0 &&
@@ -339,6 +337,42 @@ class Player {
     return this._ct;
   }
 
+  _now(): number {
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+  }
+
+  _setPendingResumeTime(time: number): void {
+    this._pendingResumeTime = Math.max(0, time);
+    this._pendingResumeSetAt = this._now();
+  }
+
+  _clearPendingResumeTime(): void {
+    this._pendingResumeTime = null;
+    this._pendingResumeSetAt = 0;
+  }
+
+  _isPendingResumeStale(): boolean {
+    if (this._pendingResumeTime == null) return false;
+    if (this._resumeInProgress || this._hasInflightSegments()) return false;
+    return this._now() - this._pendingResumeSetAt > Player.PENDING_RESUME_TIMEOUT_MS;
+  }
+
+  _maybeClearPendingResume(videoTime: number): boolean {
+    if (this._pendingResumeTime == null) return true;
+    if (Math.abs(videoTime - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
+      this._clearPendingResumeTime();
+      return true;
+    }
+    if (this._isPendingResumeStale()) {
+      console.warn(
+        `[PLAYER] pending resume ${this._pendingResumeTime.toFixed(3)}s expired at ct=${videoTime.toFixed(3)}s`,
+      );
+      this._clearPendingResumeTime();
+      return true;
+    }
+    return false;
+  }
+
   _emitCompatibilityWarning(
     reason: "decode" | "stall" | "anonymous-codec",
   ): void {
@@ -362,7 +396,7 @@ class Player {
         self.dispatchEvent(new CustomEvent("player:compat-warning", { detail }));
       }
     } catch (e) {
-      console.debug("[PLAYER] compat warning dispatch failed:", e);
+      console.error("[PLAYER] compat warning dispatch failed:", e);
     }
   }
 
@@ -375,7 +409,7 @@ class Player {
         self.dispatchEvent(new CustomEvent("player:gap-jump", { detail }));
       }
     } catch (e) {
-      console.debug("[PLAYER] gap jump dispatch failed:", e);
+      console.error("[PLAYER] gap jump dispatch failed:", e);
     }
   }
 
@@ -400,14 +434,16 @@ class Player {
           }
         })
         .catch((e: Error) => {
-          console.warn("[PLAYER] play() rejected:", e.message);
+          console.error("[PLAYER] play() rejected:", e);
           if (e.name === "NotAllowedError") {
             this._autoplayBlocked = true;
             this._awaitingUserPlay = true;
             this._clearStallWatchdog();
             try {
               self.dispatchEvent(new CustomEvent("player:play-blocked"));
-            } catch {}
+            } catch (dispatchError) {
+              console.error("[PLAYER] player:play-blocked dispatch failed:", dispatchError);
+            }
           }
         });
     } else {
@@ -433,15 +469,17 @@ class Player {
       const nextUrl = URL.createObjectURL(ms);
       const prevUrl = this._objectUrl;
       this._objectUrl = nextUrl;
-      try { this._video.pause(); } catch {}
+      try { this._video.pause(); } catch (e) { console.error("[PLAYER] pause before source attach failed:", e); }
       try {
         this._video.removeAttribute("src");
         this._video.srcObject = null;
         this._video.load();
-      } catch {}
+      } catch (e) {
+        console.error("[PLAYER] clearing previous media source failed:", e);
+      }
       this._video.src = nextUrl;
       if (prevUrl) {
-        try { URL.revokeObjectURL(prevUrl); } catch {}
+        try { URL.revokeObjectURL(prevUrl); } catch (e) { console.error("[PLAYER] revokeObjectURL failed:", e); }
       }
     } else {
       const msWithHandle = ms as MediaSource & { handle?: unknown };
@@ -588,7 +626,9 @@ class Player {
     try {
       await this._trimTrackBuffer(track, token, keepStart, Infinity);
       this._pruneAppended(track);
-    } catch {}
+    } catch (e) {
+      console.error(`[${track.type.toUpperCase()}] prune behind failed:`, e);
+    }
   }
 
   _schedulePruneTrackBehind(
@@ -660,6 +700,10 @@ class Player {
 
   // ── Network recovery ──────────────────────────────────────────────────────
   _setupNetworkRecovery(): void {
+    if (this._onOnline) {
+      self.removeEventListener("online", this._onOnline);
+      this._onOnline = null;
+    }
     this._onOnline = () => {
       if (!this.started || this._recovering || this._destroyed) return;
       console.warn("[PLAYER] network online — triggering immediate recovery");
@@ -720,6 +764,8 @@ class Player {
   static AUTO_TIME_EPSILON = 0.075;
   static FIREFOX_TAIL_DECODE_EOF_SECONDS = 3;
   static NUDGE_MAX = 2;
+  static PENDING_RESUME_TIMEOUT_MS = 3000;
+  static DECODE_RECOVERY_MAX_RETRIES = 3;
 
   _getVideoSb(): SourceBuffer | null {
     return this.tracks.find((t) => t.type === "video")?.sb ?? null;
@@ -753,9 +799,20 @@ class Player {
       this._scheduleStallCheck();
       return;
     }
-    if (this._resumeInProgress || this._pendingResumeTime != null) {
+    if (this._resumeInProgress) {
       this._scheduleStallCheck();
       return;
+    }
+    if (this._pendingResumeTime != null) {
+      if (this._isPendingResumeStale()) {
+        console.warn(
+          `[PLAYER] pending resume ${this._pendingResumeTime.toFixed(3)}s did not settle; falling back to actual media time`,
+        );
+        this._clearPendingResumeTime();
+      } else {
+        this._scheduleStallCheck();
+        return;
+      }
     }
     if (this._video?.ended) {
       this._clearStallWatchdog();
@@ -797,7 +854,7 @@ class Player {
           this.ms.endOfStream();
         }
       } catch (e) {
-        console.warn(
+        console.error(
           "[PLAYER] endOfStream() during stall finalize failed:",
           (e as Error).message,
         );
@@ -1297,7 +1354,11 @@ class Player {
 
   async _reinitMediaSource(resumeTime: number): Promise<void> {
     if (this._recovering) {
-      console.warn("[PLAYER] Already recovering, skipping");
+      this._queuedSeekTime = Math.max(0, resumeTime);
+      this._setPendingResumeTime(this._queuedSeekTime);
+      console.warn(
+        `[PLAYER] Already recovering, queued reinit to ${this._queuedSeekTime.toFixed(3)}s`,
+      );
       return;
     }
     this._recovering = true;
@@ -1376,33 +1437,43 @@ class Player {
     this._reinitInProgress = true;
     try {
       this._attachMediaSource(ms);
-    } catch (e) {
+
+      await new Promise<void>((resolve, reject) => {
+        ms.addEventListener(
+          "sourceopen",
+          () => {
+            this._startPlayback(resumeTime, shouldResume, playbackState)
+              .then(resolve)
+              .catch(reject);
+          },
+          { once: true },
+        );
+      });
+    } finally {
       this._reinitInProgress = false;
       this._recovering = false;
-      throw e;
     }
 
-    await new Promise<void>((resolve, reject) => {
-      ms.addEventListener(
-        "sourceopen",
-        () => {
-          this._startPlayback(resumeTime, shouldResume, playbackState)
-            .then(resolve)
-            .catch(reject);
-        },
-        { once: true },
+    const queuedSeekTime = this._queuedSeekTime;
+    this._queuedSeekTime = null;
+    if (
+      queuedSeekTime != null &&
+      Math.abs(queuedSeekTime - resumeTime) > Player.AUTO_TIME_EPSILON &&
+      !this._destroyed
+    ) {
+      console.warn(
+        `[PLAYER] applying queued seek after recovery → ${queuedSeekTime.toFixed(3)}s`,
       );
-    });
-
-    this._reinitInProgress = false;
-    this._recovering = false;
+      this._clearPendingResumeTime();
+      await this._reinitMediaSource(queuedSeekTime);
+      return;
+    }
 
     if (wasInPiP && v) {
       const playAfterPiP = () => {
         const tryPlay = () =>
           v.play().catch((e: Error) => {
-            if (e.name !== "NotAllowedError")
-              console.warn("[PLAYER] PiP play rejected:", e.message);
+            console.error("[PLAYER] PiP play rejected:", e);
           });
         tryPlay();
         setTimeout(() => {
@@ -1423,12 +1494,12 @@ class Player {
           try {
             v.webkitSetPresentationMode("picture-in-picture");
           } catch (e) {
-            console.debug("Ignored error:", e);
+            console.error("[PLAYER] webkitSetPresentationMode(picture-in-picture) failed:", e);
           }
         } else if (v.requestPictureInPicture) {
           v.requestPictureInPicture()
             .then(playAfterPiP)
-            .catch(() => {});
+            .catch((e: Error) => console.error("[PLAYER] requestPictureInPicture failed:", e));
         }
       };
       if (v.readyState >= 2) {
@@ -1597,22 +1668,25 @@ class Player {
     );
 
     this._reinitInProgress = true;
-    this._attachMediaSource(ms);
+    try {
+      this._attachMediaSource(ms);
 
-    if (this._video && ms.readyState === "open") {
-      await this._startPlayback(resumeTime);
-    } else {
-      await new Promise<void>((resolve, reject) => {
-        ms.addEventListener(
-          "sourceopen",
-          () => {
-            this._startPlayback(resumeTime).then(resolve).catch(reject);
-          },
-          { once: true },
-        );
-      });
+      if (this._video && ms.readyState === "open") {
+        await this._startPlayback(resumeTime);
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          ms.addEventListener(
+            "sourceopen",
+            () => {
+              this._startPlayback(resumeTime).then(resolve).catch(reject);
+            },
+            { once: true },
+          );
+        });
+      }
+    } finally {
+      this._reinitInProgress = false;
     }
-    this._reinitInProgress = false;
   }
 
   async _startPlayback(
@@ -1668,12 +1742,12 @@ class Player {
         this._video.defaultPlaybackRate = playbackState.defaultPlaybackRate;
         this._video.playbackRate = playbackState.playbackRate;
       } catch (e) {
-        console.debug("[PLAYER] playbackRate restore ignored:", e);
+        console.error("[PLAYER] playbackRate restore failed:", e);
       }
     }
 
     if (resumeTime != null && resumeTime > 0.5) {
-      this._pendingResumeTime = resumeTime;
+      this._setPendingResumeTime(resumeTime);
       this.lastSeekTime = resumeTime;
     }
 
@@ -1719,86 +1793,86 @@ class Player {
     };
     this._resumeInProgress = true;
 
-    const duration =
-      this._video?.duration ??
-      (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
+    try {
+      const duration =
+        this._video?.duration ??
+        (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
 
-    // 경계 직전에서 바로 재생하면 다시 stall 나므로,
-    // 요청 시점보다 조금 앞(250ms)까지 버퍼가 찼는지 확인한다.
-    const readyThrough = Number.isFinite(duration)
-      ? Math.min(requestedTime + 0.25, Math.max(requestedTime, duration - 0.01))
-      : requestedTime + 0.25;
+      // 경계 직전에서 바로 재생하면 다시 stall 나므로,
+      // 요청 시점보다 조금 앞(250ms)까지 버퍼가 찼는지 확인한다.
+      const readyThrough = Number.isFinite(duration)
+        ? Math.min(requestedTime + 0.25, Math.max(requestedTime, duration - 0.01))
+        : requestedTime + 0.25;
 
-    const deadline = Date.now() + 10000;
+      const deadline = Date.now() + 10000;
 
-    while (Date.now() < deadline) {
+      while (Date.now() < deadline) {
+        if (
+          generation !== this.generation ||
+          mediaSource !== this.ms ||
+          this._destroyed
+        ) {
+          return;
+        }
+
+        const videoSb = this._getVideoSb();
+        const videoEnd = videoSb
+          ? this.getBufferedEnd(videoSb, requestedTime)
+          : requestedTime;
+
+        const audioEnd = audioTrack
+          ? this._bufferedEndForTrack(audioTrack, requestedTime)
+          : Number.POSITIVE_INFINITY;
+
+        const videoReady = !!videoSb && videoEnd >= readyThrough - 0.01;
+        const audioReady = !audioTrack || audioEnd >= readyThrough - 0.01;
+
+        if (videoReady && audioReady) break;
+        await this.wait(50);
+      }
+
       if (
         generation !== this.generation ||
         mediaSource !== this.ms ||
         this._destroyed
       ) {
-        finishResume();
         return;
       }
 
       const videoSb = this._getVideoSb();
-      const videoEnd = videoSb
-        ? this.getBufferedEnd(videoSb, requestedTime)
-        : requestedTime;
+      if (!videoSb) {
+        return;
+      }
 
+      const videoEnd = this.getBufferedEnd(videoSb, requestedTime);
       const audioEnd = audioTrack
         ? this._bufferedEndForTrack(audioTrack, requestedTime)
         : Number.POSITIVE_INFINITY;
+      const sharedEnd = Math.min(videoEnd, audioEnd);
 
-      const videoReady = !!videoSb && videoEnd >= readyThrough - 0.01;
-      const audioReady = !audioTrack || audioEnd >= readyThrough - 0.01;
+      let safeSeekTime = requestedTime;
 
-      if (videoReady && audioReady) break;
-      await this.wait(50);
-    }
+      // 아직 requestedTime을 완전히 커버 못했으면
+      // 공유 버퍼 안쪽으로 아주 살짝만 물러난다.
+      if (sharedEnd <= requestedTime + 0.02) {
+        safeSeekTime = Math.min(
+          requestedTime,
+          Math.max(0, Math.max(requestedTime - Player.AUTO_TIME_EPSILON, sharedEnd)),
+        );
+        console.warn(
+          `[PLAYER] resume target ${requestedTime.toFixed(3)}s not fully buffered; fallback to ${safeSeekTime.toFixed(3)}s`,
+        );
+      }
 
-    if (
-      generation !== this.generation ||
-      mediaSource !== this.ms ||
-      this._destroyed
-    ) {
+      console.log(`[PLAYER] Resuming at ${safeSeekTime.toFixed(3)}s`);
+      this._setPendingResumeTime(safeSeekTime);
+      this._internalSeek = true;
+      this._seekTo(safeSeekTime);
+
+      if (autoPlay) this._play();
+    } finally {
       finishResume();
-      return;
     }
-
-    const videoSb = this._getVideoSb();
-    if (!videoSb) {
-      finishResume();
-      return;
-    }
-
-    const videoEnd = this.getBufferedEnd(videoSb, requestedTime);
-    const audioEnd = audioTrack
-      ? this._bufferedEndForTrack(audioTrack, requestedTime)
-      : Number.POSITIVE_INFINITY;
-    const sharedEnd = Math.min(videoEnd, audioEnd);
-
-    let safeSeekTime = requestedTime;
-
-    // 아직 requestedTime을 완전히 커버 못했으면
-    // 공유 버퍼 안쪽으로 아주 살짝만 물러난다.
-    if (sharedEnd <= requestedTime + 0.02) {
-      safeSeekTime = Math.min(
-        requestedTime,
-        Math.max(0, Math.max(requestedTime - Player.AUTO_TIME_EPSILON, sharedEnd)),
-      );
-      console.warn(
-        `[PLAYER] resume target ${requestedTime.toFixed(3)}s not fully buffered; fallback to ${safeSeekTime.toFixed(3)}s`,
-      );
-    }
-
-    console.log(`[PLAYER] Resuming at ${safeSeekTime.toFixed(3)}s`);
-    this._pendingResumeTime = safeSeekTime;
-    this._internalSeek = true;
-    this._seekTo(safeSeekTime);
-
-    if (autoPlay) this._play();
-    finishResume();
   }
 
   _pruneAppended(track: Track): void {
@@ -1850,7 +1924,7 @@ class Player {
       console.log("[PLAYER] All segments appended, calling endOfStream()");
       this.ms.endOfStream();
     } catch (e) {
-      console.warn("[PLAYER] endOfStream() failed:", (e as Error).message);
+      console.error("[PLAYER] endOfStream() failed:", e);
     }
   }
 
@@ -1957,7 +2031,9 @@ class Player {
               const token = track.sbToken;
               this._schedulePruneTrackBehind(track, token, keepStart);
             }
-          } catch {}
+          } catch (e) {
+            console.error(`[${track.type.toUpperCase()}] buffer prune scheduling failed:`, e);
+          }
           await this.wait(this.POLL_INTERVAL);
           continue;
         }
@@ -2159,7 +2235,7 @@ class Player {
         `[PLAYER] seeking while media element is in error state; reinitializing to ${seekTime.toFixed(3)}s`,
       );
       this.lastSeekTime = seekTime;
-      this._pendingResumeTime = seekTime;
+      this._setPendingResumeTime(seekTime);
       if (!this._recovering && !this._reinitInProgress) {
         this._reinitMediaSource(seekTime).catch((e) =>
           console.error("[PLAYER] error-state seek reinit failed:", e),
@@ -2169,7 +2245,8 @@ class Player {
     }
     if (this._recovering || this._reinitInProgress) {
       this.lastSeekTime = seekTime;
-      this._pendingResumeTime = seekTime;
+      this._setPendingResumeTime(seekTime);
+      this._queuedSeekTime = seekTime;
       console.log(
         `[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`,
       );
@@ -2209,7 +2286,7 @@ class Player {
     console.log(`[PLAYER] seeking → ${seekTime.toFixed(3)}s`);
     this.lastSeekTime = seekTime;
     this._ct = seekTime;
-    this._pendingResumeTime = null;
+    this._clearPendingResumeTime();
     this.seekInProgress = true;
     this._clearStallWatchdog();
 
@@ -2283,21 +2360,18 @@ class Player {
             }
           }
         } catch (e) {
-          console.warn(
+          console.error(
             `[${track.type.toUpperCase()}] seek buffer op failed: ${(e as Error).message}`,
           );
         }
       }
 
       this._startFetchLoopsInner();
-
-      setTimeout(() => {
-        if (this._destroyed || seekGeneration !== this.generation) return;
-        this._stallCheckCount = 0;
-        this._stallSnapshotTime = null;
-        this._stallSnapshotBuf = null;
-        this._startStallWatchdog();
-      }, 8000);
+      if (this._destroyed || seekGeneration !== this.generation) return;
+      this._stallCheckCount = 0;
+      this._stallSnapshotTime = null;
+      this._stallSnapshotBuf = null;
+      this._startStallWatchdog();
     }, this.seekDebounceMs);
   }
 
@@ -2347,7 +2421,7 @@ class Player {
             this.ms.endOfStream();
           }
         } catch (e) {
-          console.warn(
+          console.error(
             "[PLAYER] endOfStream() during error finalize failed:",
             (e as Error).message,
           );
@@ -2375,24 +2449,33 @@ class Player {
         return;
       }
 
-      let recoveredFromRepeatedError = false;
       if (
         this._lastErrorTime !== undefined &&
         Math.abs(ct - this._lastErrorTime) < 2
       ) {
         this._errorStreak = (this._errorStreak || 0) + 1;
-        if (this._errorStreak >= 3) {
-          ct = this._getDecodeRecoveryTime(ct);
-          recoveredFromRepeatedError = true;
+        if (this._errorStreak >= Player.DECODE_RECOVERY_MAX_RETRIES) {
+          const nearEndFallback =
+            Number.isFinite(duration) &&
+            duration > 0 &&
+            duration - ct <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS + 2;
+          const fallbackTime = nearEndFallback
+            ? 0
+            : Math.max(0, Math.min(this._lastKnownGoodTime ?? 0, ct - 1));
           this._errorStreak = 0;
-          console.warn(
-            `[PLAYER] Repeated error, skipping to ${ct.toFixed(3)}s`,
+          this._lastErrorTime = fallbackTime;
+          console.error(
+            `[PLAYER] repeated decode/network error near ${ct.toFixed(3)}s; reinitializing from ${fallbackTime.toFixed(3)}s`,
           );
+          this._reinitMediaSource(fallbackTime).catch((e) =>
+            console.error("[PLAYER] repeated-error fallback reinit failed:", e),
+          );
+          return;
         }
       } else {
         this._errorStreak = 0;
       }
-      if (code === 3 /* MEDIA_ERR_DECODE */ && !recoveredFromRepeatedError) {
+      if (code === 3 /* MEDIA_ERR_DECODE */) {
         ct = this._getDecodeRecoveryTime(ct);
       }
       this._lastErrorTime = ct;
@@ -2446,20 +2529,28 @@ class Player {
     }
     this.started = false;
     this.seekInProgress = false;
-    this._pendingResumeTime = null;
+    this._clearPendingResumeTime();
+    this._resumeInProgress = false;
+    this._queuedSeekTime = null;
+    this._recovering = false;
+    this._reinitInProgress = false;
     if (this._objectUrl) {
-      try { URL.revokeObjectURL(this._objectUrl); } catch {}
+      try { URL.revokeObjectURL(this._objectUrl); } catch (e) { console.error("[PLAYER] revokeObjectURL during destroy failed:", e); }
       this._objectUrl = null;
     }
     if (this._video) {
       try {
         this._video.pause();
-      } catch {}
+      } catch (e) {
+        console.error("[PLAYER] pause during destroy failed:", e);
+      }
       try {
         this._video.removeAttribute("src");
         this._video.srcObject = null;
         this._video.load();
-      } catch {}
+      } catch (e) {
+        console.error("[PLAYER] clearing media during destroy failed:", e);
+      }
     }
   }
 }
@@ -2561,13 +2652,14 @@ if (IS_WORKER) {
                   [r.buffer as ArrayBuffer],
                 ),
               )
-              .catch(() =>
+              .catch((e: Error) => {
+                console.error("[PLAYER] download segment decrypt failed; returning original segment:", e);
                 (self as unknown as DedicatedWorkerGlobalScope).postMessage({
                   type: "dlDecryptedSeg",
                   id: data.id,
                   buffer: data.buffer,
-                }),
-              );
+                });
+              });
           }
           break;
 
