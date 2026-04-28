@@ -332,6 +332,14 @@ const AUTO_SKIP_NEAR_END_WINDOW_SECONDS = 3;
 const btnAutoSkip = document.getElementById("btn-autoskip") as HTMLButtonElement;
 const btnAutoPlay = document.getElementById("btn-autoplay") as HTMLButtonElement;
 const autoPlayDelayInput = document.getElementById("input-autoplay-delay") as HTMLInputElement | null;
+function shouldShowTimelineBar(): boolean {
+  return localStorage.getItem("player_timeline_bar") !== "off";
+}
+function applyTimelineBarVisibility(): void {
+  const bar = document.getElementById("timeline-bar");
+  if (!bar) return;
+  bar.hidden = !shouldShowTimelineBar();
+}
 function getAutoPlayDelaySeconds(): number {
   const raw = parseFloat(localStorage.getItem("player_autoplay_delay") ?? localStorage.getItem("player_autoskip_delay") ?? "0");
   if (!Number.isFinite(raw)) return 0;
@@ -354,8 +362,12 @@ function syncOptBtns(): void {
   btnAutoPlay.textContent = autoPlay ? "켜짐" : "꺼짐";
   btnAutoPlay.setAttribute("aria-pressed", String(autoPlay));
   if (autoPlayDelayInput) setAutoPlayDelaySeconds(getAutoPlayDelaySeconds());
+  applyTimelineBarVisibility();
 }
 syncOptBtns();
+window.addEventListener("storage", (e) => {
+  if (e.key === "player_timeline_bar") applyTimelineBarVisibility();
+});
 btnAutoSkip.addEventListener("click", () => {
   autoSkip = !autoSkip;
   localStorage.setItem(
@@ -1140,6 +1152,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   const video = document.getElementById("v") as HTMLVideoElement;
   const bar = document.getElementById("timeline-bar")!;
   const progress = document.getElementById("timeline-progress") as HTMLElement;
+  applyTimelineBarVisibility();
 
   video.addEventListener("timeupdate", () => {
     const dur = video.duration;

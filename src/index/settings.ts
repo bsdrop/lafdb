@@ -308,6 +308,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 
 	const tmToggle = document.getElementById("toggle-telemetry") as HTMLInputElement | null;
 	const cvToggle = document.getElementById("toggle-cv") as HTMLInputElement | null;
+	const timelineBarToggle = document.getElementById("toggle-player-timeline-bar") as HTMLInputElement | null;
 	const offlineModeToggle = document.getElementById("toggle-offline-mode") as HTMLInputElement | null;
 	const btnSyncItems = document.getElementById("btn-sync-items") as HTMLButtonElement | null;
 	const btnSyncEpisodes = document.getElementById("btn-sync-episodes") as HTMLButtonElement | null;
@@ -524,6 +525,7 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 		if (laftelExtToggle) laftelExtToggle.checked = localStorage.getItem("laftel_ext_enabled") === "yes";
 		if (tmToggle) tmToggle.checked = localStorage.getItem("telemetry_consent") === "yes";
 		if (cvToggle) cvToggle.checked = localStorage.getItem("cv_auto") !== "no";
+		if (timelineBarToggle) timelineBarToggle.checked = localStorage.getItem("player_timeline_bar") !== "off";
 		if (offlineModeToggle) offlineModeToggle.checked = localStorage.getItem(OFFLINE_MODE_KEY) === "yes";
 		if (manualThumbsToggle) manualThumbsToggle.checked = isManualThumbsEnabled();
 		if (manualCommentsToggle) manualCommentsToggle.checked = isManualCommentsEnabled();
@@ -603,6 +605,11 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 	cvToggle?.addEventListener("change", () => {
 		localStorage.setItem("cv_auto", cvToggle.checked ? "yes" : "no");
 		applyCvAuto();
+	});
+
+	timelineBarToggle?.addEventListener("change", () => {
+		if (timelineBarToggle.checked) localStorage.removeItem("player_timeline_bar");
+		else localStorage.setItem("player_timeline_bar", "off");
 	});
 
 	manualThumbsToggle?.addEventListener("change", () => {
