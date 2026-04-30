@@ -846,7 +846,36 @@ function syncPlayerFullscreenClass(): void {
   box.classList.toggle("is-box-fullscreen", document.fullscreenElement === box);
 }
 
-document.addEventListener("fullscreenchange", syncPlayerFullscreenClass);
+let fullscreenCoercionInProgress = false;
+
+async function forceBoxFullscreenFromNativeRequest(): Promise<void> {
+  const box = document.getElementById("video-box");
+  if (!box) return;
+  if (document.fullscreenElement === box) {
+    syncPlayerFullscreenClass();
+    return;
+  }
+
+  fullscreenCoercionInProgress = true;
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+    }
+    await box.requestFullscreen?.();
+  } finally {
+    fullscreenCoercionInProgress = false;
+  }
+}
+
+document.addEventListener("fullscreenchange", () => {
+  syncPlayerFullscreenClass();
+  const box = document.getElementById("video-box");
+  if (!box) return;
+  if (fullscreenCoercionInProgress) return;
+  if (document.fullscreenElement && document.fullscreenElement !== box) {
+    void forceBoxFullscreenFromNativeRequest();
+  }
+});
 
 function setupFullscreenButton(): void {
   const btn = document.getElementById("btn-fullscreen") as HTMLButtonElement | null;

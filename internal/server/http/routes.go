@@ -39,6 +39,7 @@ func RegisterAPIRoutes(api fiber.Router, app *App) {
 
 func RegisterShareRoutes(srv *fiber.App, app *App) {
 	srv.Get("/player/:episodeId", app.handlePlayerShare)
+	srv.Get("/player/:itemId/:episodeId", app.handlePlayerShare)
 	srv.Get("/item/:id", app.handleItemShare)
 	srv.Get("/comment/:commentId", app.handleCommentShare)
 	srv.Get("/review/:reviewId", app.handleReviewShare)
