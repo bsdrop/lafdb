@@ -800,7 +800,7 @@ function setupProgressSave(): void {
       t,
       video.duration,
       _currentItemId,
-      _currentEpHistoryLabel || _currentEpTitle,
+      _currentEpTitle,
     );
   }
 
