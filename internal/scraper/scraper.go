@@ -18,6 +18,9 @@ type Config struct {
 	MaxConcurrent int  // fallback when no proxy pool; default 8
 	DaemonMode    bool // add 33–66ms delay before returning proxy to pool
 	Debug         bool // log every request; suppress \r progress display
+	FreshAge      time.Duration
+	FailFreshAge  time.Duration
+	CommentAge    time.Duration
 }
 
 type Flags struct {

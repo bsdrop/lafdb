@@ -92,8 +92,7 @@ func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		epID64, parseErr := strconv.ParseInt(strings.TrimSuffix(e.Name(), ".json"), 10, 64)
-		if parseErr != nil {
+		if _, parseErr := strconv.ParseInt(strings.TrimSuffix(e.Name(), ".json"), 10, 64); parseErr != nil {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Clean(filepath.Join(listDir, e.Name())))
@@ -109,8 +108,7 @@ func (s *Scraper) collectCommentIDsWithReplies() []int64 {
 		if json.Unmarshal(data, &page) != nil {
 			continue
 		}
-		epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID64))
-		epSkipAge := s.commentSkipAge(epPath)
+		epSkipAge := s.commentSkipAge()
 		for _, r := range page.Results {
 			if r.CountReply == 0 {
 				continue

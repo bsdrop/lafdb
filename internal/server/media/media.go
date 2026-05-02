@@ -44,7 +44,7 @@ func SetRAMCache(v bool) {
 	mediaRAMCache = v
 }
 
-var failedURLs sync.Map      // cleanPathname → struct{}
+var failedURLs sync.Map // cleanPathname → struct{}
 var failedURLCount atomic.Int64
 var inflightMedia sync.Map // cleanPathname → *inflightEntry
 
@@ -79,6 +79,13 @@ func SnapFailedURLs() {
 type inflightEntry struct {
 	done chan struct{}
 	err  error
+}
+
+func validateContentLength(expected, actual int64) error {
+	if expected > 0 && actual != expected {
+		return fmt.Errorf("integrity check failed: expected %d bytes, got %d", expected, actual)
+	}
+	return nil
 }
 
 type mediaCfg struct {
@@ -292,7 +299,7 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 	}
 
 	if !mediaRAMCache {
-		if err := saveMediaStream(localPath, first, resp.Body); err == nil {
+		if err := saveMediaStream(localPath, first, resp.Body, resp.ContentLength); err == nil {
 			// resp.Body is fully consumed; open the saved file to serve it.
 			finish(nil)
 			f, openErr := os.Open(localPath)
@@ -322,6 +329,12 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 		return c.Status(fiber.StatusNotFound).SendString("Not Found")
 	}
 	body := append(first, rest...)
+	if err := validateContentLength(resp.ContentLength, int64(len(body))); err != nil {
+		log.Printf("media integrity %s: %v", sourceURL, err)
+		storeFailedURL(cleanPathname)
+		finish(err)
+		return c.Status(fiber.StatusServiceUnavailable).SendString("Internal Server Error")
+	}
 
 	// Save to disk before signaling finish (so waiting requests can open the file)
 	if err := os.MkdirAll(filepath.Dir(localPath), 0750); err == nil {
@@ -344,7 +357,7 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 	return c.Send(body)
 }
 
-func saveMediaStream(localPath string, first []byte, body io.Reader) error {
+func saveMediaStream(localPath string, first []byte, body io.Reader, expectedSize int64) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0750); err != nil {
 		return err
 	}
@@ -368,7 +381,11 @@ func saveMediaStream(localPath string, first []byte, body io.Reader) error {
 			return err
 		}
 	}
-	if _, err := io.Copy(f, body); err != nil {
+	written, err := io.Copy(f, body)
+	if err != nil {
+		return err
+	}
+	if err := validateContentLength(expectedSize, int64(len(first))+written); err != nil {
 		return err
 	}
 	if err := f.Close(); err != nil {

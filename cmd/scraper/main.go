@@ -23,6 +23,9 @@ func main() {
 	concurrent := flag.Int("concurrent", 8, "max concurrent requests (ignored when proxies loaded: uses proxy count)")
 	debug := flag.Bool("debug", false, "log every request (suppresses \\r progress display)")
 	noSkip := flag.Bool("no-skip", false, "re-fetch existing files")
+	freshAge := flag.Duration("fresh-age", 48*time.Hour, "how long to treat saved item/list/detail/statistics files as fresh")
+	failFreshAge := flag.Duration("fail-fresh-age", 48*time.Hour, "how long to skip IDs that recently returned 404")
+	commentFreshAge := flag.Duration("comment-fresh-age", 48*time.Hour, "how long to treat comment and reply stamps as fresh")
 	skipItems := flag.Bool("skip-items", false, "")
 	skipEpisodes := flag.Bool("skip-episodes", false, "")
 	skipReviews := flag.Bool("skip-reviews", false, "")
@@ -61,6 +64,9 @@ func main() {
 			Root:          *root,
 			MaxConcurrent: *concurrent,
 			Debug:         *debug,
+			FreshAge:      *freshAge,
+			FailFreshAge:  *failFreshAge,
+			CommentAge:    *commentFreshAge,
 		}
 		s := scraper.New(cfg, flags, proxyFile)
 		go func() {
@@ -98,6 +104,9 @@ func main() {
 			MaxConcurrent: *concurrent,
 			DaemonMode:    true,
 			Debug:         *debug,
+			FreshAge:      *freshAge,
+			FailFreshAge:  *failFreshAge,
+			CommentAge:    *commentFreshAge,
 		}
 		s := scraper.New(cfg, flags, proxyFile)
 		if err := s.Run(); err != nil {

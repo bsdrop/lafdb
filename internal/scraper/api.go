@@ -46,16 +46,12 @@ func (s *Scraper) fetchJSON(url string) ([]byte, string, error) {
 	return body, "200", nil
 }
 
-const skipAge = 5 * 24 * time.Hour
-
 func (s *Scraper) shouldSkip(path string) bool {
 	if s.flags.NoSkip {
 		return false
 	}
-	return lafutil.FileFresh(path, skipAge)
+	return lafutil.FileFresh(path, s.cfg.FreshAge)
 }
-
-const failStampAge = 6 * time.Hour
 
 func (s *Scraper) failStampPath(category string, id int64) string {
 	return filepath.Join(s.dir(".fail-stamps"), category, fmt.Sprintf("%d", id))
@@ -66,7 +62,7 @@ func (s *Scraper) shouldSkipFailed(category string, id int64) bool {
 	if s.flags.NoSkip {
 		return false
 	}
-	return lafutil.FileFresh(s.failStampPath(category, id), failStampAge)
+	return lafutil.FileFresh(s.failStampPath(category, id), s.cfg.FailFreshAge)
 }
 
 func (s *Scraper) writeFailStamp(category string, id int64) {
@@ -84,25 +80,11 @@ func (s *Scraper) clearFailStamp(category string, id int64) {
 	_ = os.Remove(s.failStampPath(category, id))
 }
 
-// commentSkipAge returns how long to treat a comment stamp as fresh,
-// derived from the age of the episode detail file clamped to [1h, 24h].
-// Recently-scraped episodes → 1h minimum; stale episodes → up to 24h.
-func (s *Scraper) commentSkipAge(epFilePath string) time.Duration {
+func (s *Scraper) commentSkipAge() time.Duration {
 	if s.flags.NoSkip {
 		return 0
 	}
-	st, err := os.Stat(epFilePath)
-	if err != nil {
-		return time.Hour
-	}
-	age := time.Since(st.ModTime())
-	if age < time.Hour {
-		return time.Hour
-	}
-	if age > 24*time.Hour {
-		return 24 * time.Hour
-	}
-	return age
+	return s.cfg.CommentAge
 }
 
 func (s *Scraper) commentStampPath(epID int64) string {
@@ -126,9 +108,8 @@ func (s *Scraper) filterCommentEpIDs(epIDs []int64) []int64 {
 		return epIDs
 	}
 	out := make([]int64, 0, len(epIDs))
+	skipAge := s.commentSkipAge()
 	for _, epID := range epIDs {
-		epPath := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID))
-		skipAge := s.commentSkipAge(epPath)
 		if !lafutil.FileFresh(s.commentStampPath(epID), skipAge) {
 			out = append(out, epID)
 		}
