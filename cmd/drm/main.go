@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -27,8 +28,14 @@ func main() {
 	skip := flag.Int("skip-first", 0, "skip first N episodes")
 	skipFailed := flag.Bool("skip-failed", false, "skip episodes previously failed due to missing DRM token")
 	daemon := flag.Bool("daemon", false, "run continuously: scraper → DRM → cache rebuild → signal server")
+	waitHours := flag.Float64("wait", 0, "hours to wait between daemon cycles; 0 uses adaptive interval")
 	proxies := flag.String("proxies", "./proxies.txt", "proxy list file for scraper phase")
 	flag.Parse()
+
+	waitDuration, err := waitDurationFromHours(*waitHours, true)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if *token == "" {
 		log.Fatal("-token is required")
@@ -128,8 +135,12 @@ func main() {
 		}()
 
 		runtime.GC()
-		interval := daemonInterval(time.Since(start))
-		log.Printf("daemon: next run in %.2f days", interval.Hours()/24)
+		interval := daemonInterval(time.Since(start), waitDuration)
+		if *waitHours > 0 {
+			log.Printf("daemon: next run in %.2f hours", interval.Hours())
+		} else {
+			log.Printf("daemon: next run in %.2f days", interval.Hours()/24)
+		}
 
 		timer := time.NewTimer(interval)
 		select {
@@ -141,8 +152,28 @@ func main() {
 	}
 }
 
-func daemonInterval(elapsed time.Duration) time.Duration {
+func daemonInterval(elapsed, fixedWait time.Duration) time.Duration {
+	if fixedWait > 0 {
+		return fixedWait
+	}
 	days := elapsed.Hours() / 24.0
 	next := math.Max(1, math.Min(days*3+5, 14))
 	return time.Duration(next * 24 * float64(time.Hour))
+}
+
+func waitDurationFromHours(hours float64, allowZero bool) (time.Duration, error) {
+	if math.IsNaN(hours) || math.IsInf(hours, 0) {
+		return 0, fmt.Errorf("invalid -wait value: %v", hours)
+	}
+	if hours == 0 && allowZero {
+		return 0, nil
+	}
+	if hours <= 0 {
+		return 0, fmt.Errorf("-wait must be > 0 hours")
+	}
+	maxHours := float64(math.MaxInt64) / float64(time.Hour)
+	if hours > maxHours {
+		return 0, fmt.Errorf("-wait too large: max %.2f hours", maxHours)
+	}
+	return time.Duration(hours * float64(time.Hour)), nil
 }

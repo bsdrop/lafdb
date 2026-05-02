@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,6 +41,11 @@ func main() {
 	waitHours := flag.Float64("wait", 24*6, "hours to wait between daemon cycles (default 6 days)")
 	bitsetOut := flag.String("bitset-out", "./public/accessible.js", "path to write accessible.js after DRM")
 	flag.Parse()
+
+	waitDuration, err := waitDurationFromHours(*waitHours)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	proxyFile := *proxies
 	if _, err := os.Stat(proxyFile); err != nil {
@@ -167,7 +174,7 @@ func main() {
 		}()
 
 		// ── 4. wait ──────────────────────────────────────────────────
-		if !sleep(stopCh, time.Duration(*waitHours*float64(time.Hour)), "daemon: waiting before next cycle") {
+		if !sleep(stopCh, waitDuration, "daemon: waiting before next cycle") {
 			return
 		}
 	}
@@ -183,4 +190,18 @@ func sleep(stopCh <-chan struct{}, d time.Duration, msg string) bool {
 	case <-stopCh:
 		return false
 	}
+}
+
+func waitDurationFromHours(hours float64) (time.Duration, error) {
+	if math.IsNaN(hours) || math.IsInf(hours, 0) {
+		return 0, fmt.Errorf("invalid -wait value: %v", hours)
+	}
+	if hours <= 0 {
+		return 0, fmt.Errorf("-wait must be > 0 hours")
+	}
+	maxHours := float64(math.MaxInt64) / float64(time.Hour)
+	if hours > maxHours {
+		return 0, fmt.Errorf("-wait too large: max %.2f hours", maxHours)
+	}
+	return time.Duration(hours * float64(time.Hour)), nil
 }
