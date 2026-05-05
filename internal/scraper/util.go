@@ -75,6 +75,68 @@ func collectEpisodeIDsFromLists(dir string) ([]int64, error) {
 	return ids, nil
 }
 
+func collectSeriesIDsFromItems(dir string) ([]int64, error) {
+	entries, err := os.ReadDir(filepath.Clean(dir))
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[int64]struct{}, len(entries))
+	ids := make([]int64, 0, len(entries))
+
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Clean(filepath.Join(dir, e.Name())))
+		if err != nil {
+			continue
+		}
+		var item struct {
+			SeriesID *int64 `json:"series_id"`
+		}
+		if json.Unmarshal(data, &item) != nil || item.SeriesID == nil || *item.SeriesID < 0 {
+			continue
+		}
+		if _, ok := seen[*item.SeriesID]; ok {
+			continue
+		}
+		seen[*item.SeriesID] = struct{}{}
+		ids = append(ids, *item.SeriesID)
+	}
+
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids, nil
+}
+
+func buildSeriesIDs(primary []int64, maxID int64) []int64 {
+	if maxID < 0 {
+		maxID = 0
+	}
+	out := make([]int64, 0, len(primary)+int(maxID)+1)
+	seen := make(map[int64]struct{}, len(primary)+int(maxID)+1)
+
+	for _, id := range primary {
+		if id < 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+
+	for id := int64(0); id <= maxID; id++ {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 // reads all saved episode comment files and returns the IDs of top-level comments that have replies.
 // 현재 행동: 중복이 아니어야 하고 s.shouldSkip(path) 에 걸리지 않아야 합니다.
 func (s *Scraper) collectCommentIDsWithReplies() []int64 {

@@ -163,6 +163,34 @@ func (s *Scraper) fetchItem(id int64) string {
 	return "200"
 }
 
+func (s *Scraper) fetchSeries(seriesID int64) string {
+	path := filepath.Join(s.dir("items/v2/series"), fmt.Sprintf("%d.json", seriesID))
+	if s.shouldSkip(path) {
+		return "skip"
+	}
+	if s.shouldSkipFailed("series", seriesID) {
+		return "skip"
+	}
+
+	body, st, err := s.fetchJSON(fmt.Sprintf("%s/items/v2/series/%d/", baseAPI, seriesID))
+	if err != nil {
+		return errCode(st, err)
+	}
+	if st == "404" {
+		s.writeFailStamp("series", seriesID)
+		return "404"
+	}
+	if st != "200" {
+		return st
+	}
+
+	if err := lafutil.WriteFile(path, lafutil.PrettyJSON(body)); err != nil {
+		return errCode("write", err)
+	}
+	s.clearFailStamp("series", seriesID)
+	return "200"
+}
+
 func (s *Scraper) fetchEpisodeList(itemID int64) string {
 	if !lafutil.FileExists(filepath.Join(s.dir("items/v4"), fmt.Sprintf("%d.json", itemID))) {
 		return "skip"

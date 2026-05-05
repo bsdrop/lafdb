@@ -25,6 +25,7 @@ func main() {
 	concurrent := flag.Int("concurrent", 8, "max concurrent requests (ignored when proxies loaded: uses proxy count)")
 	debug := flag.Bool("debug", false, "log every request (suppresses \\r progress display)")
 	noSkip := flag.Bool("no-skip", false, "re-fetch existing files")
+	bruteforceSeries := flag.Bool("bruteforce-series", false, "also scan series IDs 0..10000 after series_id values found in saved items")
 	freshAge := flag.Duration("fresh-age", 48*time.Hour, "how long to treat saved item/list/detail/statistics files as fresh")
 	failFreshAge := flag.Duration("fail-fresh-age", 48*time.Hour, "how long to skip IDs that recently returned 404")
 	commentFreshAge := flag.Duration("comment-fresh-age", 48*time.Hour, "how long to treat comment and reply stamps as fresh")
@@ -53,13 +54,14 @@ func main() {
 	}
 
 	flags := scraper.Flags{
-		NoSkip:         *noSkip,
-		SkipItems:      *skipItems,
-		SkipEpisodes:   *skipEpisodes,
-		SkipReviews:    *skipReviews,
-		SkipStatistics: *skipStatistics,
-		SkipComments:   *skipComments,
-		SkipThumbnails: *skipThumbnails,
+		NoSkip:           *noSkip,
+		BruteforceSeries: *bruteforceSeries,
+		SkipItems:        *skipItems,
+		SkipEpisodes:     *skipEpisodes,
+		SkipReviews:      *skipReviews,
+		SkipStatistics:   *skipStatistics,
+		SkipComments:     *skipComments,
+		SkipThumbnails:   *skipThumbnails,
 	}
 
 	stopCh := make(chan struct{})

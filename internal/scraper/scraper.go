@@ -24,13 +24,14 @@ type Config struct {
 }
 
 type Flags struct {
-	NoSkip         bool
-	SkipItems      bool
-	SkipEpisodes   bool
-	SkipReviews    bool
-	SkipStatistics bool
-	SkipComments   bool
-	SkipThumbnails bool
+	NoSkip           bool
+	BruteforceSeries bool
+	SkipItems        bool
+	SkipEpisodes     bool
+	SkipReviews      bool
+	SkipStatistics   bool
+	SkipComments     bool
+	SkipThumbnails   bool
 }
 
 type Scraper struct {
@@ -212,7 +213,7 @@ func (s *Scraper) Run() error {
 		allIDs[i] = int64(119999 - i)
 	}
 	for _, d := range []string{
-		"items/v4", "episodes/v3", "episodes/v3/list",
+		"items/v4", "items/v2/series", "episodes/v3", "episodes/v3/list",
 		"thumbnail", "reviews/v2/list",
 		"items/v1", "comments/v1/list", "comments/v1/replies", "comments/v1/.stamps",
 	} {
@@ -222,6 +223,11 @@ func (s *Scraper) Run() error {
 	if !s.flags.SkipItems {
 		s.runPool(allIDs, s.fetchItem, "items")
 	}
+	seriesIDs, _ := collectSeriesIDsFromItems(s.dir("items/v4"))
+	if s.flags.BruteforceSeries {
+		seriesIDs = buildSeriesIDs(seriesIDs, 10000)
+	}
+	s.runPool(seriesIDs, s.fetchSeries, "series")
 	if !s.flags.SkipEpisodes {
 		s.runPool(allIDs, s.fetchEpisodeList, "ep-list")
 		epIDs, _ := collectEpisodeIDsFromLists(s.dir("episodes/v3/list"))
