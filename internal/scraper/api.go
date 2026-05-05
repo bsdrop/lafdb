@@ -144,22 +144,6 @@ func (s *Scraper) fetchItem(id int64) string {
 	}
 	s.clearFailStamp("items", id)
 
-	if !s.flags.SkipThumbnails {
-		var item struct {
-			Img    string `json:"img"`
-			Images []struct {
-				ImgURL string `json:"img_url"`
-			} `json:"images"`
-		}
-		if err := json.Unmarshal(body, &item); err != nil {
-			return errCode("json", err)
-		}
-		s.downloadImage(item.Img)
-		for _, img := range item.Images {
-			s.downloadImage(img.ImgURL)
-		}
-	}
-
 	return "200"
 }
 
@@ -238,17 +222,6 @@ func (s *Scraper) fetchEpisodeList(itemID int64) string {
 		}
 		all = append(all, page.Results...)
 
-		if !s.flags.SkipThumbnails {
-			for _, raw := range page.Results {
-				var ep struct {
-					ThumbnailPath string `json:"thumbnail_path"`
-				}
-				if json.Unmarshal(raw, &ep) == nil {
-					s.downloadImage(ep.ThumbnailPath)
-				}
-			}
-		}
-
 		if len(all) >= count {
 			break
 		}
@@ -296,18 +269,6 @@ func (s *Scraper) fetchEpisodeDetail(epID int64) string {
 		return errCode("write", err)
 	}
 	s.clearFailStamp("ep-detail", epID)
-
-	if !s.flags.SkipThumbnails {
-		var ep struct {
-			ThumbnailPath string `json:"thumbnail_path"`
-			Thumbnail     string `json:"thumbnail"`
-		}
-		if err := json.Unmarshal(body, &ep); err != nil {
-			return errCode("json", err)
-		}
-		s.downloadImage(ep.ThumbnailPath)
-		s.downloadImage(ep.Thumbnail)
-	}
 
 	return "200"
 }

@@ -1,8 +1,10 @@
 package scraper
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -30,6 +32,66 @@ func (s *Scraper) downloadImage(rawURL string) string {
 		return mergeDownloadStatus(result, st)
 	}
 	return result
+}
+
+func (s *Scraper) fetchItemThumbnails(itemID int64) string {
+	path := filepath.Join(s.dir("items/v4"), fmt.Sprintf("%d.json", itemID))
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "skip"
+	}
+	var item struct {
+		Img    string `json:"img"`
+		Images []struct {
+			ImgURL string `json:"img_url"`
+		} `json:"images"`
+	}
+	if err := json.Unmarshal(data, &item); err != nil {
+		return "err"
+	}
+	status := s.downloadImage(item.Img)
+	for _, img := range item.Images {
+		status = mergeDownloadStatus(status, s.downloadImage(img.ImgURL))
+	}
+	return status
+}
+
+func (s *Scraper) fetchEpisodeListThumbnails(itemID int64) string {
+	path := filepath.Join(s.dir("episodes/v3/list"), fmt.Sprintf("%d.json", itemID))
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "skip"
+	}
+	var page struct {
+		Results []struct {
+			ThumbnailPath string `json:"thumbnail_path"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(data, &page); err != nil {
+		return "err"
+	}
+	status := "skip"
+	for _, ep := range page.Results {
+		status = mergeDownloadStatus(status, s.downloadImage(ep.ThumbnailPath))
+	}
+	return status
+}
+
+func (s *Scraper) fetchEpisodeDetailThumbnails(epID int64) string {
+	path := filepath.Join(s.dir("episodes/v3"), fmt.Sprintf("%d.json", epID))
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "skip"
+	}
+	var ep struct {
+		ThumbnailPath string `json:"thumbnail_path"`
+		Thumbnail     string `json:"thumbnail"`
+	}
+	if err := json.Unmarshal(data, &ep); err != nil {
+		return "err"
+	}
+	status := s.downloadImage(ep.ThumbnailPath)
+	return mergeDownloadStatus(status, s.downloadImage(ep.Thumbnail))
 }
 
 func (s *Scraper) downloadImageFile(realURL string) string {

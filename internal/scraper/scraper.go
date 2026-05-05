@@ -249,5 +249,13 @@ func (s *Scraper) Run() error {
 		log.Printf("[comment-replies] %d parent comments with replies", len(replyIDs))
 		s.runPool(replyIDs, s.fetchCommentReplies, "comment-replies")
 	}
+	if !s.flags.SkipThumbnails {
+		itemIDs, _ := existingIDs(s.dir("items/v4"))
+		s.runPool(itemIDs, s.fetchItemThumbnails, "thumb-items")
+		epListItemIDs, _ := existingIDs(s.dir("episodes/v3/list"))
+		s.runPool(epListItemIDs, s.fetchEpisodeListThumbnails, "thumb-ep-list")
+		epIDs, _ := collectEpisodeIDsFromLists(s.dir("episodes/v3/list"))
+		s.runPool(epIDs, s.fetchEpisodeDetailThumbnails, "thumb-ep-detail")
+	}
 	return nil
 }
