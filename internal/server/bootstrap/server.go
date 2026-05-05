@@ -110,6 +110,11 @@ func Run() {
 					}
 					if err := store.SaveToFile(cacheFile); err != nil {
 						log.Printf("warning: failed to save cache: %v", err)
+					} else {
+						store, err = cachepkg.LoadFromFile(cacheFile)
+						if err != nil {
+							log.Fatalf("failed to reload cache after save: %v", err)
+						}
 					}
 				}
 			} else {
@@ -122,6 +127,10 @@ func Run() {
 					log.Printf("warning: failed to save cache: %v", err)
 				} else {
 					log.Printf("cache saved to %s", cacheFile)
+					store, err = cachepkg.LoadFromFile(cacheFile)
+					if err != nil {
+						log.Fatalf("failed to reload cache after save: %v", err)
+					}
 				}
 			}
 		}
