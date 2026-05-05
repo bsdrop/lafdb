@@ -202,6 +202,22 @@ func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int) {
 	if normalized != rawPath || normalized == "." || strings.HasPrefix(normalized, "..") || strings.HasPrefix(normalized, "/") {
 		return "", fiber.StatusBadRequest
 	}
+
+	if len(normalized) <= 10 {
+		return "", fiber.StatusBadRequest
+	}
+
+	hasDigit := false
+	for i := 0; i < len(normalized); i++ {
+		if normalized[i] >= '0' && normalized[i] <= '9' {
+			hasDigit = true
+			break
+		}
+	}
+	if !hasDigit {
+		return "", fiber.StatusBadRequest
+	}
+
 	return normalized, 0
 }
 
