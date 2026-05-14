@@ -1,4 +1,4 @@
-import { escapeHtml } from "./shared/text";
+import { escapeHtmlAttr } from "./shared/text";
 import { formatDateTimeKo, formatRelativeTimeKo, formatRuntimeKo } from "./shared/time";
 import { rewriteCdnUrl } from "./shared/cdn";
 import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
@@ -434,7 +434,7 @@ function renderStats(stats: any): void {
 			const label = (k / 10).toFixed(1);
 			const tip = `★${label}	${cnt.toLocaleString()}명`;
 			return (
-				`<div class="vbar-col" data-tip="${esc(tip)}">` +
+				`<div class="vbar-col" data-tip="${escapeHtmlAttr(tip)}">` +
 				`<div class="vbar-fill" style="height:${h}px"></div>` +
 				`<span class="vbar-lbl">${label}</span>` +
 				`</div>`
