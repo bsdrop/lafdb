@@ -87,8 +87,8 @@ func (s *Store) SaveToFile(path string) error {
 	}
 
 	// Encode each map then nil it so GC can reclaim memory during the save.
-	// v6 skips ReviewShareByReviewID and CommentShareByCommentID — they are
-	// rebuilt from the raw list maps by initNilMaps() on load.
+	// v6 skips ReviewShareByReviewID and CommentShareByCommentID; they are rebuilt
+	//  from the raw list maps by initNilMaps() on load.
 	type step struct {
 		fn func() error
 	}

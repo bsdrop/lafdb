@@ -425,7 +425,7 @@ function renderStats(stats: any): void {
 			stats[`count_score_${String(k).padStart(2, "0")}`] || 0,
 	);
 	const maxCnt = Math.max(...counts, 1);
-	const chartH = 138; // px — bar area height (excl. label)
+	const chartH = 138; // px - bar area height (excl. label)
 
 	const barsHtml = levels
 		.map((k, i) => {

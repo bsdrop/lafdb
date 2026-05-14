@@ -429,7 +429,7 @@ autoPlayDelayInput?.addEventListener("blur", () => {
 
   let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
 
-  // Customizable via localStorage — not exposed in settings UI
+  // Customizable via localStorage ㅡ not exposed in settings UI
   const getMul    = () => parseFloat(localStorage.getItem("player_speed_step_mul") || "1.1") || 1.1;
   const getBigMul = () => parseFloat(localStorage.getItem("player_speed_big_mul") || "2")   || 2;
   const getPresets = (): number[] => {

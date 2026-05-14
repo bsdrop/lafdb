@@ -1,6 +1,3 @@
-// Extension bridge — communicates with laftel-ext content script via postMessage.
-// Content script must be injected (run_at: document_start) on this origin.
-
 export type ExtRoute = "direct" | "server";
 export const EXT_STORAGE_KEY = "laftel_ext_enabled";
 

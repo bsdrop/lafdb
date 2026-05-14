@@ -1,10 +1,10 @@
 /**
- * share-link.ts — shared copy-link utilities
- *
+ * share-link.ts
+ * 
  * Exposes window.ShareLink with:
- *   copy(text, btn, opts?)  — clipboard copy + button feedback
- *   buildUrl(extra)         — merge extra params into current hash URL
- *   highlight(el)           — smooth-scroll + flash animation
+ *   copy(text, btn, opts?)   ㅡ clipboard copy + button feedback
+ *   buildUrl(extra)          ㅡ merge extra params into current hash URL
+ *   highlight(el)            ㅡ smooth-scroll + flash animation
  */
 
 declare global {

@@ -1,9 +1,4 @@
-// Segment timeline utilities — pure math on MPEG-DASH SegmentTimeline data.
-// No Player state, no DOM side effects, no MSE API.
-
 export type SegmentEntry = { time: number; duration: number };
-
-// Skip range: a time window (OP/ED) that autoSkip will jump over.
 export type SkipRange = { start: number; end: number };
 
 export function parseSegmentTimeline(template: Element): SegmentEntry[] | null {
@@ -57,7 +52,7 @@ export function timeToSegmentNumber(
 }
 
 // Returns true when segStart falls in the interior of a skip range relative
-// to the current playhead ct — i.e., the player hasn't reached the range yet
+// to the current playhead ct ㅡ i.e., the player hasn't reached the range yet
 // but the segment is more than one segment-width past the range's start.
 // Used by the fetch loop to avoid buffering OP/ED content that will be skipped.
 export function isInSkipInterior(

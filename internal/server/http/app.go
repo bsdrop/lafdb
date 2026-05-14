@@ -63,7 +63,7 @@ func sendJSONBytes(c fiber.Ctx, b []byte) error {
 			c.Set(fiber.HeaderContentType, accept)
 			return c.Send(mp)
 		}
-		// conversion failed — fall through to JSON
+		// conversion failed; fall through to JSON
 	}
 	c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
 	return c.Send(b)

@@ -635,7 +635,7 @@ select {
   }
 }
 
-/* layout toggle button — only visible on PC */
+/* layout toggle button (only visible on PC) */
 #btn-comments-layout {
   display: none;
 }

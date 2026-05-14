@@ -1,7 +1,7 @@
 // Treat naive timestamps (no timezone suffix) as KST (+09:00).
 export function parseKSTDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const iso = /[Zz]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}+09:00`;
+  const iso = /[Zz]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}+09:00`; // TODO: FIXME?
   return new Date(iso);
 }
 

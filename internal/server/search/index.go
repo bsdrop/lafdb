@@ -477,7 +477,7 @@ func (idx *Index) Search(q Query) Result {
 			hits = append(hits, hit{e: e, score: score})
 		}
 
-		// 2차: 역색인으로 퍼지 매칭 — 전체 스캔 없음
+		// 2차: 역색인으로 퍼지 매칭 (전체 스캔 없음)
 		if nQT > 0 {
 			trigramIntersect := make(map[*entry]int, 128)
 			for tg := range qTrigrams {
@@ -740,7 +740,7 @@ func (idx *Index) Autocomplete(q string, limit int) []string {
 				}
 			}
 		}
-		// 역색인으로 퍼지 매칭 — 교집합 카운트로 Jaccard 직접 계산
+		// 역색인으로 퍼지 매칭 (교집합 카운트로 Jaccard 직접 계산)
 		if nQT > 0 {
 			trigramIntersect := make(map[*entry]int, 64)
 			for tg := range qTrigrams {

@@ -755,7 +755,7 @@ class Player {
     }
     this._onOnline = () => {
       if (!this.started || this._recovering || this._destroyed) return;
-      console.warn("[PLAYER] network online — triggering immediate recovery");
+      console.warn("[PLAYER] network online, triggering immediate recovery");
       this._reinitMediaSource(this._safeCurrentTime()).catch((e) =>
         console.error("[PLAYER] online recovery failed:", e),
       );
@@ -949,7 +949,7 @@ class Player {
     }
     this._gapCandidateStart = -1;
 
-    // If video has buffer but audio is still catching up, be patient — it's not a decoder stall.
+    // If video has buffer but audio is still catching up, be patient, it's not a decoder stall.
     const audioIsBuffering = ahead >= Player.STALL_BUF_MIN && audioAhead < Player.STALL_BUF_MIN;
     const strikeLimit = ahead >= Player.STALL_BUF_MIN && !audioIsBuffering
       ? Player.STALL_DECODER_STRIKES
@@ -2121,7 +2121,7 @@ class Player {
 
         // Auto-skip: don't buffer deep into OP/ED ranges.
         // Allow at most 1 segment past skipStart so decode stays smooth until
-        // the skip fires, then stop — the post-skip buffer fills after the seek.
+        // the skip fires, then stop; the post-skip buffer fills after the seek.
         const skipOptActive =
           this.skipRanges.length > 0 &&
           (typeof localStorage === "undefined" || localStorage.getItem("player_autoskip") !== "off");

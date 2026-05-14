@@ -1,5 +1,3 @@
-// SourceBuffer primitives — stateless wrappers around the MSE API.
-// No Player state, no side effects beyond the SourceBuffer itself.
 const BUFFER_TIME_EPSILON = 0.075;
 const TRIM_HYSTERESIS_SECONDS = 0.25;
 

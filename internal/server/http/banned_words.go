@@ -30,7 +30,7 @@ func initBannedWords() {
 		}
 	}
 
-	// Month mismatch or file missing — try to fetch fresh data
+	// Month mismatch or file missing; try to fetch fresh data
 	if data := fetchBannedWords(); data != nil {
 		bannedWordsCache = data
 		if err := os.WriteFile(bannedWordsFile, data, 0644); err != nil {
@@ -39,7 +39,7 @@ func initBannedWords() {
 		return
 	}
 
-	// Fetch failed — fall back to stale file
+	// Fetch failed; fall back to stale file
 	if fileExists {
 		data, err := os.ReadFile(bannedWordsFile)
 		if err == nil {
