@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#6e58ff" />
+    <link rel="apple-touch-icon" href="app-icon.png">
+    <title>시청 기록</title>
+    <link rel="stylesheet" href="/history.css">
+  </head>
+  <body>
+		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
+    <main id="history-page">
+      <div id="history-top">
+        <a id="history-back" href="/">← 검색</a>
+        <div id="history-tools">
+          <span id="history-count">작품 0건</span>
+          <button id="btn-history-clear" class="history-tool-btn danger" type="button">기록 모두 삭제</button>
+        </div>
+      </div>
+      <div id="history-empty" hidden>아직 저장된 시청 기록이 없습니다.</div>
+      <div id="history-list"></div>
+    </main>
+    <script src="/history.js"></script>
+  </body>
+</html>

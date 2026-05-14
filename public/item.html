@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<link rel="manifest" href="/manifest.webmanifest">
+		<meta name="mobile-web-app-capable" content="yes">
+		<meta name="theme-color" content="#6e58ff" />
+		<link rel="apple-touch-icon" href="app-icon.png">
+		<title>작품 정보</title>
+		<script src="/common.js"></script>
+		<script src="/accessible.js"></script>
+		<link rel="stylesheet" href="/item.css">
+	</head>
+	<body>
+		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
+		<div id="share-overlay"></div>
+		<div id="share-sheet" aria-modal="true" role="dialog" aria-labelledby="share-title" aria-hidden="true">
+			<div id="share-handle" aria-hidden="true"></div>
+			<div id="share-title">공유</div>
+			<div class="share-toggle-row" id="share-laftel-row">
+				<span class="share-toggle-label">라프텔 공식 링크로 공유</span>
+				<label class="s-toggle" aria-label="라프텔 공식 링크로 공유">
+					<input type="checkbox" id="share-laftel-toggle" />
+					<span class="s-toggle-track"></span>
+					<span class="s-toggle-thumb"></span>
+				</label>
+			</div>
+			<div id="share-rows"></div>
+		</div>
+
+		<div id="top-actions">
+			<a id="back" href="/">← 검색</a>
+			<button id="btn-share-item" title="공유" aria-label="공유">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<circle cx="18" cy="5" r="3" />
+					<circle cx="6" cy="12" r="3" />
+					<circle cx="18" cy="19" r="3" />
+					<line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+					<line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+				</svg>
+			</button>
+		</div>
+		<div id="item-header">
+			<div id="item-thumb" class="skel"></div>
+			<div id="item-info">
+				<div id="item-name" class="skel"></div>
+				<div id="item-meta" class="skel"></div>
+				<div id="item-desc" class="skel"></div>
+			</div>
+		</div>
+
+		<div id="series-bar"></div>
+
+		<div id="tabs" role="tablist" aria-label="작품 정보">
+			<button class="tab active" data-tab="episodes" id="tab-button-episodes" role="tab" aria-selected="true" aria-controls="tab-episodes">에피소드</button>
+			<button class="tab" data-tab="reviews" id="tab-button-reviews" role="tab" aria-selected="false" aria-controls="tab-reviews">리뷰</button>
+		</div>
+
+		<div id="tab-episodes" role="tabpanel" aria-labelledby="tab-button-episodes">
+			<div class="sort-bar" id="ep-sort">
+				<button class="sort-btn active" data-sort="oldest" aria-pressed="true">
+					오래된 순
+				</button>
+				<button class="sort-btn" data-sort="newest" aria-pressed="false">최신 순</button>
+				<button class="sort-btn-inline" id="btn-load-all-thumbs" type="button">썸네일 모두 로드</button>
+			</div>
+			<div id="episodes"></div>
+		</div>
+		<div id="tab-reviews" role="tabpanel" aria-labelledby="tab-button-reviews" style="display: none" hidden>
+			<div id="item-stats"></div>
+			<div class="sort-bar" id="rev-sort">
+				<button class="sort-btn active" data-sorting="like" aria-pressed="true">
+					좋아요 순
+				</button>
+				<button class="sort-btn" data-sorting="newest" aria-pressed="false">최신 순</button>
+			</div>
+			<div id="reviews"></div>
+		</div>
+
+		<script src="/item.js"></script>
+	</body>
+</html>
