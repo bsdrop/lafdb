@@ -1,4 +1,4 @@
-import { escapeHtml } from "./shared/text";
+import { escapeHtml, escapeHtmlAttr } from "./shared/text";
 import { formatDateTimeKo, formatRelativeTimeKo, formatRuntimeKo } from "./shared/time";
 import { rewriteCdnUrl } from "./shared/cdn";
 import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
@@ -701,7 +701,7 @@ async function loadReviews(reset = false): Promise<void> {
 			const liked = !!r.is_click_like;
 
 			const avatarHtml = r.profile?.image
-				? `<img class="review-avatar" src="${esc(rewriteCdnUrl(r.profile.image))}" alt="" loading="lazy">`
+				? `<img class="review-avatar" src="${escapeHtmlAttr(rewriteCdnUrl(r.profile.image))}" alt="" loading="lazy">`
 				: `<div class="review-avatar"></div>`;
 
 			const canExtAct = isExtEnabled() && isExtLoggedIn();
