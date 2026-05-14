@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -55,8 +56,15 @@ func buildModifiedEvents(path string, newData []byte, kind, scopeKind string, sc
 	}
 	oldMap := mapRawByID(oldPage.Results)
 
-	ids := make([]int64, 0, len(oldMap)+len(newMap))
-	seen := make(map[int64]struct{}, len(oldMap)+len(newMap))
+	oldLen := len(oldMap)
+	newLen := len(newMap)
+	if oldLen > math.MaxInt-newLen {
+		return nil, fmt.Errorf("too many tracked items to build modified events")
+	}
+	combinedLen := oldLen + newLen
+
+	ids := make([]int64, 0, combinedLen)
+	seen := make(map[int64]struct{}, combinedLen)
 	for id := range oldMap {
 		seen[id] = struct{}{}
 		ids = append(ids, id)
