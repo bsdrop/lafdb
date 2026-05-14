@@ -199,7 +199,9 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 			value
 				.replace(/&/g, "&amp;")
 				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;");
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#39;");
 		// Protect code blocks
 		let res = md.replace(/```([\s\S]*?)```/g, (_, code) => {
 			const id = `__CODE_${codes.length}__`;
@@ -211,6 +213,8 @@ export function initSettings({ onRefreshFeed }: InitSettingsOptions) {
 			.replace(/&/g, "&amp;")
 			.replace(/</g, "&lt;")
 			.replace(/>/g, "&gt;")
+	    .replace(/"/g, "&quot;")
+	    .replace(/'/g, "&#39;")
 			// HR
 			.replace(/^---$/gm, "<hr>")
 			// Headers
