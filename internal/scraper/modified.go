@@ -56,12 +56,20 @@ func buildModifiedEvents(path string, newData []byte, kind, scopeKind string, sc
 	}
 	oldMap := mapRawByID(oldPage.Results)
 
+	const maxTrackedItems = 1_000_000
+
 	oldLen := len(oldMap)
 	newLen := len(newMap)
+	if oldLen > maxTrackedItems || newLen > maxTrackedItems {
+		return nil, fmt.Errorf("too many tracked items to build modified events")
+	}
 	if oldLen > math.MaxInt-newLen {
 		return nil, fmt.Errorf("too many tracked items to build modified events")
 	}
 	combinedLen := oldLen + newLen
+	if combinedLen > maxTrackedItems {
+		return nil, fmt.Errorf("too many tracked items to build modified events")
+	}
 
 	ids := make([]int64, 0, combinedLen)
 	seen := make(map[int64]struct{}, combinedLen)
