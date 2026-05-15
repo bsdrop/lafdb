@@ -1093,7 +1093,6 @@ if (targetReviewId) initExtReviews();
     }
   });
 
-  const handle = document.getElementById("share-handle");
   let raised = false;
 
   function openSheet(): void {
@@ -1111,6 +1110,7 @@ if (targetReviewId) initExtReviews();
     }
     renderRows();
     raised = false;
+    sheet.classList.remove("raised");
     sheet.style.transform = "";
     overlay.classList.add("open");
     sheet.classList.add("open");
@@ -1123,6 +1123,7 @@ if (targetReviewId) initExtReviews();
       return;
     }
     raised = false;
+    sheet.classList.remove("raised");
     sheet.style.transition = "";
     sheet.style.transform = "";
     overlay.classList.remove("open");
@@ -1136,52 +1137,60 @@ if (targetReviewId) initExtReviews();
     if (e.key === "Escape" && sheet.classList.contains("open")) closeSheet();
   });
 
-  if (handle) {
+  {
     let touchStartY = 0;
     let raisedPx = 0;
-    handle.addEventListener(
-      "touchstart",
-      (e) => {
-        touchStartY = e.touches[0].clientY;
-        raisedPx = -Math.round(window.innerHeight * 0.42);
-        sheet.style.transition = "none";
-      },
-      { passive: true },
-    );
-    handle.addEventListener(
-      "touchmove",
-      (e) => {
-        const dy = e.changedTouches[0].clientY - touchStartY;
-        const base = raised ? raisedPx : 0;
-        sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
-      },
-      { passive: true },
-    );
-    handle.addEventListener(
-      "touchend",
-      (e) => {
-        const dy = e.changedTouches[0].clientY - touchStartY;
-        sheet.style.transition = "";
-        if (raised) {
-          if (dy > 80) {
-            raised = false;
-            sheet.style.transform = "";
-          } else {
-            sheet.style.transform = `translateY(${raisedPx}px)`;
-          }
+    let touchIntent: "pending" | "drag" | "scroll" = "pending";
+
+    sheet.addEventListener("touchstart", (e) => {
+      touchStartY = e.touches[0].clientY;
+      raisedPx = -Math.round(window.innerHeight * 0.42);
+      touchIntent = "pending";
+    }, { passive: true });
+
+    sheet.addEventListener("touchmove", (e) => {
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (touchIntent === "pending") {
+        if (Math.abs(dy) < 6) return;
+        const scrollTop = rowsEl?.scrollTop ?? 0;
+        if (dy < -6 || (dy > 6 && scrollTop <= 0)) {
+          touchIntent = "drag";
+          sheet.style.transition = "none";
         } else {
-          if (dy < -80) {
-            raised = true;
-            sheet.style.transform = `translateY(${raisedPx}px)`;
-          } else if (dy > 80) {
-            sheet.style.transform = "";
-            closeSheet();
-          } else {
-            sheet.style.transform = "";
-          }
+          touchIntent = "scroll";
+          return;
         }
-      },
-      { passive: true },
-    );
+      }
+      if (touchIntent !== "drag") return;
+      const base = raised ? raisedPx : 0;
+      sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
+    }, { passive: true });
+
+    sheet.addEventListener("touchend", (e) => {
+      if (touchIntent !== "drag") { touchIntent = "pending"; return; }
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      sheet.style.transition = "";
+      if (raised) {
+        if (dy > 80) {
+          raised = false;
+          sheet.classList.remove("raised");
+          sheet.style.transform = "";
+        } else {
+          sheet.style.transform = `translateY(${raisedPx}px)`;
+        }
+      } else {
+        if (dy < -80) {
+          raised = true;
+          sheet.classList.add("raised");
+          sheet.style.transform = `translateY(${raisedPx}px)`;
+        } else if (dy > 80) {
+          sheet.style.transform = "";
+          closeSheet();
+        } else {
+          sheet.style.transform = "";
+        }
+      }
+      touchIntent = "pending";
+    }, { passive: true });
   }
 })();
