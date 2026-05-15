@@ -338,9 +338,10 @@ const ShareSheet = (() => {
         }
       }
       if (touchIntent !== "drag") return;
+      e.preventDefault();
       const base = raised ? raisedPx : 0;
       sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
-    }, { passive: true });
+    }, { passive: false });
 
     sheet.addEventListener("touchend", (e) => {
       if (touchIntent !== "drag") { touchIntent = "pending"; return; }

@@ -1051,6 +1051,7 @@ select {
   max-height: 50vh;
   padding: 1px 0;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 #share-title {
   font-size: 13px;
