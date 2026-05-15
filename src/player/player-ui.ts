@@ -315,10 +315,12 @@ const ShareSheet = (() => {
     let touchStartY = 0;
     let raisedPx = 0;
     let touchIntent: "pending" | "drag" | "scroll" = "pending";
+    let touchInRows = false;
 
     sheet.addEventListener("touchstart", (e) => {
       touchStartY = e.touches[0].clientY;
       raisedPx = -Math.round(window.innerHeight * 0.42);
+      touchInRows = !!rowsEl?.contains(e.target as Node);
       touchIntent = "pending";
     }, { passive: true });
 
@@ -326,8 +328,8 @@ const ShareSheet = (() => {
       const dy = e.changedTouches[0].clientY - touchStartY;
       if (touchIntent === "pending") {
         if (Math.abs(dy) < 6) return;
-        const scrollTop = rowsEl?.scrollTop ?? 0;
-        if (dy < -6 || (dy > 6 && scrollTop <= 0)) {
+        const canDrag = !touchInRows || (rowsEl?.scrollTop ?? 0) <= 0;
+        if (canDrag && (dy < -6 || dy > 6)) {
           touchIntent = "drag";
           sheet.style.transition = "none";
         } else {
