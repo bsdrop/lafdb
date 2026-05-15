@@ -3,6 +3,7 @@ import { formatDateTimeKo, formatRelativeTimeKo, formatRuntimeKo } from "./share
 import { rewriteCdnUrl } from "./shared/cdn";
 import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
 import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "./shared/ext";
+import { copyToClipboard, mountShareSheet } from "./shared/share-sheet";
 
 if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
 function getRouteParams() {
@@ -1057,33 +1058,7 @@ if (targetReviewId) initExtReviews();
     if (!btn) return;
     const url = buildUrl();
     if (btn.dataset["action"] === "copy") {
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(url);
-        copied = true;
-      } catch (clipErr) {
-        console.error("[SHARE] clipboard API 실패, execCommand 폴백 시도:", clipErr);
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        ta.style.cssText = "position:fixed;top:-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        try {
-          document.execCommand("copy");
-          copied = true;
-        } catch (execErr) {
-          console.error("[SHARE] execCommand 폴백도 실패:", execErr);
-        }
-        ta.remove();
-      }
-      if (copied) {
-        btn.textContent = "✓ 복사됨";
-        btn.classList.add("copied");
-        setTimeout(() => {
-          btn.textContent = "복사";
-          btn.classList.remove("copied");
-        }, 2000);
-      }
+      await copyToClipboard(url, btn);
     } else if (btn.dataset["action"] === "native") {
       try {
         await navigator.share({ title: document.title, url });
@@ -1093,13 +1068,9 @@ if (targetReviewId) initExtReviews();
     }
   });
 
-  let raised = false;
+  const { open: openSheet } = mountShareSheet(overlay, sheet, rowsEl);
 
-  function openSheet(): void {
-    if (!overlay || !sheet) {
-      console.error("[SHARE] openSheet: 요소 없음");
-      return;
-    }
+  function openWithRender(): void {
     if (laftelToggle) {
       laftelToggle.checked = localStorage.getItem("share_laftel_url") !== "no";
       laftelToggle.onchange = () => {
@@ -1109,91 +1080,8 @@ if (targetReviewId) initExtReviews();
       };
     }
     renderRows();
-    raised = false;
-    sheet.classList.remove("raised");
-    sheet.style.transform = "";
-    overlay.classList.add("open");
-    sheet.classList.add("open");
-    sheet.setAttribute("aria-hidden", "false");
+    openSheet();
   }
 
-  function closeSheet(): void {
-    if (!overlay || !sheet) {
-      console.error("[SHARE] closeSheet: 요소 없음");
-      return;
-    }
-    raised = false;
-    sheet.classList.remove("raised");
-    sheet.style.transition = "";
-    sheet.style.transform = "";
-    overlay.classList.remove("open");
-    sheet.classList.remove("open");
-    sheet.setAttribute("aria-hidden", "true");
-  }
-
-  btnShare.addEventListener("click", openSheet);
-  overlay.addEventListener("click", closeSheet);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && sheet.classList.contains("open")) closeSheet();
-  });
-
-  {
-    let touchStartY = 0;
-    let raisedPx = 0;
-    let touchIntent: "pending" | "drag" | "scroll" = "pending";
-    let touchInRows = false;
-
-    sheet.addEventListener("touchstart", (e) => {
-      touchStartY = e.touches[0].clientY;
-      raisedPx = -Math.round(window.innerHeight * 0.42);
-      touchInRows = !!rowsEl?.contains(e.target as Node);
-      touchIntent = "pending";
-    }, { passive: true });
-
-    sheet.addEventListener("touchmove", (e) => {
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      if (touchIntent === "pending") {
-        if (Math.abs(dy) < 6) return;
-        const canDrag = !touchInRows || (rowsEl?.scrollTop ?? 0) <= 0;
-        if (canDrag && (dy < -6 || dy > 6)) {
-          touchIntent = "drag";
-          sheet.style.transition = "none";
-        } else {
-          touchIntent = "scroll";
-          return;
-        }
-      }
-      if (touchIntent !== "drag") return;
-      e.preventDefault();
-      const base = raised ? raisedPx : 0;
-      sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
-    }, { passive: false });
-
-    sheet.addEventListener("touchend", (e) => {
-      if (touchIntent !== "drag") { touchIntent = "pending"; return; }
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      sheet.style.transition = "";
-      if (raised) {
-        if (dy > 80) {
-          raised = false;
-          sheet.classList.remove("raised");
-          sheet.style.transform = "";
-        } else {
-          sheet.style.transform = `translateY(${raisedPx}px)`;
-        }
-      } else {
-        if (dy < -80) {
-          raised = true;
-          sheet.classList.add("raised");
-          sheet.style.transform = `translateY(${raisedPx}px)`;
-        } else if (dy > 80) {
-          sheet.style.transform = "";
-          closeSheet();
-        } else {
-          sheet.style.transform = "";
-        }
-      }
-      touchIntent = "pending";
-    }, { passive: true });
-  }
+  btnShare.addEventListener("click", openWithRender);
 })();

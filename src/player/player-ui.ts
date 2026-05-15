@@ -2,6 +2,7 @@ import { WatchHistory, updateEpisodeHistoryMeta } from "../watch-history";
 import { rewriteCdnUrl } from "../shared/cdn";
 import { parseShareTime } from "../shared/time";
 import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "../shared/ext";
+import { copyToClipboard, mountShareSheet } from "../shared/share-sheet";
 
 declare global {
   interface Window {
@@ -140,7 +141,7 @@ const ShareSheet = (() => {
     _getTime: (() => number) | null = null;
 
 
-  let raised = false;
+  const { open: _openSheet, close } = mountShareSheet(overlay, sheet, rowsEl);
 
   function open({
     epId,
@@ -168,22 +169,7 @@ const ShareSheet = (() => {
     render();
     timeToggle.onchange = render;
 
-    raised = false;
-    sheet.classList.remove("raised");
-    sheet.style.transform = "";
-    overlay.classList.add("open");
-    sheet.classList.add("open");
-    sheet.setAttribute("aria-hidden", "false");
-  }
-
-  function close(): void {
-    raised = false;
-    sheet.classList.remove("raised");
-    sheet.style.transition = "";
-    sheet.style.transform = "";
-    overlay.classList.remove("open");
-    sheet.classList.remove("open");
-    sheet.setAttribute("aria-hidden", "true");
+    _openSheet();
   }
 
   function buildUrls(): Array<{ label: string; url: string; withTime?: boolean }> {
@@ -256,36 +242,6 @@ const ShareSheet = (() => {
     }
   }
 
-  async function copyToClipboard(text: string, btn: HTMLElement): Promise<void> {
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(text);
-      copied = true;
-    } catch (e) {
-      console.error("[PLAYER] clipboard write failed; falling back to execCommand:", e);
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.cssText = "position:fixed;top:-9999px";
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-        copied = true;
-      } catch (fallbackError) {
-        console.error("[PLAYER] clipboard fallback failed:", fallbackError);
-      }
-      ta.remove();
-    }
-    if (copied) {
-      btn.textContent = "✓ 복사됨";
-      btn.classList.add("copied");
-      setTimeout(() => {
-        btn.textContent = "복사";
-        btn.classList.remove("copied");
-      }, 2000);
-    }
-  }
-
   rowsEl.addEventListener("click", async (e) => {
     const btn = (e.target as Element).closest("[data-action]") as HTMLElement | null;
     if (!btn) return;
@@ -305,71 +261,6 @@ const ShareSheet = (() => {
       }
     }
   });
-
-  overlay.addEventListener("click", close);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && sheet.classList.contains("open")) close();
-  });
-
-  {
-    let touchStartY = 0;
-    let raisedPx = 0;
-    let touchIntent: "pending" | "drag" | "scroll" = "pending";
-    let touchInRows = false;
-
-    sheet.addEventListener("touchstart", (e) => {
-      touchStartY = e.touches[0].clientY;
-      raisedPx = -Math.round(window.innerHeight * 0.42);
-      touchInRows = !!rowsEl?.contains(e.target as Node);
-      touchIntent = "pending";
-    }, { passive: true });
-
-    sheet.addEventListener("touchmove", (e) => {
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      if (touchIntent === "pending") {
-        if (Math.abs(dy) < 6) return;
-        const canDrag = !touchInRows || (rowsEl?.scrollTop ?? 0) <= 0;
-        if (canDrag && (dy < -6 || dy > 6)) {
-          touchIntent = "drag";
-          sheet.style.transition = "none";
-        } else {
-          touchIntent = "scroll";
-          return;
-        }
-      }
-      if (touchIntent !== "drag") return;
-      e.preventDefault();
-      const base = raised ? raisedPx : 0;
-      sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
-    }, { passive: false });
-
-    sheet.addEventListener("touchend", (e) => {
-      if (touchIntent !== "drag") { touchIntent = "pending"; return; }
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      sheet.style.transition = "";
-      if (raised) {
-        if (dy > 80) {
-          raised = false;
-          sheet.classList.remove("raised");
-          sheet.style.transform = "";
-        } else {
-          sheet.style.transform = `translateY(${raisedPx}px)`;
-        }
-      } else {
-        if (dy < -80) {
-          raised = true;
-          sheet.classList.add("raised");
-          sheet.style.transform = `translateY(${raisedPx}px)`;
-        } else if (dy > 80) {
-          sheet.style.transform = "";
-          close();
-        } else {
-          sheet.style.transform = "";
-        }
-      }
-      touchIntent = "pending";
-    }, { passive: true });
-  }
 
   return { open, close };
 })();
