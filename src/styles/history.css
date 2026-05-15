@@ -59,7 +59,10 @@ a {
   text-decoration: none;
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
 }
 
 .history-tool-btn.danger {
@@ -84,9 +87,9 @@ a {
   padding: 64px 20px;
   text-align: center;
   color: #9ba3b4;
-  border: 1px dashed rgba(255,255,255,.12);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
   border-radius: 20px;
-  background: rgba(255,255,255,.03);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 #history-list {
@@ -101,8 +104,8 @@ a {
   gap: 12px;
   padding: 11px;
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.03));
-  border: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .history-thumb {
@@ -110,7 +113,7 @@ a {
   aspect-ratio: 3 / 4;
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(255,255,255,.05);
+  background: rgba(255, 255, 255, 0.05);
   border: 0;
   padding: 0;
 }
@@ -129,7 +132,7 @@ a {
   align-items: center;
   justify-content: center;
   color: #cbd3e3;
-  background: linear-gradient(135deg, rgba(129,107,255,.22), rgba(255,255,255,.04));
+  background: linear-gradient(135deg, rgba(129, 107, 255, 0.22), rgba(255, 255, 255, 0.04));
 }
 
 .history-thumb-manual {
@@ -139,16 +142,16 @@ a {
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  border: 1px dashed rgba(255,255,255,.12);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
   border-radius: 12px;
-  background: rgba(255,255,255,.03);
+  background: rgba(255, 255, 255, 0.03);
   color: #aab2c2;
   font-size: 12px;
   cursor: pointer;
 }
 
 .history-thumb-manual:hover {
-  border-color: rgba(255,255,255,.22);
+  border-color: rgba(255, 255, 255, 0.22);
   color: #dce1eb;
 }
 
@@ -206,13 +209,13 @@ a {
 .history-actions .history-btn:last-child {
   color: #b7becd;
   border-color: #262626;
-  background: rgba(255,255,255,.025);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .history-actions .history-btn:last-child:hover {
   color: #d9dfeb;
   border-color: #353535;
-  background: rgba(255,255,255,.05);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .history-delete {
@@ -238,12 +241,12 @@ a {
   gap: 8px;
   padding: 5px 6px;
   border-radius: 10px;
-  background: rgba(255,255,255,.03);
-  border: 1px solid rgba(255,255,255,.05);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .history-ep-row:hover {
-  background: rgba(255,255,255,.06);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .history-ep-main {
@@ -274,8 +277,8 @@ a {
 
 .history-ep-delete {
   flex: 0 0 auto;
-  border: 1px solid rgba(255,255,255,.09);
-  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
   color: #cfd6e6;
   border-radius: 7px;
   padding: 5px 8px;

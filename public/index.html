@@ -9,39 +9,30 @@
 		<meta property="og:description" content="세상의 모든 애니메이션을 고화질로 무제한 스트리밍하세요. 추억의 애니부터 분기별 신작까지 무제한 스트리밍 가능한 곳은 오직 라트펠." />
 		<meta property="og:type" content="website" />
 		<meta name="theme-color" content="#6e58ff" />
-		<link rel="manifest" href="/manifest.webmanifest">
-		<meta name="mobile-web-app-capable" content="yes">
-		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-		<link rel="apple-touch-icon" href="app-icon.png">
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<link rel="apple-touch-icon" href="app-icon.png" />
 		<script src="/common.js"></script>
 		<script src="/accessible.js"></script>
-		<link rel="stylesheet" href="/index.css">
+		<link rel="stylesheet" href="/index.css" />
 	</head>
 	<body>
 		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
 		<div id="settings-overlay"></div>
-		<div
-			id="settings-panel"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="settings-title"
-			aria-hidden="true"
-		>
+		<div id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true">
 			<div id="settings-header">
 				<h2 id="settings-title">⚙ 설정</h2>
 				<button id="btn-close-settings" aria-label="설정 닫기">✕</button>
 			</div>
 			<div id="settings-body">
-				<!-- 통계 & 개인정보 -->
 				<div class="s-section">
 					<div class="s-section-label">통계 &amp; 개인정보</div>
 
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">익명 방문 통계 수집</div>
-							<div class="s-row-sub">
-								페이지 속도·환경 데이터
-							</div>
+							<div class="s-row-sub">페이지 속도·환경 데이터</div>
 						</div>
 						<label class="s-toggle" aria-label="통계 수집 토글">
 							<input type="checkbox" id="toggle-telemetry" aria-label="익명 방문 통계 수집" />
@@ -53,15 +44,12 @@
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">무엇을 수집하나요?</div>
-							<div class="s-row-sub">
-								수집 항목 및 처리 방식 보기
-							</div>
+							<div class="s-row-sub">수집 항목 및 처리 방식 보기</div>
 						</div>
 						<button class="s-btn" id="btn-tm-info">자세히 보기</button>
 					</div>
 				</div>
 
-				<!-- 플레이어 -->
 				<div class="s-section">
 					<div class="s-section-label">플레이어</div>
 
@@ -70,21 +58,21 @@
 							<div class="s-row-label">기본 화질</div>
 							<div class="s-row-sub" id="quality-pref-sub">스트리밍 시작 시 선호 화질</div>
 						</div>
-						<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+						<div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0">
 							<div class="s-pills" id="sel-quality-pref" role="group" aria-label="기본 화질 선택">
-								<label class="s-pill"><input type="radio" name="qual-pref" value="1080">1080p</label>
-								<label class="s-pill"><input type="radio" name="qual-pref" value="720">720p</label>
-								<label class="s-pill"><input type="radio" name="qual-pref" value="480">480p</label>
+								<label class="s-pill"><input type="radio" name="qual-pref" value="1080" />1080p</label>
+								<label class="s-pill"><input type="radio" name="qual-pref" value="720" />720p</label>
+								<label class="s-pill"><input type="radio" name="qual-pref" value="480" />480p</label>
 							</div>
 							<button class="s-btn s-btn-icon" id="btn-quality-adv" aria-label="비트레이트 설정" aria-controls="quality-adv-panel" aria-expanded="false" title="비트레이트 직접 지정">⋮</button>
 						</div>
 					</div>
-					<div id="quality-adv-panel" style="display:none">
+					<div id="quality-adv-panel" style="display: none">
 						<div class="qual-adv-inner">
 							<div class="qual-adv-title">비트레이트 목표</div>
 							<div class="qual-adv-desc">가장 가까운 화질이 자동으로 선택됩니다. 화질 버튼을 선택하시면 비트레이트 모드는 해제됩니다. 다만, 항상 정확한 것은 아닙니다.</div>
 							<div class="qual-adv-row">
-								<input type="number" id="qual-bps-input" class="qual-bps-input" min="100" max="20000" step="100" placeholder="kbps 입력…">
+								<input type="number" id="qual-bps-input" class="qual-bps-input" min="100" max="20000" step="100" placeholder="kbps 입력…" />
 								<span class="qual-bps-unit">kbps</span>
 							</div>
 							<div class="qual-adv-presets">
@@ -126,36 +114,20 @@
 							<div class="s-row-sub">엔딩 시작 후 N초 동안만 버튼 표시 (0이면 숨기고 -1이면 항상 표시)</div>
 						</div>
 						<div class="setting-inline-input">
-							<input
-								type="number"
-								id="input-ending-skip-window"
-								class="qual-bps-input setting-inline-number"
-								min="-1"
-								step="0.5"
-								inputmode="decimal"
-								aria-label="엔딩 스킵 버튼 표시 시간"
-							>
+							<input type="number" id="input-ending-skip-window" class="qual-bps-input setting-inline-number" min="-1" step="0.5" inputmode="decimal" aria-label="엔딩 스킵 버튼 표시 시간" />
 							<span class="qual-bps-unit">초</span>
 						</div>
 					</div>
 
-						<div class="s-row">
-							<div>
-								<div class="s-row-label">자동 재생 지연</div>
-								<div class="s-row-sub">화 종료 후 다음 화로 넘어가기 전 대기 시간</div>
-							</div>
-							<div class="setting-inline-input">
-								<input
-									type="number"
-									id="input-autoplay-delay"
-									class="qual-bps-input setting-inline-number"
-									min="0"
-									step="0.5"
-									inputmode="decimal"
-									aria-label="자동 재생 지연 시간"
-								>
-								<span class="qual-bps-unit">초</span>
-							</div>
+					<div class="s-row">
+						<div>
+							<div class="s-row-label">자동 재생 지연</div>
+							<div class="s-row-sub">화 종료 후 다음 화로 넘어가기 전 대기 시간</div>
+						</div>
+						<div class="setting-inline-input">
+							<input type="number" id="input-autoplay-delay" class="qual-bps-input setting-inline-number" min="0" step="0.5" inputmode="decimal" aria-label="자동 재생 지연 시간" />
+							<span class="qual-bps-unit">초</span>
+						</div>
 					</div>
 
 					<div class="s-row">
@@ -181,7 +153,7 @@
 							<span class="s-toggle-thumb"></span>
 						</label>
 					</div>
-					
+
 					<div class="s-row" id="player-adv-row">
 						<div>
 							<div class="s-row-label">고급 재생 설정</div>
@@ -189,35 +161,32 @@
 						</div>
 						<button class="s-btn s-btn-icon" id="btn-player-adv" aria-label="고급 재생 설정" aria-controls="player-adv-panel" aria-expanded="false" title="버퍼 설정">⋮</button>
 					</div>
-					
-					<div id="player-adv-panel" style="display:none">
+
+					<div id="player-adv-panel" style="display: none">
 						<div class="qual-adv-inner">
 							<div class="qual-adv-title">버퍼 시간 설정 (초)</div>
 							<div class="qual-adv-row">
-								<span class="qual-adv-desc" style="flex:1">미리 로드할 시간</span>
-								<input type="number" id="input-buffer-ahead" class="qual-bps-input" min="18" max="900" step="1" style="width:60px">
+								<span class="qual-adv-desc" style="flex: 1">미리 로드할 시간</span>
+								<input type="number" id="input-buffer-ahead" class="qual-bps-input" min="18" max="900" step="1" style="width: 60px" />
 							</div>
 							<div class="qual-adv-row">
-								<span class="qual-adv-desc" style="flex:1">뒤로 유지할 시간</span>
-								<input type="number" id="input-buffer-behind" class="qual-bps-input" min="18" max="900" step="1" style="width:60px">
+								<span class="qual-adv-desc" style="flex: 1">뒤로 유지할 시간</span>
+								<input type="number" id="input-buffer-behind" class="qual-bps-input" min="18" max="900" step="1" style="width: 60px" />
 							</div>
 							<div class="qual-adv-row">
-								<span class="qual-adv-desc" style="flex:1">버퍼 정리 지연</span>
-								<input type="number" id="input-buffer-prune-delay" class="qual-bps-input" min="0" max="60" step="1" style="width:72px">
+								<span class="qual-adv-desc" style="flex: 1">버퍼 정리 지연</span>
+								<input type="number" id="input-buffer-prune-delay" class="qual-bps-input" min="0" max="60" step="1" style="width: 72px" />
 							</div>
 						</div>
 					</div>
 				</div>
 
-				<!-- 표시 -->
 				<div class="s-section">
 					<div class="s-section-label">표시</div>
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">플레이어 타임라인 바 표시</div>
-							<div class="s-row-sub">
-								플레이어 하단 탐색 바를 숨기거나 표시합니다
-							</div>
+							<div class="s-row-sub">플레이어 하단 탐색 바를 숨기거나 표시합니다</div>
 						</div>
 						<label class="s-toggle" aria-label="플레이어 타임라인 바 표시 토글">
 							<input type="checkbox" id="toggle-player-timeline-bar" aria-label="플레이어 타임라인 바 표시" />
@@ -228,9 +197,7 @@
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">화면 밖 항목의 렌더링 줄이기</div>
-							<div class="s-row-sub">
-								컨텐츠 복사 시 오류가 발생할 수 있어요
-							</div>
+							<div class="s-row-sub">컨텐츠 복사 시 오류가 발생할 수 있어요</div>
 						</div>
 						<label class="s-toggle" aria-label="content-visibility 토글">
 							<input type="checkbox" id="toggle-cv" aria-label="화면 밖 항목의 렌더링 줄이기" />
@@ -240,12 +207,11 @@
 					</div>
 				</div>
 
-				<!-- 실험 기능 -->
 				<div class="s-section">
 					<div class="s-section-label">실험 기능</div>
 					<div class="s-row">
 						<div>
-							<div class="s-row-label">라프텔 연동 기능 <span style="color:#f87171;font-size:11px;">⚠ 불안정</span></div>
+							<div class="s-row-label">라프텔 연동 기능 <span style="color: #f87171; font-size: 11px">⚠ 불안정</span></div>
 							<div class="s-row-sub"><a href="#" id="link-laftel-ext-download">laftel-ext 확장 프로그램</a>으로 댓글·리뷰 작성/수정/삭제</div>
 						</div>
 						<label class="s-toggle" aria-label="라프텔 연동 기능 토글">
@@ -254,15 +220,13 @@
 							<span class="s-toggle-thumb"></span>
 						</label>
 					</div>
-					<div id="ext-status-row" style="display:none;padding:0 0 8px 2px;">
-						<span id="ext-status-text" style="font-size:12px;"></span>
+					<div id="ext-status-row" style="display: none; padding: 0 0 8px 2px">
+						<span id="ext-status-text" style="font-size: 12px"></span>
 					</div>
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">오프라인 메타데이터 모드</div>
-							<div class="s-row-sub">
-								네트워크 없이도 검색 가능한 로컬 DB를 사용합니다.
-							</div>
+							<div class="s-row-sub">네트워크 없이도 검색 가능한 로컬 DB를 사용합니다.</div>
 						</div>
 						<label class="s-toggle" aria-label="오프라인 모드 토글">
 							<input type="checkbox" id="toggle-offline-mode" aria-label="오프라인 메타데이터 모드" />
@@ -271,29 +235,23 @@
 						</label>
 					</div>
 					<div class="s-row">
-						<div style="flex: 1;">
+						<div style="flex: 1">
 							<div class="s-row-label">작품 메타데이터 저장</div>
-							<div class="s-row-sub" id="offline-items-subtext">
-								검색 및 자동완성용 작품 목록을 기기에 저장
-							</div>
+							<div class="s-row-sub" id="offline-items-subtext">검색 및 자동완성용 작품 목록을 기기에 저장</div>
 						</div>
 						<button class="s-btn" id="btn-sync-items">다운로드</button>
 					</div>
 					<div class="s-row">
-						<div style="flex: 1;">
+						<div style="flex: 1">
 							<div class="s-row-label">에피소드 메타데이터 저장</div>
-							<div class="s-row-sub" id="offline-episodes-subtext">
-								제목, 번호, 시간 등의 상세 정보를 함께 저장
-							</div>
+							<div class="s-row-sub" id="offline-episodes-subtext">제목, 번호, 시간 등의 상세 정보를 함께 저장</div>
 						</div>
 						<button class="s-btn" id="btn-sync-episodes">다운로드</button>
 					</div>
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">썸네일 수동 로드</div>
-							<div class="s-row-sub">
-								이미지를 자동 로드하지 않고 클릭 시에만 불러옴
-							</div>
+							<div class="s-row-sub">이미지를 자동 로드하지 않고 클릭 시에만 불러옴</div>
 						</div>
 						<label class="s-toggle" aria-label="썸네일 수동 로드 토글">
 							<input type="checkbox" id="toggle-manual-thumbs" aria-label="썸네일 수동 로드" />
@@ -304,9 +262,7 @@
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">댓글 수동 로드</div>
-							<div class="s-row-sub">
-								댓글과 프로필 이미지를 클릭 시에만 불러옴
-							</div>
+							<div class="s-row-sub">댓글과 프로필 이미지를 클릭 시에만 불러옴</div>
 						</div>
 						<label class="s-toggle" aria-label="댓글 수동 로드 토글">
 							<input type="checkbox" id="toggle-manual-comments" aria-label="댓글 수동 로드" />
@@ -316,16 +272,13 @@
 					</div>
 				</div>
 
-				<!-- 백업 -->
 				<div class="s-section">
 					<div class="s-section-label">백업</div>
 
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">백업 내보내기</div>
-							<div class="s-row-sub">
-								시청 기록과 설정을 파일로 저장
-							</div>
+							<div class="s-row-sub">시청 기록과 설정을 파일로 저장</div>
 						</div>
 						<button class="s-btn" id="btn-export">내보내기</button>
 					</div>
@@ -333,9 +286,7 @@
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">백업 가져오기</div>
-							<div class="s-row-sub">
-								다른 기기에서 내보낸 백업 파일 불러오기
-							</div>
+							<div class="s-row-sub">다른 기기에서 내보낸 백업 파일 불러오기</div>
 						</div>
 						<button class="s-btn" id="btn-import">가져오기</button>
 					</div>
@@ -353,16 +304,13 @@
 					</div>
 				</div>
 
-				<!-- 저장된 데이터 -->
 				<div class="s-section">
 					<div class="s-section-label">저장된 데이터</div>
 
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">시청 기록 관리</div>
-							<div class="s-row-sub">
-								작품별 시청 기록 확인 및 개별 삭제
-							</div>
+							<div class="s-row-sub">작품별 시청 기록 확인 및 개별 삭제</div>
 						</div>
 						<a class="s-btn" id="btn-history" href="/history.html">열기</a>
 					</div>
@@ -370,68 +318,44 @@
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">시청 위치 기록</div>
-							<div class="s-row-sub">
-								에피소드별 마지막 재생 위치 정보
-							</div>
+							<div class="s-row-sub">에피소드별 마지막 재생 위치 정보</div>
 						</div>
-						<button class="s-btn danger" id="btn-clear-watch">
-							삭제
-						</button>
+						<button class="s-btn danger" id="btn-clear-watch">삭제</button>
 					</div>
 
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">캐시 초기화</div>
-							<div class="s-row-sub">
-								서비스 워커와 캐시를 삭제하고 최신 버전으로 갱신
-							</div>
+							<div class="s-row-sub">서비스 워커와 캐시를 삭제하고 최신 버전으로 갱신</div>
 						</div>
-						<button class="s-btn danger" id="btn-clear-cache">
-							초기화
-						</button>
+						<button class="s-btn danger" id="btn-clear-cache">초기화</button>
 					</div>
 
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">모든 데이터 삭제</div>
-							<div class="s-row-sub">
-								시청 기록, 설정, 로컬 DB 등을 전부 초기화
-							</div>
+							<div class="s-row-sub">시청 기록, 설정, 로컬 DB 등을 전부 초기화</div>
 						</div>
-						<button class="s-btn danger" id="btn-clear-all">
-							전체 삭제
-						</button>
+						<button class="s-btn danger" id="btn-clear-all">전체 삭제</button>
 					</div>
 				</div>
 
-				<!-- 소프트웨어 정보 -->
 				<div class="s-section">
 					<div class="s-section-label">소프트웨어 정보</div>
 					<div class="s-row">
 						<div>
 							<div class="s-row-label">오픈소스 라이선스</div>
-							<div class="s-row-sub">
-								이 앱에 사용된 오픈소스 라이선스 고지
-							</div>
+							<div class="s-row-sub">이 앱에 사용된 오픈소스 라이선스 고지</div>
 						</div>
 						<button class="s-btn" id="btn-show-notices">보기</button>
 					</div>
 				</div>
 			</div>
-			<div class="s-info">
-				저장된 데이터는 이 기기의 브라우저에만 존재하며 서버로 전송되지
-				않습니다.
-			</div>
+			<div class="s-info">저장된 데이터는 이 기기의 브라우저에만 존재하며 서버로 전송되지 않습니다.</div>
 		</div>
 
-		<!-- ── Markdown modal ── -->
 		<div id="md-modal-overlay"></div>
-		<div
-			id="md-modal"
-			role="dialog"
-			aria-modal="true"
-			aria-labelledby="md-modal-title"
-		>
+		<div id="md-modal" role="dialog" aria-modal="true" aria-labelledby="md-modal-title">
 			<div id="md-modal-header">
 				<h2 id="md-modal-title">오픈소스 라이선스</h2>
 				<button id="btn-close-md-modal" aria-label="닫기">✕</button>
@@ -441,19 +365,11 @@
 			</div>
 		</div>
 
-		<!-- ── Header ── -->
 		<div id="header">
 			<div id="header-inner">
 				<div id="search-row">
 					<div id="search-wrap">
-						<input
-							id="search"
-							type="search"
-							placeholder="제목 검색..."
-							autocomplete="off"
-							autocorrect="off"
-							spellcheck="false"
-						/>
+						<input id="search" type="search" placeholder="제목 검색..." autocomplete="off" autocorrect="off" spellcheck="false" />
 						<div id="ac-dropdown"></div>
 					</div>
 					<button id="btn-settings" aria-label="설정 열기" aria-controls="settings-panel" aria-expanded="false">⋮</button>
@@ -461,16 +377,10 @@
 				<div id="filters">
 					<div id="filters-track">
 						<div id="sort-chips">
-							<button class="chip active" data-sort="recent">
-								신작순
-							</button>
+							<button class="chip active" data-sort="recent">신작순</button>
 							<!-- <button class="chip" data-sort="update">업데이트순</button> -->
-							<button class="chip" data-sort="avg_rating">
-								별점 높은 순
-							</button>
-							<button class="chip" data-sort="cnt_eval">
-								리뷰 많은 순
-							</button>
+							<button class="chip" data-sort="avg_rating">별점 높은 순</button>
+							<button class="chip" data-sort="cnt_eval">리뷰 많은 순</button>
 						</div>
 						<div id="toggle-chips">
 							<span class="chip-divider" aria-hidden="true">|</span>
@@ -491,7 +401,7 @@
 			window.__refreshCache = async (opts = {}) => {
 				const silent = opts.silent === true;
 				if (!silent && !confirm("캐시를 최신 버전으로 갱신할까요?\n진행 시 페이지가 새로고침됩니다.")) return;
-				
+
 				try {
 					if (!("serviceWorker" in navigator)) {
 						if (!silent) alert("서비스 워커를 사용할 수 없는 환경입니다.");
@@ -500,7 +410,6 @@
 					}
 
 					const registration = await navigator.serviceWorker.ready;
-					// 1. 최신 SW 스크립트 자체가 있는지 먼저 체크
 					await registration.update();
 
 					const sw = registration.active || navigator.serviceWorker.controller;
@@ -514,7 +423,7 @@
 							};
 						});
 						sw.postMessage({ type: "refresh-shell" }, [channel.port2]);
-						
+
 						const ok = await okPromise;
 						if (!ok) {
 							console.warn("SW shell refresh reported failure, proceeding to hard clear.");
@@ -523,17 +432,18 @@
 
 					if ("caches" in window) {
 						const keys = await caches.keys();
-						await Promise.all(keys.map(key => caches.delete(key)));
+						await Promise.all(keys.map((key) => caches.delete(key)));
 					}
-					
-					const registrations = await navigator.serviceWorker.getRegistrations();
-					await Promise.all(registrations.map(r => r.unregister()));
 
-					if (!silent) alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.\n\n삭제 후에도 업데이트가 안 된다면 매 페이지에서 Ctrl+Shift+R, 모바일에서는 다른 브라우저 앱으로 재접속해 주세요.");
+					const registrations = await navigator.serviceWorker.getRegistrations();
+					await Promise.all(registrations.map((r) => r.unregister()));
+
+					if (!silent)
+						alert("최신 버전으로 갱신되었습니다. 페이지를 새로고침합니다.\n\n삭제 후에도 업데이트가 안 된다면 매 페이지에서 Ctrl+Shift+R, 모바일에서는 다른 브라우저 앱으로 재접속해 주세요.");
 					location.reload();
 				} catch (err) {
 					console.error("Cache refresh failed:", err);
-					alert(`갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n\n${err?.message||err}`);
+					alert(`갱신 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n\n${err?.message || err}`);
 					location.reload();
 				}
 			};

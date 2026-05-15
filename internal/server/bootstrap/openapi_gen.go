@@ -16,7 +16,7 @@ const GeneratedOpenAPIPath = generatedOpenAPIPath
 
 var isoDateTimeLike = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$`)
 
-// ── Type inference (quicktype-style) ─────────────────────────────────────────
+// Type inference (quicktype-style)
 
 // inferFromValues infers a single JSON Schema from a slice of observed values
 // for one field. Handles nullable detection by checking for nils in the slice.
@@ -288,7 +288,7 @@ func inferStringEnum(strs []string, seen map[string]struct{}) []string {
 	return enumVals
 }
 
-// ── Parameter helpers ─────────────────────────────────────────────────────────
+// Parameter helpers
 
 func pathIntParam(name string) map[string]interface{} {
 	return map[string]interface{}{
@@ -331,7 +331,7 @@ func buildPath(summary, tag string, ps params, schema map[string]interface{}) in
 	}
 }
 
-// ── Spec assembly ─────────────────────────────────────────────────────────────
+// Spec assembly
 
 func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 	log.Printf("openapi: inferring schemas from full store (this may take a moment)...")
@@ -345,7 +345,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 	log.Printf("openapi: schema inference complete")
 
 	paths := map[string]interface{}{
-		// ── Items ──────────────────────────────────────────────────────────────
+		// Items
 		"/api/items/v4/{id}": buildPath(
 			"Item detail", "items",
 			params{pathIntParam("id")},
@@ -362,7 +362,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 			statsSchema,
 		),
 
-		// ── Episodes ───────────────────────────────────────────────────────────
+		// Episodes
 		"/api/episodes/v3/list": buildPath(
 			"Episode list for an item", "episodes",
 			params{
@@ -409,7 +409,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 			epListSchema,
 		),
 
-		// ── Reviews ────────────────────────────────────────────────────────────
+		// Reviews
 		"/api/reviews/v1/count": buildPath(
 			"Review count for an item", "reviews",
 			params{queryParam("item_id", "integer", true)},
@@ -431,7 +431,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 			reviewSchema,
 		),
 
-		// ── Comments ───────────────────────────────────────────────────────────
+		// Comments
 		"/api/comments/v1/count": buildPath(
 			"Comment count for an episode", "comments",
 			params{queryParam("episode_id", "integer", true)},
@@ -454,7 +454,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 			commentSchema,
 		),
 
-		// ── Users ──────────────────────────────────────────────────────────────
+		// Users
 		"/api/users/v1/banned_words": buildPath(
 			"Banned word list", "users",
 			params{},
@@ -467,7 +467,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 			},
 		),
 
-		// ── Search ─────────────────────────────────────────────────────────────
+		// Search
 		"/api/search/v1/auto_complete": buildPath(
 			"Autocomplete suggestions", "search",
 			params{queryParam("keyword", "string", true)},
@@ -513,7 +513,7 @@ func generateOpenAPISpec(store *cachepkg.Store) ([]byte, error) {
 			},
 		),
 
-		// ── Media ──────────────────────────────────────────────────────────────
+		// Media
 		"/mediacloud/{path}": buildPath(
 			"Mediacloud file (upstream proxy)", "media",
 			params{pathStrParam("path")}, map[string]interface{}{},

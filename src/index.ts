@@ -6,26 +6,26 @@ import { initSettings } from "./index/settings";
 normalizeStoredTimestamps();
 
 function focusInitialSearch(): void {
-	if (document.activeElement && document.activeElement !== document.body) return;
-	const search = document.getElementById("search") as HTMLInputElement | null;
-	if (!search) return;
-	search.focus({ preventScroll: true });
+  if (document.activeElement && document.activeElement !== document.body) return;
+  const search = document.getElementById("search") as HTMLInputElement | null;
+  if (!search) return;
+  search.focus({ preventScroll: true });
 }
 
 if (document.readyState === "loading") {
-	document.addEventListener("DOMContentLoaded", focusInitialSearch, { once: true });
+  document.addEventListener("DOMContentLoaded", focusInitialSearch, { once: true });
 } else {
-	focusInitialSearch();
+  focusInitialSearch();
 }
 
 const feed = initFeed();
 
 initAutocomplete({
-	runSearch: feed.runSearch,
+  runSearch: feed.runSearch,
 });
 
 initSettings({
-	onRefreshFeed: () => {
-		void feed.fetchPage(true);
-	},
+  onRefreshFeed: () => {
+    void feed.fetchPage(true);
+  },
 });

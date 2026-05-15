@@ -106,7 +106,7 @@ func main() {
 	}
 
 	for {
-		// ── 1. scraper ──────────────────────────────────────────────
+		// 1. scraper
 		log.Printf("daemon: starting scraper")
 		cfg := scraper.Config{
 			Root:          *root,
@@ -128,7 +128,7 @@ func main() {
 		default:
 		}
 
-		// ── 2. DRM ──────────────────────────────────────────────────
+		// 2. DRM
 		if *token != "" {
 			log.Printf("daemon: starting DRM")
 			drmClient := drm.New(drmCfg)
@@ -145,11 +145,11 @@ func main() {
 		default:
 		}
 
-		// ── 3. bitset ────────────────────────────────────────────────
+		// 3. bitset
 		log.Printf("daemon: generating accessible bitset")
 		server.GenerateAccessibleBitset(*root, *bitsetOut)
 
-		// ── 3.5. server cache ────────────────────────────────────────
+		// 3.5. server cache
 		log.Printf("daemon: rebuilding server cache (data.bin)")
 		func() {
 			store, err := cachepkg.NewStore()
@@ -175,7 +175,7 @@ func main() {
 			log.Printf("daemon: server cache updated and signaled via API")
 		}()
 
-		// ── 4. wait ──────────────────────────────────────────────────
+		// 4. wait
 		if !sleep(stopCh, waitDuration, "daemon: waiting before next cycle") {
 			return
 		}

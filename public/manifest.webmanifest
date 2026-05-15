@@ -1,4 +1,1 @@
-{"name": "라트펠", "short_name": "라트펠", "lang": "ko", "start_url": "/", "scope": "/",
-"display": "standalone", "background_color": "#0a0a0a", "theme_color": "#6e58ff",
-"description": "라트펠 애니메이션 스트리밍 클라이언트", "icons": [
-{ "src": "/app-icon.png", "sizes": "256x256", "type": "image/png"}]}
+{"name":"라트펠","short_name":"라트펠","lang":"ko","start_url":"/","scope":"/","display":"standalone","background_color":"#0a0a0a","theme_color":"#6e58ff","description":"애니메이션 스트리밍 클라이언트","icons":[{"src":"/app-icon.png","sizes":"256x256","type":"image/png"}]}

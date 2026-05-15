@@ -1,11 +1,4 @@
-import {
-  findMp4Box,
-  parseMp4Boxes,
-  parseSenc,
-  parseTfhd,
-  parseTrun,
-  stripDrmAuxBoxesFromFragment,
-} from "./mp4-box";
+import { findMp4Box, parseMp4Boxes, parseSenc, parseTfhd, parseTrun, stripDrmAuxBoxesFromFragment } from "./mp4-box";
 
 type TrackType = "audio" | "video";
 
@@ -23,10 +16,7 @@ function inferTrackType(trackType?: string | null): TrackType {
   return trackType === "audio" ? "audio" : "video";
 }
 
-async function decryptTrackSamples(
-  kind: TrackType,
-  ctx: DecryptContext,
-): Promise<void> {
+async function decryptTrackSamples(kind: TrackType, ctx: DecryptContext): Promise<void> {
   const count = Math.min(ctx.sencSamples.length, ctx.trunSamples);
   let trunOff = 8;
   if (ctx.trunFlags & 0x01) trunOff += 4;
@@ -46,10 +36,7 @@ async function decryptTrackSamples(
     if (ctx.trunFlags & 0x400) trunOff += 4;
     if (ctx.trunFlags & 0x800) trunOff += 4;
 
-    const subsamples =
-      sencSample.subsamples.length > 0
-        ? sencSample.subsamples
-        : [{ clear: 0, enc: sampleSize }];
+    const subsamples = sencSample.subsamples.length > 0 ? sencSample.subsamples : [{ clear: 0, enc: sampleSize }];
 
     const totalEnc = subsamples.reduce((s, x) => s + x.enc, 0);
     const totalSize = subsamples.reduce((s, x) => s + x.clear + x.enc, 0);
@@ -77,11 +64,7 @@ async function decryptTrackSamples(
       const counter = new Uint8Array(16);
       counter.set(iv, 0);
       const decBuf = new Uint8Array(
-        await crypto.subtle.decrypt(
-          { name: "AES-CTR", counter, length: 64 },
-          ctx.key,
-          encBuf,
-        ),
+        await crypto.subtle.decrypt({ name: "AES-CTR", counter, length: 64 }, ctx.key, encBuf),
       );
       let sOff = 0;
       let wOff = mdatOffset;
@@ -106,10 +89,7 @@ async function decryptVideoSegmentData(ctx: DecryptContext): Promise<void> {
   await decryptTrackSamples("video", ctx);
 }
 
-export function stripDrmSignaling(
-  initBuffer: Uint8Array,
-  trackType: string,
-): Uint8Array {
+export function stripDrmSignaling(initBuffer: Uint8Array, trackType: string): Uint8Array {
   const buf = new Uint8Array(initBuffer);
   const len = buf.length;
   const isAt = (i: number, a: number, b: number, c: number, d: number) =>
@@ -187,11 +167,7 @@ export async function decryptSegment(
   const defaultSampleSize = tfhdInfo.defaultSampleSize ?? 0;
   const kind = inferTrackType(trackType);
 
-  const trunView = new DataView(
-    trun.payload.buffer,
-    trun.payload.byteOffset,
-    trun.payload.byteLength,
-  );
+  const trunView = new DataView(trun.payload.buffer, trun.payload.byteOffset, trun.payload.byteLength);
   const trunFlags = trunInfo.flags;
   const trunSamples = trunInfo.sampleCount;
   const sencInfo = parseSenc(senc.payload);

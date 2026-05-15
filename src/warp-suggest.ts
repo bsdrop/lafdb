@@ -7,15 +7,15 @@
  * Can be suppressed permanently with: localStorage.setItem('warp_banner_dismissed','1')
  */
 (function () {
-	const STORAGE_KEY = "warp_banner_dismissed";
-	const BANNER_ID = "_warp-banner";
+  const STORAGE_KEY = "warp_banner_dismissed";
+  const BANNER_ID = "_warp-banner";
 
-	if (localStorage.getItem(STORAGE_KEY)) return;
+  if (localStorage.getItem(STORAGE_KEY)) return;
 
   const host = location.hostname.toLowerCase().replace(/\.$/, "");
-  if(host.endsWith(".i2p") || host.endsWith(".onion")) return localStorage.setItem(STORAGE_KEY, "1");
+  if (host.endsWith(".i2p") || host.endsWith(".onion")) return localStorage.setItem(STORAGE_KEY, "1");
 
-	const CSS = `
+  const CSS = `
 #_warp-banner {
 	position: fixed; bottom: 0; left: 0; right: 0; z-index: 8900;
 	background: #18181b; border-top: 1px solid #2a2a2a;
@@ -41,50 +41,50 @@
 ._warp-btn:hover { color: #ccc; border-color: #444; }
 `;
 
-	function inject() {
-		if (document.getElementById("_warp-styles")) return;
-		const s = document.createElement("style");
-		s.id = "_warp-styles";
-		s.textContent = CSS;
-		document.head.appendChild(s);
-	}
+  function inject() {
+    if (document.getElementById("_warp-styles")) return;
+    const s = document.createElement("style");
+    s.id = "_warp-styles";
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
 
-	function dismiss() {
-		localStorage.setItem(STORAGE_KEY, "1");
-		document.getElementById(BANNER_ID)?.remove();
-	}
+  function dismiss() {
+    localStorage.setItem(STORAGE_KEY, "1");
+    document.getElementById(BANNER_ID)?.remove();
+  }
 
-	function showBanner(isKr: boolean) {
-		if (document.getElementById(BANNER_ID)) return;
-		inject();
-		const mullvadTip = isKr
-			? ` 또는 <a href="https://mullvad.net/" target="_blank" rel="noopener">Mullvad VPN</a><sup style="font-size:9px;color:#666;margin-left:2px;">유료</sup> 오사카 리전을 사용하면 한국 회선보다 빠른 경로를 탈 수 있어요.`
-			: ` 또는 <a href="https://mullvad.net/" target="_blank" rel="noopener">Mullvad VPN</a><sup style="font-size:9px;color:#666;margin-left:2px;">유료</sup>으로 가까운 리전을 경유하는 것도 도움이 돼요.`;
-		const banner = document.createElement("div");
-		banner.id = BANNER_ID;
-		banner.innerHTML =
-			`<p>🚀 <strong style="color:#e0e0e0">더 빠른 연결을 원하시나요?</strong>&ensp;` +
-			`<a href="https://one.one.one.one/" target="_blank" rel="noopener">Cloudflare WARP</a>` +
-			`를 사용하면 캐시·CDN 경로 최적화로 훨씬 쾌적해져요.${mullvadTip}</p>` +
-			`<button class="_warp-btn" id="_warp-dismiss">괜찮아요</button>`;
-		document.body.appendChild(banner);
-		document.getElementById("_warp-dismiss")!.addEventListener("click", dismiss);
-	}
+  function showBanner(isKr: boolean) {
+    if (document.getElementById(BANNER_ID)) return;
+    inject();
+    const mullvadTip = isKr
+      ? ` 또는 <a href="https://mullvad.net/" target="_blank" rel="noopener">Mullvad VPN</a><sup style="font-size:9px;color:#666;margin-left:2px;">유료</sup> 오사카 리전을 사용하면 한국 회선보다 빠른 경로를 탈 수 있어요.`
+      : ` 또는 <a href="https://mullvad.net/" target="_blank" rel="noopener">Mullvad VPN</a><sup style="font-size:9px;color:#666;margin-left:2px;">유료</sup>으로 가까운 리전을 경유하는 것도 도움이 돼요.`;
+    const banner = document.createElement("div");
+    banner.id = BANNER_ID;
+    banner.innerHTML =
+      `<p>🚀 <strong style="color:#e0e0e0">더 빠른 연결을 원하시나요?</strong>&ensp;` +
+      `<a href="https://one.one.one.one/" target="_blank" rel="noopener">Cloudflare WARP</a>` +
+      `를 사용하면 캐시·CDN 경로 최적화로 훨씬 쾌적해져요.${mullvadTip}</p>` +
+      `<button class="_warp-btn" id="_warp-dismiss">괜찮아요</button>`;
+    document.body.appendChild(banner);
+    document.getElementById("_warp-dismiss")!.addEventListener("click", dismiss);
+  }
 
-	fetch("https://www.cloudflare.com/cdn-cgi/trace", { cache: "no-store" })
-		.then((r) => r.text())
-		.then((text) => {
-			if (/^warp=off/m.test(text)) {
-				if (/^fl=/m.test(text)) {
-					const locMatch = /^loc=(\w+)/m.exec(text);
-					const isKr = locMatch?.[1]?.toUpperCase() === "KR";
-					showBanner(isKr);
-				}
-			}
-		})
-		.catch((err) => {
-			console.debug("WARP check failed (this is usually fine):", err);
-		});
+  fetch("https://www.cloudflare.com/cdn-cgi/trace", { cache: "no-store" })
+    .then((r) => r.text())
+    .then((text) => {
+      if (/^warp=off/m.test(text)) {
+        if (/^fl=/m.test(text)) {
+          const locMatch = /^loc=(\w+)/m.exec(text);
+          const isKr = locMatch?.[1]?.toUpperCase() === "KR";
+          showBanner(isKr);
+        }
+      }
+    })
+    .catch((err) => {
+      console.debug("WARP check failed (this is usually fine):", err);
+    });
 })();
 
 export {};

@@ -1,6 +1,6 @@
 /**
  * share-link.ts
- * 
+ *
  * Exposes window.ShareLink with:
  *   copy(text, btn, opts?)   ㅡ clipboard copy + button feedback
  *   buildUrl(extra)          ㅡ merge extra params into current hash URL
@@ -10,7 +10,11 @@
 declare global {
   interface Window {
     ShareLink: {
-      copy: (text: string, btn: HTMLElement | null, opts?: { successText?: string; resetText?: string; delay?: number }) => Promise<void>;
+      copy: (
+        text: string,
+        btn: HTMLElement | null,
+        opts?: { successText?: string; resetText?: string; delay?: number },
+      ) => Promise<void>;
       buildUrl: (extra?: Record<string, string | null | undefined>) => string;
       highlight: (el: Element | null) => void;
     };
@@ -94,11 +98,7 @@ declare global {
     // force reflow so re-triggering works
     void (el as HTMLElement).offsetWidth;
     el.classList.add("anchor-highlight");
-    el.addEventListener(
-      "animationend",
-      () => el.classList.remove("anchor-highlight"),
-      { once: true },
-    );
+    el.addEventListener("animationend", () => el.classList.remove("anchor-highlight"), { once: true });
   }
 
   window.ShareLink = { copy, buildUrl, highlight };

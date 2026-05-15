@@ -133,11 +133,11 @@ export function parseShareTime(s: string | null | undefined): number | null {
 export function formatShareTimeForUrl(seconds: number): string {
   const truncated = Math.trunc(seconds * 10000) / 10000;
   let s = String(truncated);
-  if (s.indexOf('.') !== -1) {
-    s = s.replace(/\.0+$/, '');
-    s = s.replace(/(\.[0-9]*?)0+$/, '$1');
-    s = s.replace(/\.$/, '');
+  if (s.indexOf(".") !== -1) {
+    s = s.replace(/\.0+$/, "");
+    s = s.replace(/(\.[0-9]*?)0+$/, "$1");
+    s = s.replace(/\.$/, "");
   }
-  if (s.length > 25) s = s.slice(0, 25).replace(/\.$/, '');
+  if (s.length > 25) s = s.slice(0, 25).replace(/\.$/, "");
   return s;
 }

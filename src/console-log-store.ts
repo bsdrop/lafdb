@@ -31,10 +31,10 @@ declare global {
 }
 
 const STORE_KEY = "laf_console_logs";
-const MAX_SESSIONS = 30;
-const MAX_BYTES = 1024 * 1024; // 1MB
-const MAX_AGE_MS = 3 * 24 * 60 * 60000; // 3일
-const MAX_MESSAGE_CHARS = 4000;
+const MAX_SESSIONS = 100;
+const MAX_BYTES = 1024 * 1024 * 10; // 10 MB
+const MAX_AGE_MS = 5 * 24 * 60 * 60000; // 5일
+const MAX_MESSAGE_CHARS = 131072;
 const FLUSH_DEBOUNCE_MS = 1000;
 
 let store: LogStore | null = null;
@@ -62,26 +62,23 @@ function readStore(): LogStore {
 
 function safeJsonStringify(value: unknown): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(
-    value,
-    (_key, current) => {
-      if (current instanceof Error) {
-        return {
-          name: current.name,
-          message: current.message,
-          stack: current.stack,
-        };
-      }
-      if (typeof Element !== "undefined" && current instanceof Element) {
-        return `<${current.tagName.toLowerCase()}${current.id ? ` id="${current.id}"` : ""}>`;
-      }
-      if (typeof current === "object" && current !== null) {
-        if (seen.has(current)) return "[Circular]";
-        seen.add(current);
-      }
-      return current;
-    },
-  );
+  return JSON.stringify(value, (_key, current) => {
+    if (current instanceof Error) {
+      return {
+        name: current.name,
+        message: current.message,
+        stack: current.stack,
+      };
+    }
+    if (typeof Element !== "undefined" && current instanceof Element) {
+      return `<${current.tagName.toLowerCase()}${current.id ? ` id="${current.id}"` : ""}>`;
+    }
+    if (typeof current === "object" && current !== null) {
+      if (seen.has(current)) return "[Circular]";
+      seen.add(current);
+    }
+    return current;
+  });
 }
 
 function stringifyArg(arg: unknown): string {
@@ -102,9 +99,7 @@ function stringifyArg(arg: unknown): string {
 
 function toMessage(args: unknown[]): string {
   const joined = args.map(stringifyArg).join(" ");
-  return joined.length > MAX_MESSAGE_CHARS
-    ? `${joined.slice(0, MAX_MESSAGE_CHARS)}...`
-    : joined;
+  return joined.length > MAX_MESSAGE_CHARS ? `${joined.slice(0, MAX_MESSAGE_CHARS)}...` : joined;
 }
 
 function storeSizeBytes(next: LogStore): number {
@@ -119,13 +114,11 @@ function trimStore(): void {
   if (!store) return;
 
   const now = Date.now();
-  // 3일 이상 된 세션 삭제 (현재 세션 제외)
   store.sessions = store.sessions.filter((s) => {
     if (currentSession && s.id === currentSession.id) return true;
     return now - s.startedAt < MAX_AGE_MS;
   });
 
-  // 너무 많은 세션 삭제
   while (store.sessions.length > MAX_SESSIONS) {
     store.sessions.shift();
   }
@@ -149,11 +142,7 @@ function isSessionWorthy(s: LogSession): boolean {
     const path = url.pathname;
 
     // 플레이어 페이지는 항상 가치 있음
-    if (
-      path.includes("/player.html") ||
-      path.includes("/player/") ||
-      path.endsWith("/player")
-    ) {
+    if (path.includes("/player.html") || path.includes("/player/") || path.endsWith("/player")) {
       return true;
     }
 
@@ -180,7 +169,7 @@ function isSessionWorthy(s: LogSession): boolean {
 
 function flushStore(): void {
   if (!store) return;
-  
+
   if (flushTimer) {
     clearTimeout(flushTimer);
     flushTimer = null;
@@ -188,7 +177,7 @@ function flushStore(): void {
 
   // 가비지 컬렉션: 가치 없는 과거 세션 정리
   store.sessions = store.sessions.filter(isSessionWorthy);
-  
+
   trimStore();
 
   try {
@@ -224,7 +213,6 @@ function addEntry(level: LogLevel, args: unknown[]): void {
   scheduleFlush(level === "error");
 }
 
-
 function formatTs(ts: number): string {
   try {
     return new Date(ts).toLocaleString("ko-KR", { hour12: false });
@@ -250,10 +238,7 @@ function createSession(): LogSession {
 function isCurrentLocationIndexPage(): boolean {
   try {
     const path = new URL(location.href).pathname;
-    return path === "/" || path.length < 20 && (
-      path.startsWith("/index.html") ||
-      path.startsWith("/index")
-    );
+    return path === "/" || (path.length < 20 && (path.startsWith("/index.html") || path.startsWith("/index")));
   } catch {
     return false;
   }
@@ -326,7 +311,8 @@ function openViewer(): void {
   main.style.cssText = "display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;";
 
   const header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #222831;";
+  header.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #222831;";
   header.innerHTML = `<strong style="font-size:14px;">콘솔 로그</strong>`;
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
@@ -344,7 +330,8 @@ function openViewer(): void {
   header.append(actions);
 
   const body = document.createElement("div");
-  body.style.cssText = "flex:1 1 auto;min-height:0;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;";
+  body.style.cssText =
+    "flex:1 1 auto;min-height:0;padding:12px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;";
 
   const mobileMedia = window.matchMedia("(max-width: 640px)");
   function applyViewerLayout(): void {
@@ -442,10 +429,8 @@ function openViewer(): void {
     }
     flushStore();
     sessions.splice(0, sessions.length, ...store.sessions.slice().reverse());
-    const nextIndex = selectedIndex >= 0
-      ? Math.min(selectedIndex, sessions.length - 1)
-      : -1;
-    selected = nextIndex >= 0 ? sessions[nextIndex] ?? null : null;
+    const nextIndex = selectedIndex >= 0 ? Math.min(selectedIndex, sessions.length - 1) : -1;
+    selected = nextIndex >= 0 ? (sessions[nextIndex] ?? null) : null;
     renderSidebar();
     renderBody();
   });
@@ -491,10 +476,7 @@ export function initConsoleLogStore(): void {
   });
 
   window.addEventListener("error", (e) => {
-    addEntry("error", [
-      e.message,
-      e.filename ? `@ ${e.filename}:${e.lineno}:${e.colno}` : "",
-    ]);
+    addEntry("error", [e.message, e.filename ? `@ ${e.filename}:${e.lineno}:${e.colno}` : ""]);
   });
   window.addEventListener("unhandledrejection", (e) => {
     addEntry("error", ["Unhandled rejection:", e.reason]);

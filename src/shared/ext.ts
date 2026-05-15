@@ -84,7 +84,10 @@ export async function ensureExtStatus(): Promise<void> {
 
 export function initExt(cb: (loggedIn: boolean) => void): void {
   if (!isExtEnabled()) return;
-  if (_initDone) { cb(_loggedIn); return; }
+  if (_initDone) {
+    cb(_loggedIn);
+    return;
+  }
   _callbacks.push(cb);
   if (_initStarted) return;
   void ensureExtStatus();

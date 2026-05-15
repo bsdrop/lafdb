@@ -8,7 +8,7 @@ const withSourceMap = process.argv.includes("--sourcemap");
 
 function minifyHtmlInTemplateLiteral(body) {
   return body
-    .replace(/\n[ \t]*/g, " ")    // TODO: what if pre, textarea?
+    .replace(/\n[ \t]*/g, " ") // TODO: what if pre, textarea?
     .replace(/>\s+</g, "><")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -53,7 +53,7 @@ const htmlTplPlugin = {
         }
         return match;
       });
-      
+
       const loader = args.path.endsWith(".ts") ? "ts" : "js";
       return { contents: out, loader };
     });
@@ -63,14 +63,15 @@ const htmlTplPlugin = {
 /** @type {import('esbuild').BuildOptions} */
 const common = {
   charset: "utf8",
-  minify: true, minifyIdentifiers: false,
-  minifySyntax: true, minifyWhitespace: true,
+  minify: true,
+  minifyIdentifiers: false,
+  minifySyntax: true,
+  minifyWhitespace: true,
   sourcemap: withSourceMap ? (dev ? "inline" : "external") : false,
   sourcesContent: withSourceMap && dev,
   target: ["chrome103", "firefox100", "safari16"],
   plugins: [htmlTplPlugin],
 };
-
 
 const scripts = [
   { entryPoints: ["src/player/player.ts"], bundle: true, format: "esm", outfile: "public/player.js" },
@@ -82,12 +83,7 @@ const scripts = [
 ];
 
 const css = {
-  entryPoints: [
-    "src/styles/player.css",
-    "src/styles/index.css",
-    "src/styles/item.css",
-    "src/styles/history.css",
-  ],
+  entryPoints: ["src/styles/player.css", "src/styles/index.css", "src/styles/item.css", "src/styles/history.css"],
   outdir: "public",
   loader: { ".css": "css" },
 };
@@ -130,4 +126,7 @@ async function stripSourceMapComments(dir) {
   }
 }
 
-build().catch((e) => { console.error(e); process.exit(1); });
+build().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

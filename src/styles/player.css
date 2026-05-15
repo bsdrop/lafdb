@@ -570,7 +570,7 @@ select {
   background: rgba(229, 255, 0, 0.3);
 }
 
-/* ── Comments column ── */
+/* Comments column */
 #comments-col {
   flex: 1 1 auto;
   display: flex;
@@ -994,7 +994,7 @@ select {
   pointer-events: auto;
 }
 
-/* ── Share sheet ────────────────────────────────────────────── */
+/* Share sheet */
 #share-overlay {
   display: none;
   position: fixed;
@@ -1173,7 +1173,7 @@ select {
   transform: translateX(18px);
   background: #000;
 }
-/* ── Download modal ─────────────────────────────────────────── */
+/* Download modal */
 #dl-modal {
   position: fixed;
   inset: 0;
@@ -1284,7 +1284,7 @@ select {
   color: var(--muted);
   min-height: 14px;
 }
-/* ── Download toast (bottom bar) ── */
+/* Download toast (bottom bar) */
 #dl-toast {
   position: fixed;
   bottom: 0;
@@ -1373,7 +1373,7 @@ select {
   transition: width 0.1s linear;
 }
 
-/* ── Extension: comment write/edit form ── */
+/* Extension: comment write/edit form */
 #ext-comment-wrap {
   padding: 8px 10px 4px;
   border-bottom: 1px solid #1e1e1e;

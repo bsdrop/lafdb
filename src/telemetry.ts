@@ -227,7 +227,8 @@ declare global {
         document.body.appendChild(tip);
         abbrTip = tip;
         const r = abbr.getBoundingClientRect();
-        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        const tw = tip.offsetWidth,
+          th = tip.offsetHeight;
         const left = Math.min(Math.max(r.left, 8), window.innerWidth - tw - 8);
         const top = r.top - th - 6 < 8 ? r.bottom + 6 : r.top - th - 6;
         tip.style.left = left + "px";
@@ -261,7 +262,6 @@ declare global {
     return host.endsWith(".i2p") || host.endsWith(".onion");
   }
 
-
   function setupOptout(): void {
     document.querySelectorAll("[data-tm-optout]").forEach((btn) => {
       btn.addEventListener("click", doOptout);
@@ -269,12 +269,7 @@ declare global {
   }
 
   function doOptout(): void {
-    if (
-      !confirm(
-        "통계 수집을 끄시겠습니까?\n이미 수집된 데이터는 삭제되지 않습니다.",
-      )
-    )
-      return;
+    if (!confirm("통계 수집을 끄시겠습니까?\n이미 수집된 데이터는 삭제되지 않습니다.")) return;
     setConsent("no");
     location.reload();
   }
@@ -294,12 +289,8 @@ declare global {
 </div>`;
     document.body.appendChild(banner);
 
-    document
-      .getElementById("_tm-yes")!
-      .addEventListener("click", () => applyConsent("yes"));
-    document
-      .getElementById("_tm-no")!
-      .addEventListener("click", () => applyConsent("no"));
+    document.getElementById("_tm-yes")!.addEventListener("click", () => applyConsent("yes"));
+    document.getElementById("_tm-no")!.addEventListener("click", () => applyConsent("no"));
     document.getElementById("_tm-what")!.addEventListener("click", openModal);
   }
 
@@ -338,7 +329,6 @@ declare global {
 
     if (stored === "yes" || stored === "no") setupOptout();
   }
-
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

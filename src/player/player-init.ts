@@ -2,9 +2,7 @@ import { Player } from "./player.js";
 import { rewriteCdnUrl } from "../shared/cdn";
 import { parseShareTime } from "../shared/time";
 
-declare const ManagedMediaSource:
-  | (typeof MediaSource & { canConstructInDedicatedWorker?: boolean })
-  | undefined;
+declare const ManagedMediaSource: (typeof MediaSource & { canConstructInDedicatedWorker?: boolean }) | undefined;
 
 declare function _dlInit(mpdUrl: string, playerOrWorker: Player | Worker, isWorker: boolean): void;
 declare function _dlHandleMsg(data: Record<string, unknown>): void;
@@ -62,15 +60,14 @@ function showError(msg: string): void {
   overlay.style.cssText =
     "position:absolute;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.82);padding:24px;";
   const p = document.createElement("p");
-  p.style.cssText =
-    "color:#aaa;font-size:14px;line-height:1.5;text-align:center;max-width:100%;word-break:keep-all;";
+  p.style.cssText = "color:#aaa;font-size:14px;line-height:1.5;text-align:center;max-width:100%;word-break:keep-all;";
   p.textContent = msg || "재생을 시작할 수 없습니다.";
   overlay.appendChild(p);
   box.appendChild(overlay);
 }
 
 function clearErrors(): void {
-  document.querySelectorAll(".error-overlay").forEach(el => el.remove());
+  document.querySelectorAll(".error-overlay").forEach((el) => el.remove());
 }
 
 function clearCompatWarning(): void {
@@ -91,10 +88,14 @@ function showAutoplayPrompt(): void {
   btn.textContent = "▶ 탭하여 재생";
   btn.style.cssText =
     "position:absolute;inset:0;width:100%;height:100%;background:rgba(0,0,0,.55);color:#fff;font-size:20px;border:none;cursor:pointer;z-index:30;";
-  btn.addEventListener("click", () => {
-    video.play().catch(e => console.error("[PLAYER] autoplay prompt play failed:", e));
-    btn.remove();
-  }, { once: true });
+  btn.addEventListener(
+    "click",
+    () => {
+      video.play().catch((e) => console.error("[PLAYER] autoplay prompt play failed:", e));
+      btn.remove();
+    },
+    { once: true },
+  );
   box.appendChild(btn);
 }
 
@@ -109,7 +110,8 @@ function buildUnsupportedBrowserMessage(): string {
   if (isAndroid) {
     const match = ua.match(/Android\s(\d+)/);
     const androidVersion = match ? parseInt(match[1], 10) : null;
-    let msg = "현재 Android 브라우저는 WebCrypto, MediaSource, 서비스 워커 등 일부 최신 웹 기능을 완전히 지원하지 않아 재생이 원활하지 않을 수 있습니다.";
+    let msg =
+      "현재 Android 브라우저는 WebCrypto, MediaSource, 서비스 워커 등 일부 최신 웹 기능을 완전히 지원하지 않아 재생이 원활하지 않을 수 있습니다.";
     if (androidVersion && androidVersion < 8) {
       return msg + " 이 기기에서 설치 가능한 최신 IronFox을 설치하여 VLC 또는 MPV로 감상할 것을 권장합니다.";
     }
@@ -123,9 +125,7 @@ function showCompatWarning(msg: string): void {
   if (document.getElementById("player-compat-warning")) return;
   const qualitySelector = document.getElementById("quality-selector") as HTMLSelectElement | null;
   const canOpenDownload =
-    !!globalThis.crypto?.subtle &&
-    !!document.getElementById("btn-download") &&
-    !!qualitySelector?.options.length;
+    !!globalThis.crypto?.subtle && !!document.getElementById("btn-download") && !!qualitySelector?.options.length;
   const banner = document.createElement("div");
   banner.id = "player-compat-warning";
   banner.style.cssText = [
@@ -154,13 +154,15 @@ function showCompatWarning(msg: string): void {
   `;
   document.body.appendChild(banner);
 
-  (document.getElementById("player-compat-close") as HTMLButtonElement | null)
-    ?.addEventListener("click", clearCompatWarning, { once: true });
-  (document.getElementById("player-compat-download") as HTMLButtonElement | null)
-    ?.addEventListener("click", () => {
-      const dlBtn = document.getElementById("btn-download") as HTMLButtonElement | null;
-      if (dlBtn && !dlBtn.hidden) dlBtn.click();
-    });
+  (document.getElementById("player-compat-close") as HTMLButtonElement | null)?.addEventListener(
+    "click",
+    clearCompatWarning,
+    { once: true },
+  );
+  (document.getElementById("player-compat-download") as HTMLButtonElement | null)?.addEventListener("click", () => {
+    const dlBtn = document.getElementById("btn-download") as HTMLButtonElement | null;
+    if (dlBtn && !dlBtn.hidden) dlBtn.click();
+  });
 }
 
 function showGapJumpBanner(mpdUrl: string, keyHex: string): void {
@@ -171,11 +173,19 @@ function showGapJumpBanner(mpdUrl: string, keyHex: string): void {
   const banner = document.createElement("div");
   banner.id = "player-gap-jump-banner";
   banner.style.cssText = [
-    "position:fixed", "left:12px", "right:12px", "bottom:12px", "z-index:9400",
-    "display:flex", "flex-direction:column", "gap:10px",
+    "position:fixed",
+    "left:12px",
+    "right:12px",
+    "bottom:12px",
+    "z-index:9400",
+    "display:flex",
+    "flex-direction:column",
+    "gap:10px",
     "padding:14px 16px",
-    "border:1px solid #3f3f46", "border-radius:12px",
-    "background:#18181b", "color:#d4d4d8",
+    "border:1px solid #3f3f46",
+    "border-radius:12px",
+    "background:#18181b",
+    "color:#d4d4d8",
     'font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
     "box-shadow:0 10px 30px rgba(0,0,0,.35)",
   ].join(";");
@@ -188,8 +198,15 @@ function showGapJumpBanner(mpdUrl: string, keyHex: string): void {
 </div>`;
   document.body.appendChild(banner);
   const copyBtn = document.getElementById("player-gap-copy") as HTMLButtonElement;
-  const codeEl  = document.getElementById("player-gap-mpv-cmd") as HTMLElement;
-  const doCopy  = () => { navigator.clipboard?.writeText(mpvCmd).then(() => { copyBtn.textContent = "복사됨 ✓"; setTimeout(() => { copyBtn.textContent = "명령어 복사"; }, 2000); }); };
+  const codeEl = document.getElementById("player-gap-mpv-cmd") as HTMLElement;
+  const doCopy = () => {
+    navigator.clipboard?.writeText(mpvCmd).then(() => {
+      copyBtn.textContent = "복사됨 ✓";
+      setTimeout(() => {
+        copyBtn.textContent = "명령어 복사";
+      }, 2000);
+    });
+  };
   copyBtn?.addEventListener("click", doCopy);
   codeEl?.addEventListener("click", doCopy);
   document.getElementById("player-gap-close")?.addEventListener("click", () => banner.remove(), { once: true });
@@ -267,88 +284,118 @@ async function startPlayer(
       fallbackToMainThread();
     }, { signal });
 
-    worker.addEventListener("message", ({ data }: MessageEvent<Record<string, unknown>>) => {
-      switch (data["type"]) {
-        case "handle": {
-          const handle = data["handle"];
-          if (handle == null) {
-            console.error("[PLAYER] worker did not provide a MediaSource handle; falling back");
-            fallbackToMainThread();
+    worker.addEventListener(
+      "message",
+      ({ data }: MessageEvent<Record<string, unknown>>) => {
+        switch (data["type"]) {
+          case "handle": {
+            const handle = data["handle"];
+            if (handle == null) {
+              console.error("[PLAYER] worker did not provide a MediaSource handle; falling back");
+              fallbackToMainThread();
+              break;
+            }
+            (video as HTMLVideoElement).srcObject = handle as MediaProvider;
             break;
           }
-          (video as HTMLVideoElement).srcObject = handle as MediaProvider;
-          break;
-        }
-        case "play":
-          video!.play().catch((e: Error) => {
-            console.error("video.play() rejected:", e);
-            showAutoplayPrompt();
-          });
-          break;
-        case "setCurrentTime":
-          video!.currentTime = data["time"] as number;
-          break;
-        case "qualityOptions": {
-          const sel = document.getElementById("quality-selector") as HTMLSelectElement | null;
-          if (!sel) break;
-          sel.innerHTML = "";
-          for (const opt of data["options"] as Array<{ id: string; label: string }>) {
-            const el = document.createElement("option");
-            el.value = opt.id;
-            el.textContent = opt.label;
-            if (opt.id === data["activeId"]) el.selected = true;
-            sel.appendChild(el);
+
+          case "play":
+            video!.play().catch((e: Error) => {
+              console.error("video.play() rejected:", e);
+              showAutoplayPrompt();
+            });
+            break;
+
+          case "setCurrentTime":
+            video!.currentTime = data["time"] as number;
+            break;
+
+          case "qualityOptions": {
+            const sel = document.getElementById("quality-selector") as HTMLSelectElement | null;
+            if (!sel) break;
+            sel.innerHTML = "";
+            for (const opt of data["options"] as Array<{ id: string; label: string }>) {
+              const el = document.createElement("option");
+              el.value = opt.id;
+              el.textContent = opt.label;
+              if (opt.id === data["activeId"]) el.selected = true;
+              sel.appendChild(el);
+            }
+            break;
           }
-          break;
+
+          case "updateActiveQuality": {
+            const sel = document.getElementById("quality-selector") as HTMLSelectElement | null;
+            if (sel) for (const o of sel.options) o.selected = o.value === data["repId"];
+            break;
+          }
+
+          case "error":
+            showError(data["message"] as string);
+            break;
+
+          case "compatWarning":
+            showCompatWarning(data["message"] as string);
+            break;
+
+          case "gapJump":
+            showGapJumpBanner(data["mpdUrl"] as string, data["keyHex"] as string);
+            break;
+            
+          default:
+            _dlHandleMsg(data);
         }
-        case "updateActiveQuality": {
-          const sel = document.getElementById("quality-selector") as HTMLSelectElement | null;
-          if (sel)
-            for (const o of sel.options)
-              o.selected = o.value === data["repId"];
-          break;
-        }
-        case "error":
-          showError(data["message"] as string);
-          break;
-        case "compatWarning":
-          showCompatWarning(data["message"] as string);
-          break;
-        case "gapJump":
-          showGapJumpBanner(data["mpdUrl"] as string, data["keyHex"] as string);
-          break;
-        default:
-          _dlHandleMsg(data);
-      }
-    }, { signal });
+      },
+      { signal },
+    );
 
-    video!.addEventListener("timeupdate", () => {
-      worker.postMessage({
-        type: "timeupdate",
-        currentTime: video!.currentTime,
-        readyState: video!.readyState,
-        videoWidth: video!.videoWidth,
-        videoHeight: video!.videoHeight,
-      });
-    }, { signal });
+    video!.addEventListener(
+      "timeupdate",
+      () => {
+        worker.postMessage({
+          type: "timeupdate",
+          currentTime: video!.currentTime,
+          readyState: video!.readyState,
+          videoWidth: video!.videoWidth,
+          videoHeight: video!.videoHeight,
+        });
+      },
+      { signal },
+    );
 
-    video!.addEventListener("playing", () => {
-      worker.postMessage({ type: "playing" });
-      clearAutoplayPrompt();
-    }, { signal });
+    video!.addEventListener(
+      "playing",
+      () => {
+        worker.postMessage({ type: "playing" });
+        clearAutoplayPrompt();
+      },
+      { signal },
+    );
 
-    video!.addEventListener("seeking", () => {
-      worker.postMessage({ type: "seeking", currentTime: video!.currentTime });
-    }, { signal });
+    video!.addEventListener(
+      "seeking",
+      () => {
+        worker.postMessage({ type: "seeking", currentTime: video!.currentTime });
+      },
+      { signal },
+    );
 
-    video!.addEventListener("error", () => {
-      worker.postMessage({ type: "videoError", code: video!.error?.code });
-    }, { signal });
+    video!.addEventListener(
+      "error",
+      () => {
+        worker.postMessage({ type: "videoError", code: video!.error?.code });
+      },
+      { signal },
+    );
 
-    document.getElementById("quality-selector")!.addEventListener("change", (e) => {
-      const sel = e.target as HTMLSelectElement;
-      if (sel.value) worker.postMessage({ type: "setQuality", repId: sel.value });
-    }, { signal });
+    document.getElementById("quality-selector")!.addEventListener(
+      "change",
+      (e) => {
+        const sel = e.target as HTMLSelectElement;
+        if (sel.value) worker.postMessage({ type: "setQuality", repId: sel.value });
+      },
+      { signal },
+    );
 
     worker.postMessage({
       type: "init",
@@ -374,6 +421,26 @@ async function startPlayer(
   }
 }
 
+// Compare hashes ignoring `t=` so that setupTimeSync adding a timestamp
+// mid-fetch doesn't trigger the stale-route guard.
+function hashCoreKey(hash: string): string {
+  const p = new URLSearchParams(hash.slice(1));
+  p.delete("t");
+  return p.toString();
+}
+
+function watchHistoryResumeTime(epId: string): number | null {
+  try {
+    const raw = localStorage.getItem("watch_history_v1");
+    if (!raw) return null;
+    const store = JSON.parse(raw) as { episodes?: Record<string, { t?: unknown }> };
+    const t = store?.episodes?.[epId]?.t;
+    return typeof t === "number" && t > 0.5 ? t : null;
+  } catch {
+    return null;
+  }
+}
+
 let lastHandledHash = "";
 async function handleRoute() {
   if (location.hash === lastHandledHash) return;
@@ -391,8 +458,13 @@ async function handleRoute() {
     const p = parseShareTime(tParam);
     resumeTime = p !== null && Number.isFinite(p) ? p : null;
   }
+  // WatchHistory fallback when no t= in URL (back-navigation before saveHash ran, etc.)
+  if (resumeTime === null && epId) {
+    resumeTime = watchHistoryResumeTime(epId);
+  }
 
-  if (!mpdParam && !epId) { // TODO: notify user
+  if (!mpdParam && !epId) {
+    // TODO: notify user
     console.warn("[ROUTE] missing player route info; redirecting to index");
     location.replace("/");
     return;
@@ -419,34 +491,43 @@ async function handleRoute() {
         apiFetch<any>(`/api/episodes/v3/${epId}`),
       ]);
       // 페치 도중 다른 화로 이동했으면 이 결과는 버림
-      if (location.hash !== expectedHash) {
+      // t= param은 setupTimeSync가 fetch 중 추가할 수 있으므로 비교에서 제외
+      if (hashCoreKey(location.hash) !== hashCoreKey(expectedHash)) {
         console.log("[ROUTE] Hash changed during fetch, aborting stale route:", expectedHash);
         return;
       }
-        if (!info?.dash_url) {
-          console.error("[ROUTE] episode has no DASH URL; redirecting to index");
-          location.replace("/");
-          return;
+      // setupTimeSync가 fetch 중 t= 를 추가했을 수 있으므로 재읽기를 하기는 하는데 TODO: 솔직히 필요없을 것 같음
+      if (resumeTime === null) {
+        const latestT = new URLSearchParams(location.hash.slice(1)).get("t");
+        if (latestT !== null) {
+          const p = parseShareTime(latestT);
+          if (p !== null && Number.isFinite(p)) resumeTime = p;
         }
-        const mpdUrl = rewriteCDN(info.dash_url);
-        const kid = info.keys?.[0]?.key_id ?? "";
-        const key = info.keys?.[0]?.key ?? "";
-        const p = new URLSearchParams(location.hash.slice(1));
+      }
+      if (!info?.dash_url) {
+        console.error("[ROUTE] episode has no DASH URL; redirecting to index");
+        location.replace("/");
+        return;
+      }
+      const mpdUrl = rewriteCDN(info.dash_url);
+      const kid = info.keys?.[0]?.key_id ?? "";
+      const key = info.keys?.[0]?.key ?? "";
+      const p = new URLSearchParams(location.hash.slice(1));
       p.set("mpd", info.dash_url);
       if (kid) p.set("kid", kid);
       if (key) p.set("key", key);
       history.replaceState(null, "", "#" + p.toString());
 
-        if (ep?.running_time) {
-          const parts = ep.running_time.split(":");
-          if (parts.length === 3) {
-            window._dlDurSecs = +parts[0] * 3600 + +parts[1] * 60 + parseFloat(parts[2]);
-          }
+      if (ep?.running_time) {
+        const parts = ep.running_time.split(":");
+        if (parts.length === 3) {
+          window._dlDurSecs = +parts[0] * 3600 + +parts[1] * 60 + parseFloat(parts[2]);
         }
-        await startPlayer(mpdUrl, kid, key, resumeTime);
-      } catch (e) {
-        console.error("[ROUTE] Failed to fetch episode info:", e);
       }
+      await startPlayer(mpdUrl, kid, key, resumeTime);
+    } catch (e) {
+      console.error("[ROUTE] Failed to fetch episode info:", e);
+    }
   }
 }
 

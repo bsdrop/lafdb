@@ -105,7 +105,7 @@ func main() {
 			return
 		}
 
-		// ── 3. Cache & Server Update Phase ──────────────────────────
+		// 3. Cache & Server Update Phase
 		log.Printf("daemon: rebuilding cache and signaling server")
 		func() {
 			server.GenerateAccessibleBitset(*root, filepath.Join(*root, "../public/accessible.js"))

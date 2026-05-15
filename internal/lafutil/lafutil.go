@@ -16,7 +16,7 @@ import (
 
 const UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; Not Googlebot)"
 
-// ── HTTP ──────────────────────────────────────────────────────────────────────
+// HTTP
 
 func NewDirectClient() *http.Client {
 	return &http.Client{
@@ -58,7 +58,7 @@ func Get(client *http.Client, rawURL string, headers map[string]string) ([]byte,
 	return body, resp.StatusCode, err
 }
 
-// ── Proxy file ────────────────────────────────────────────────────────────────
+// Proxy file
 
 type ProxyEntry struct {
 	Raw    string
@@ -93,7 +93,7 @@ func LoadProxies(path string) ([]ProxyEntry, error) {
 	return out, sc.Err()
 }
 
-// ── File I/O ──────────────────────────────────────────────────────────────────
+// File I/O
 
 func WriteFile(path string, data []byte) error {
 	cleanPath := filepath.Clean(path)

@@ -33,8 +33,7 @@ const btnClearAll = document.getElementById("btn-history-clear") as HTMLButtonEl
 const itemCache = new Map<string, ItemInfo>();
 const episodeCache = new Map<string, EpisodeInfo>();
 const manualThumbs =
-  localStorage.getItem("offline_metadata_mode") === "yes" &&
-  localStorage.getItem("manual_thumbnail_load") === "yes";
+  localStorage.getItem("offline_metadata_mode") === "yes" && localStorage.getItem("manual_thumbnail_load") === "yes";
 
 void render();
 
@@ -65,9 +64,9 @@ async function render(): Promise<void> {
 
     const thumbSrc = info.img || info.images?.[0]?.img_url || "";
     const thumb = thumbSrc
-      ? (manualThumbs
+      ? manualThumbs
         ? `<span class="history-thumb-manual" data-thumb="${esc(rewriteCDN(thumbSrc))}">썸네일 불러오기</span>`
-        : `<img class="history-thumb-img" src="${esc(rewriteCDN(thumbSrc))}" alt="" loading="lazy">`)
+        : `<img class="history-thumb-img" src="${esc(rewriteCDN(thumbSrc))}" alt="" loading="lazy">`
       : `<div class="history-thumb-fallback"></div>`;
     const progress = group.progresses[0]?.data ?? null;
     const progressText = progress
@@ -76,8 +75,8 @@ async function render(): Promise<void> {
     const latestInfo = episodeInfos[0] ?? null;
     const latestTitle = esc(
       formatEpisodeLabel(group.progresses[0]?.epId ?? group.latestEpisodeId, latestInfo) ||
-      group.latestEpisodeTitle ||
-      "최근 시청 에피소드",
+        group.latestEpisodeTitle ||
+        "최근 시청 에피소드",
     );
     const itemName = esc(info.name || `작품 ${group.itemId}`);
     const episodeRows = group.progresses
@@ -93,8 +92,7 @@ async function render(): Promise<void> {
 		<span class="history-ep-progress">${esc(watched)} / ${esc(duration)}</span>
 	</a>
 	<button class="history-ep-delete" type="button" data-ep-id="${esc(epId)}">삭제</button>
-</div>
-        `;
+</div>`;
       })
       .join("");
 
@@ -117,8 +115,7 @@ async function render(): Promise<void> {
 </div>
 <div class="history-episodes">
 	${episodeRows}
-</div>
-    `;
+</div>`;
     listEl.appendChild(card);
   }
 
@@ -143,22 +140,29 @@ async function render(): Promise<void> {
   });
 
   listEl.querySelectorAll<HTMLElement>(".history-thumb-manual").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const src = button.dataset.thumb;
-      if (!src) return;
-      const img = document.createElement("img");
-      img.className = "history-thumb-img";
-      img.src = src;
-      img.alt = "";
-      img.loading = "lazy";
-      button.replaceWith(img);
-    }, { once: true });
+    button.addEventListener(
+      "click",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const src = button.dataset.thumb;
+        if (!src) return;
+        const img = document.createElement("img");
+        img.className = "history-thumb-img";
+        img.src = src;
+        img.alt = "";
+        img.loading = "lazy";
+        button.replaceWith(img);
+      },
+      { once: true },
+    );
   });
 }
 
-async function getItemInfo(itemId: string, cached?: { itemName?: string; itemThumbPath?: string; itemMedium?: string } | null): Promise<ItemInfo> {
+async function getItemInfo(
+  itemId: string,
+  cached?: { itemName?: string; itemThumbPath?: string; itemMedium?: string } | null,
+): Promise<ItemInfo> {
   if (itemCache.has(itemId)) return itemCache.get(itemId)!;
   if (cached?.itemThumbPath) {
     const local = {
@@ -200,7 +204,10 @@ async function getItemInfo(itemId: string, cached?: { itemName?: string; itemThu
   }
 }
 
-async function getEpisodeInfo(epId: string, cached?: { episodeTitle?: string; episodeNum?: string; title?: string } | null): Promise<EpisodeInfo> {
+async function getEpisodeInfo(
+  epId: string,
+  cached?: { episodeTitle?: string; episodeNum?: string; title?: string } | null,
+): Promise<EpisodeInfo> {
   if (episodeCache.has(epId)) return episodeCache.get(epId)!;
   if (cached?.episodeTitle || cached?.episodeNum) {
     const local = {
@@ -236,7 +243,9 @@ function fmtTime(total: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function formatEpisodeLabel(epId: string, info: EpisodeInfo | null | undefined): string {

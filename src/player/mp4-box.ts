@@ -83,20 +83,10 @@ const ZERO_ENTRY_STBL_BOXES: Record<string, 1> = {
 };
 
 export function readUint32(buf: Uint8Array, offset: number): number {
-  return (
-    ((buf[offset] << 24) |
-      (buf[offset + 1] << 16) |
-      (buf[offset + 2] << 8) |
-      buf[offset + 3]) >>>
-    0
-  );
+  return ((buf[offset] << 24) | (buf[offset + 1] << 16) | (buf[offset + 2] << 8) | buf[offset + 3]) >>> 0;
 }
 
-export function writeUint32(
-  buf: Uint8Array,
-  offset: number,
-  value: number,
-): void {
+export function writeUint32(buf: Uint8Array, offset: number, value: number): void {
   buf[offset] = (value >>> 24) & 0xff;
   buf[offset + 1] = (value >>> 16) & 0xff;
   buf[offset + 2] = (value >>> 8) & 0xff;
@@ -114,28 +104,17 @@ export function concatUint8Arrays(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-export function parseMp4Boxes(
-  buf: Uint8Array,
-  start: number = 0,
-  end: number = buf.length,
-): Mp4BoxInfo[] {
+export function parseMp4Boxes(buf: Uint8Array, start: number = 0, end: number = buf.length): Mp4BoxInfo[] {
   const boxes: Mp4BoxInfo[] = [];
   let offset = start;
 
   while (offset + 8 <= end) {
     let size = readUint32(buf, offset);
-    const type = String.fromCharCode(
-      buf[offset + 4],
-      buf[offset + 5],
-      buf[offset + 6],
-      buf[offset + 7],
-    );
+    const type = String.fromCharCode(buf[offset + 4], buf[offset + 5], buf[offset + 6], buf[offset + 7]);
     let headerSize = 8;
 
     if (size === 1) {
-      size =
-        readUint32(buf, offset + 8) * 0x100000000 +
-        readUint32(buf, offset + 12);
+      size = readUint32(buf, offset + 8) * 0x100000000 + readUint32(buf, offset + 12);
       headerSize = 16;
     } else if (size === 0) {
       size = end - offset;
@@ -177,11 +156,7 @@ export function makeMp4Box(type: string, payload: Uint8Array): Uint8Array {
 }
 
 export function parseTfhd(payload: Uint8Array): ParsedTfhd {
-  const view = new DataView(
-    payload.buffer,
-    payload.byteOffset,
-    payload.byteLength,
-  );
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const flags = view.getUint32(0) & 0x00ffffff;
   let offset = 4;
   const trackId = view.getUint32(offset);
@@ -190,8 +165,7 @@ export function parseTfhd(payload: Uint8Array): ParsedTfhd {
   const parsed: ParsedTfhd = { flags, trackId };
 
   if (flags & 0x01) {
-    parsed.baseDataOffset =
-      view.getUint32(offset) * 0x100000000 + view.getUint32(offset + 4);
+    parsed.baseDataOffset = view.getUint32(offset) * 0x100000000 + view.getUint32(offset + 4);
     offset += 8;
   }
   if (flags & 0x02) {
@@ -214,11 +188,7 @@ export function parseTfhd(payload: Uint8Array): ParsedTfhd {
 }
 
 export function parseTrun(payload: Uint8Array): ParsedTrun {
-  const view = new DataView(
-    payload.buffer,
-    payload.byteOffset,
-    payload.byteLength,
-  );
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const flags = view.getUint32(0) & 0x00ffffff;
   let offset = 8;
 
@@ -239,11 +209,7 @@ export function parseTrun(payload: Uint8Array): ParsedTrun {
 }
 
 export function parseSenc(payload: Uint8Array): ParsedSenc {
-  const view = new DataView(
-    payload.buffer,
-    payload.byteOffset,
-    payload.byteLength,
-  );
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const flags = view.getUint32(0) & 0x00ffffff;
   const sampleCount = view.getUint32(4);
   let offset = 8;
@@ -286,25 +252,16 @@ export function parseSenc(payload: Uint8Array): ParsedSenc {
 }
 
 export function parseTfdt(payload: Uint8Array): ParsedTfdt {
-  const view = new DataView(
-    payload.buffer,
-    payload.byteOffset,
-    payload.byteLength,
-  );
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const version = view.getUint8(0);
   return {
     version,
-    baseMediaDecodeTime:
-      version === 1 ? Number(view.getBigUint64(4)) : view.getUint32(4),
+    baseMediaDecodeTime: version === 1 ? Number(view.getBigUint64(4)) : view.getUint32(4),
   };
 }
 
 export function parseSidx(payload: Uint8Array): ParsedSidx {
-  const view = new DataView(
-    payload.buffer,
-    payload.byteOffset,
-    payload.byteLength,
-  );
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
   const version = view.getUint8(0);
   const referenceId = view.getUint32(4);
   const timescale = view.getUint32(8);
@@ -351,10 +308,7 @@ export function parseSidx(payload: Uint8Array): ParsedSidx {
   };
 }
 
-export function replaceFullBoxTrackId(
-  box: Uint8Array,
-  trackId: number,
-): Uint8Array {
+export function replaceFullBoxTrackId(box: Uint8Array, trackId: number): Uint8Array {
   const out = box.slice();
   const type = String.fromCharCode(out[4], out[5], out[6], out[7]);
   if (type === "tkhd") {
@@ -381,10 +335,7 @@ function makeEmptyFullBox(type: string, version: number): Uint8Array {
   return out;
 }
 
-export function cleanMp4BoxTree(
-  buf: Uint8Array,
-  inStbl: boolean = false,
-): Uint8Array {
+export function cleanMp4BoxTree(buf: Uint8Array, inStbl: boolean = false): Uint8Array {
   const type = String.fromCharCode(buf[4], buf[5], buf[6], buf[7]);
   if (inStbl && ZERO_ENTRY_STBL_BOXES[type]) {
     const entryCount = type === "stsz" ? readUint32(buf, 16) : readUint32(buf, 12);
@@ -403,10 +354,7 @@ export function cleanMp4BoxTree(
       changed = true;
       continue;
     }
-    const next = cleanMp4BoxTree(
-      buf.subarray(child.start, child.start + child.size),
-      nextInStbl,
-    );
+    const next = cleanMp4BoxTree(buf.subarray(child.start, child.start + child.size), nextInStbl);
     if (next.length !== child.size) changed = true;
     kept.push(next);
   }
@@ -420,10 +368,7 @@ export function cleanMp4BoxTree(
   return out;
 }
 
-export function rewriteAudioTfhdTrackId(
-  seg: Uint8Array,
-  trackId: number,
-): Uint8Array {
+export function rewriteAudioTfhdTrackId(seg: Uint8Array, trackId: number): Uint8Array {
   const moof = findMp4Box(seg, "moof");
   if (!moof) return seg;
   const moofStart = moof.start;
@@ -435,10 +380,7 @@ export function rewriteAudioTfhdTrackId(
   const tfhd = findMp4Box(seg, "tfhd", trafStart + traf.headerSize, trafEnd);
   if (!tfhd) return seg;
 
-  const flags =
-    (seg[tfhd.start + 9] << 16) |
-    (seg[tfhd.start + 10] << 8) |
-    seg[tfhd.start + 11];
+  const flags = (seg[tfhd.start + 9] << 16) | (seg[tfhd.start + 10] << 8) | seg[tfhd.start + 11];
 
   if (!(flags & 0x000001)) {
     const out = seg.slice();
@@ -465,32 +407,20 @@ export function rewriteAudioTfhdTrackId(
   const moofParts = parseMp4Boxes(seg, moofStart + moof.headerSize, moofEnd).map((box) =>
     box.type === "traf" ? newTraf : seg.subarray(box.start, box.start + box.size),
   );
-  return concatUint8Arrays(
-    makeMp4Box("moof", concatUint8Arrays(...moofParts)),
-    seg.subarray(moofEnd),
-  );
+  return concatUint8Arrays(makeMp4Box("moof", concatUint8Arrays(...moofParts)), seg.subarray(moofEnd));
 }
 
-export function keepOnlyTopLevelBoxes(
-  seg: Uint8Array,
-  keep: ReadonlySet<string>,
-): Uint8Array {
+export function keepOnlyTopLevelBoxes(seg: Uint8Array, keep: ReadonlySet<string>): Uint8Array {
   const boxes = parseMp4Boxes(seg, 0, seg.length);
   const kept = boxes.filter((box) => keep.has(box.type));
   if (kept.length === boxes.length) return seg;
-  return concatUint8Arrays(
-    ...kept.map((box) => seg.subarray(box.start, box.start + box.size)),
-  );
+  return concatUint8Arrays(...kept.map((box) => seg.subarray(box.start, box.start + box.size)));
 }
 
-function patchTrunDataOffsetBox(
-  trunBox: Uint8Array,
-  delta: number,
-): Uint8Array {
+function patchTrunDataOffsetBox(trunBox: Uint8Array, delta: number): Uint8Array {
   if (!delta) return trunBox;
   const out = trunBox.slice();
-  const flags =
-    ((out[9] << 16) | (out[10] << 8) | out[11]) >>> 0;
+  const flags = ((out[9] << 16) | (out[10] << 8) | out[11]) >>> 0;
   if (!(flags & 0x01)) return out;
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   const current = view.getInt32(16);
@@ -498,10 +428,7 @@ function patchTrunDataOffsetBox(
   return out;
 }
 
-export function stripDrmAuxBoxesFromFragment(
-  seg: Uint8Array,
-  drmAuxTypes: ReadonlySet<string>,
-): Uint8Array {
+export function stripDrmAuxBoxesFromFragment(seg: Uint8Array, drmAuxTypes: ReadonlySet<string>): Uint8Array {
   const top = parseMp4Boxes(seg, 0, seg.length);
   const moof = top.find((box) => box.type === "moof");
   if (!moof) return seg;
@@ -516,11 +443,7 @@ export function stripDrmAuxBoxesFromFragment(
       continue;
     }
 
-    const trafChildren = parseMp4Boxes(
-      seg,
-      child.start + child.headerSize,
-      child.start + child.size,
-    );
+    const trafChildren = parseMp4Boxes(seg, child.start + child.headerSize, child.start + child.size);
     const kept: Uint8Array[] = [];
     let removedBytes = 0;
 
@@ -556,38 +479,19 @@ export function stripDrmAuxBoxesFromFragment(
   return concatUint8Arrays(...rebuilt);
 }
 
-export function shiftTfdtBaseTime(
-  seg: Uint8Array,
-  delta: number,
-): Uint8Array {
+export function shiftTfdtBaseTime(seg: Uint8Array, delta: number): Uint8Array {
   if (!delta) return seg;
   const moof = findMp4Box(seg, "moof", 0);
   if (!moof) return seg;
-  const traf = findMp4Box(
-    seg,
-    "traf",
-    moof.start + moof.headerSize,
-    moof.start + moof.size,
-  );
+  const traf = findMp4Box(seg, "traf", moof.start + moof.headerSize, moof.start + moof.size);
   if (!traf) return seg;
-  const tfdt = findMp4Box(
-    seg,
-    "tfdt",
-    traf.start + traf.headerSize,
-    traf.start + traf.size,
-  );
+  const tfdt = findMp4Box(seg, "tfdt", traf.start + traf.headerSize, traf.start + traf.size);
   if (!tfdt) return seg;
   const out = seg.slice();
   const offset = tfdt.start;
-  const tfdtInfo = parseTfdt(
-    out.subarray(tfdt.start + tfdt.headerSize, tfdt.start + tfdt.size),
-  );
+  const tfdtInfo = parseTfdt(out.subarray(tfdt.start + tfdt.headerSize, tfdt.start + tfdt.size));
   if (tfdtInfo.version === 0) {
-    writeUint32(
-      out,
-      offset + 12,
-      Math.max(0, (tfdtInfo.baseMediaDecodeTime + delta) >>> 0),
-    );
+    writeUint32(out, offset + 12, Math.max(0, (tfdtInfo.baseMediaDecodeTime + delta) >>> 0));
   } else {
     const nextTime = Math.max(0, tfdtInfo.baseMediaDecodeTime + delta);
     writeUint32(out, offset + 12, Math.floor(nextTime / 0x100000000) >>> 0);
@@ -604,11 +508,7 @@ function patchMvhdDuration(
   const version = out[8];
   const timescale = readUint32(out, version === 0 ? 20 : 28);
   if (durationSeconds != null && timescale > 0) {
-    writeUint32(
-      out,
-      version === 0 ? 24 : 32,
-      Math.min(Math.round(durationSeconds * timescale), 0xffffffff),
-    );
+    writeUint32(out, version === 0 ? 24 : 32, Math.min(Math.round(durationSeconds * timescale), 0xffffffff));
   }
   return { box: out, timescale };
 }
@@ -629,19 +529,12 @@ function patchDurationFullBox(
   return out;
 }
 
-function patchMdhdDuration(
-  mdhd: Uint8Array,
-  durationSeconds: number | null | undefined,
-): Uint8Array {
+function patchMdhdDuration(mdhd: Uint8Array, durationSeconds: number | null | undefined): Uint8Array {
   if (durationSeconds == null) return mdhd;
   const out = mdhd.slice();
   const version = out[8];
   const timescale = readUint32(out, version === 0 ? 20 : 28);
-  writeUint32(
-    out,
-    version === 0 ? 24 : 32,
-    Math.min(Math.round(durationSeconds * timescale), 0xffffffff),
-  );
+  writeUint32(out, version === 0 ? 24 : 32, Math.min(Math.round(durationSeconds * timescale), 0xffffffff));
   return out;
 }
 
@@ -654,31 +547,18 @@ function patchTrakDuration(
   const tkhd = findMp4Box(out, "tkhd", 8);
   if (tkhd) {
     out.set(
-      patchDurationFullBox(
-        out.subarray(tkhd.start, tkhd.start + tkhd.size),
-        durationSeconds,
-        movieTimescale,
-        { timescale: 20, duration: 28 },
-      ),
+      patchDurationFullBox(out.subarray(tkhd.start, tkhd.start + tkhd.size), durationSeconds, movieTimescale, {
+        timescale: 20,
+        duration: 28,
+      }),
       tkhd.start,
     );
   }
   const mdia = findMp4Box(out, "mdia", 8);
   if (mdia) {
-    const mdhd = findMp4Box(
-      out,
-      "mdhd",
-      mdia.start + mdia.headerSize,
-      mdia.start + mdia.size,
-    );
+    const mdhd = findMp4Box(out, "mdhd", mdia.start + mdia.headerSize, mdia.start + mdia.size);
     if (mdhd) {
-      out.set(
-        patchMdhdDuration(
-          out.subarray(mdhd.start, mdhd.start + mdhd.size),
-          durationSeconds,
-        ),
-        mdhd.start,
-      );
+      out.set(patchMdhdDuration(out.subarray(mdhd.start, mdhd.start + mdhd.size), durationSeconds), mdhd.start);
     }
   }
   return out;
@@ -707,18 +587,8 @@ export function buildMuxedInitSegment(
   const aMvex = findMp4Box(audioInit, "mvex", ai, ae);
   if (!vMvhd || !vTrak || !aTrak || !vMvex || !aMvex) return videoInit;
 
-  const vTrex = findMp4Box(
-    videoInit,
-    "trex",
-    vMvex.start + vMvex.headerSize,
-    vMvex.start + vMvex.size,
-  );
-  const aTrex = findMp4Box(
-    audioInit,
-    "trex",
-    aMvex.start + aMvex.headerSize,
-    aMvex.start + aMvex.size,
-  );
+  const vTrex = findMp4Box(videoInit, "trex", vMvex.start + vMvex.headerSize, vMvex.start + vMvex.size);
+  const aTrex = findMp4Box(audioInit, "trex", aMvex.start + aMvex.headerSize, aMvex.start + aMvex.size);
   if (!vTrex || !aTrex) return videoInit;
 
   const { box: mvhdData, timescale: movieTimescale } = patchMvhdDuration(
@@ -727,11 +597,7 @@ export function buildMuxedInitSegment(
   );
 
   const videoTrak = cleanMp4BoxTree(
-    patchTrakDuration(
-      videoInit.subarray(vTrak.start, vTrak.start + vTrak.size),
-      durationSeconds,
-      movieTimescale,
-    ),
+    patchTrakDuration(videoInit.subarray(vTrak.start, vTrak.start + vTrak.size), durationSeconds, movieTimescale),
   );
 
   let audioTrak = patchTrakDuration(
@@ -742,10 +608,7 @@ export function buildMuxedInitSegment(
   const audioTkhd = findMp4Box(audioTrak, "tkhd", 8);
   if (audioTkhd) {
     audioTrak.set(
-      replaceFullBoxTrackId(
-        audioTrak.subarray(audioTkhd.start, audioTkhd.start + audioTkhd.size),
-        audioTrackId,
-      ),
+      replaceFullBoxTrackId(audioTrak.subarray(audioTkhd.start, audioTkhd.start + audioTkhd.size), audioTrackId),
       audioTkhd.start,
     );
   }
@@ -755,22 +618,14 @@ export function buildMuxedInitSegment(
     "mvex",
     concatUint8Arrays(
       videoInit.subarray(vTrex.start, vTrex.start + vTrex.size),
-      replaceFullBoxTrackId(
-        audioInit.subarray(aTrex.start, aTrex.start + aTrex.size),
-        audioTrackId,
-      ),
+      replaceFullBoxTrackId(audioInit.subarray(aTrex.start, aTrex.start + aTrex.size), audioTrackId),
     ),
   );
 
-  const newMoov = makeMp4Box(
-    "moov",
-    concatUint8Arrays(mvhdData, videoTrak, audioTrak, newMvex),
-  );
+  const newMoov = makeMp4Box("moov", concatUint8Arrays(mvhdData, videoTrak, audioTrak, newMvex));
 
   return concatUint8Arrays(
-    vFtyp
-      ? videoInit.subarray(vFtyp.start, vFtyp.start + vFtyp.size)
-      : new Uint8Array(0),
+    vFtyp ? videoInit.subarray(vFtyp.start, vFtyp.start + vFtyp.size) : new Uint8Array(0),
     newMoov,
   );
 }

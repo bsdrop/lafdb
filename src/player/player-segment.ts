@@ -52,7 +52,7 @@ export function timeToSegmentNumber(
 }
 
 // Returns true when segStart falls in the interior of a skip range relative
-// to the current playhead ct ㅡ i.e., the player hasn't reached the range yet
+// to the current playhead ct. i.e. the player hasn't reached the range yet
 // but the segment is more than one segment-width past the range's start.
 // Used by the fetch loop to avoid buffering OP/ED content that will be skipped.
 export function isInSkipInterior(

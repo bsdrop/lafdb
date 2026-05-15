@@ -1,7 +1,4 @@
-import {
-  decryptSegment as decryptPlayerSegment,
-  stripDrmSignaling as stripPlayerDrmSignaling,
-} from "./player-drm";
+import { decryptSegment as decryptPlayerSegment, stripDrmSignaling as stripPlayerDrmSignaling } from "./player-drm";
 import {
   waitForIdle as sbWaitForIdle,
   appendBuffer as sbAppendBuffer,
@@ -220,10 +217,8 @@ class Player {
 
     this.BUFFER_AHEAD_MAX = Player._readBufferPref("player_buffer_ahead", Player.DEFAULT_BUFFER_AHEAD);
     this.BUFFER_BEHIND_KEEP = Player._readBufferPref("player_buffer_behind", Player.DEFAULT_BUFFER_BEHIND);
-    this.BUFFER_PRUNE_DELAY_MS = Player._readNonNegativeNumberPref(
-      "player_buffer_prune_delay",
-      Player.DEFAULT_BUFFER_PRUNE_DELAY_SECONDS,
-    ) * 1000;
+    this.BUFFER_PRUNE_DELAY_MS =
+      Player._readNonNegativeNumberPref("player_buffer_prune_delay", Player.DEFAULT_BUFFER_PRUNE_DELAY_SECONDS) * 1000;
     this.POLL_INTERVAL = 200;
 
     this.lastSeekTime = -1;
@@ -273,8 +268,7 @@ class Player {
     this._loggedDecryptLayoutWarning = false;
     this._isFirefox =
       typeof navigator !== "undefined" &&
-      (navigator.userAgent.includes("Firefox") ||
-        navigator.userAgent.includes("Waterfox"));
+      (navigator.userAgent.includes("Firefox") || navigator.userAgent.includes("Waterfox"));
     this._compatWarningShown = false;
     this._eventAc = null;
     this._destroyed = false;
@@ -317,26 +311,16 @@ class Player {
       if (this._pendingResumeTime != null) {
         if (!this._maybeClearPendingResume(vct)) return this._pendingResumeTime;
       }
-      if (
-        vct === 0 &&
-        this._lastKnownGoodTime !== null &&
-        this._lastKnownGoodTime > 1
-      ) {
+      if (vct === 0 && this._lastKnownGoodTime !== null && this._lastKnownGoodTime > 1) {
         return this._lastKnownGoodTime;
       }
       return vct;
     }
-    const age =
-      (typeof performance !== "undefined" ? performance.now() : Date.now()) -
-      this._ctUpdatedAt;
+    const age = (typeof performance !== "undefined" ? performance.now() : Date.now()) - this._ctUpdatedAt;
     if (age > 2000 && this._lastKnownGoodTime !== null) {
       return this._lastKnownGoodTime;
     }
-    if (
-      this._ct === 0 &&
-      this._lastKnownGoodTime !== null &&
-      this._lastKnownGoodTime > 1
-    ) {
+    if (this._ct === 0 && this._lastKnownGoodTime !== null && this._lastKnownGoodTime > 1) {
       return this._lastKnownGoodTime;
     }
     return this._ct;
@@ -387,23 +371,16 @@ class Player {
     if (!Number.isFinite(duration) || duration <= 0) return false;
     if (this._seekSettledAt === undefined || this.lastSeekTime < 0) return false;
     const remainingAtSeek = duration - this.lastSeekTime;
-    if (
-      remainingAtSeek <= Player.AUTO_TIME_EPSILON ||
-      remainingAtSeek > Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
-    ) {
+    if (remainingAtSeek <= Player.AUTO_TIME_EPSILON || remainingAtSeek > Player.FIREFOX_TAIL_DECODE_EOF_SECONDS) {
       return false;
     }
-    return this._now() - this._seekSettledAt < 5000 &&
-      Math.abs(currentTime - this.lastSeekTime) <= 0.25;
+    return this._now() - this._seekSettledAt < 5000 && Math.abs(currentTime - this.lastSeekTime) <= 0.25;
   }
 
   _hasExplicitTailResumeIntent(currentTime: number, duration: number): boolean {
     if (!Number.isFinite(duration) || duration <= 0) return false;
     if (this._wasRecentUserSeekNearTail(currentTime, duration)) return true;
-    if (
-      this._lastExplicitTargetTime >= 0 &&
-      this._now() - this._lastExplicitTargetAt < 10000
-    ) {
+    if (this._lastExplicitTargetTime >= 0 && this._now() - this._lastExplicitTargetAt < 10000) {
       const remainingAtTarget = duration - this._lastExplicitTargetTime;
       if (
         remainingAtTarget > Player.AUTO_TIME_EPSILON &&
@@ -415,19 +392,13 @@ class Player {
     }
     if (this._pendingResumeTime == null) return false;
     const remainingAtResume = duration - this._pendingResumeTime;
-    if (
-      remainingAtResume <= Player.AUTO_TIME_EPSILON ||
-      remainingAtResume > Player.FIREFOX_TAIL_DECODE_EOF_SECONDS
-    ) {
+    if (remainingAtResume <= Player.AUTO_TIME_EPSILON || remainingAtResume > Player.FIREFOX_TAIL_DECODE_EOF_SECONDS) {
       return false;
     }
-    return this._now() - this._pendingResumeSetAt < 10000 &&
-      Math.abs(currentTime - this._pendingResumeTime) <= 0.25;
+    return this._now() - this._pendingResumeSetAt < 10000 && Math.abs(currentTime - this._pendingResumeTime) <= 0.25;
   }
 
-  _emitCompatibilityWarning(
-    reason: "decode" | "stall" | "anonymous-codec",
-  ): void {
+  _emitCompatibilityWarning(reason: "decode" | "stall" | "anonymous-codec"): void {
     if (this._compatWarningShown) return;
     if (reason !== "anonymous-codec" && !this._isFirefox) return;
     this._compatWarningShown = true;
@@ -468,8 +439,7 @@ class Player {
   _recordGoodTime(t: number): void {
     if (t > 0.5) {
       this._lastKnownGoodTime = t;
-      this._lastKnownGoodAt =
-        typeof performance !== "undefined" ? performance.now() : Date.now();
+      this._lastKnownGoodAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     }
   }
 
@@ -520,7 +490,11 @@ class Player {
       const nextUrl = URL.createObjectURL(ms);
       const prevUrl = this._objectUrl;
       this._objectUrl = nextUrl;
-      try { this._video.pause(); } catch (e) { console.error("[PLAYER] pause before source attach failed:", e); }
+      try {
+        this._video.pause();
+      } catch (e) {
+        console.error("[PLAYER] pause before source attach failed:", e);
+      }
       try {
         this._video.removeAttribute("src");
         this._video.srcObject = null;
@@ -530,15 +504,16 @@ class Player {
       }
       this._video.src = nextUrl;
       if (prevUrl) {
-        try { URL.revokeObjectURL(prevUrl); } catch (e) { console.error("[PLAYER] revokeObjectURL failed:", e); }
+        try {
+          URL.revokeObjectURL(prevUrl);
+        } catch (e) {
+          console.error("[PLAYER] revokeObjectURL failed:", e);
+        }
       }
     } else {
       const msWithHandle = ms as MediaSource & { handle?: unknown };
       const handle = msWithHandle.handle;
-      (self as unknown as DedicatedWorkerGlobalScope).postMessage(
-        { type: "handle", handle },
-        [handle as Transferable],
-      );
+      (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: "handle", handle }, [handle as Transferable]);
     }
   }
 
@@ -556,10 +531,7 @@ class Player {
       }
       if (!this._qualitySelectSetup) {
         (sel as HTMLSelectElement).addEventListener("change", () => {
-          if (
-            (sel as HTMLSelectElement).value &&
-            (sel as HTMLSelectElement).value !== this.activeVideoRepId
-          )
+          if ((sel as HTMLSelectElement).value && (sel as HTMLSelectElement).value !== this.activeVideoRepId)
             this._switchVideoRep((sel as HTMLSelectElement).value);
         });
         this._qualitySelectSetup = true;
@@ -575,12 +547,8 @@ class Player {
 
   _updateQualitySelector(): void {
     if (this._video) {
-      const sel = document.getElementById(
-        "quality-selector",
-      ) as HTMLSelectElement | null;
-      if (sel)
-        for (const opt of sel.options)
-          opt.selected = opt.value === this.activeVideoRepId;
+      const sel = document.getElementById("quality-selector") as HTMLSelectElement | null;
+      if (sel) for (const opt of sel.options) opt.selected = opt.value === this.activeVideoRepId;
     } else {
       (self as unknown as DedicatedWorkerGlobalScope).postMessage({
         type: "updateActiveQuality",
@@ -626,35 +594,21 @@ class Player {
     return this.isTimeInBuffer(sb, time);
   }
 
-  async _appendToTrack(
-    track: Track,
-    token: number,
-    data: Uint8Array,
-  ): Promise<boolean> {
+  async _appendToTrack(track: Track, token: number, data: Uint8Array): Promise<boolean> {
     const sb = this._getLiveTrackSb(track, token);
     if (!sb || this._destroyed) return false;
     await this.appendBuffer(sb, data);
     return !!this._getLiveTrackSb(track, token);
   }
 
-  async _removeFromTrack(
-    track: Track,
-    token: number,
-    start: number,
-    end: number,
-  ): Promise<boolean> {
+  async _removeFromTrack(track: Track, token: number, start: number, end: number): Promise<boolean> {
     const sb = this._getLiveTrackSb(track, token);
     if (!sb || this._destroyed) return false;
     await this.removeBuffer(sb, start, end);
     return !!this._getLiveTrackSb(track, token);
   }
 
-  async _trimTrackBuffer(
-    track: Track,
-    token: number,
-    keepStart: number,
-    keepEnd: number,
-  ): Promise<boolean> {
+  async _trimTrackBuffer(track: Track, token: number, keepStart: number, keepEnd: number): Promise<boolean> {
     const sb = this._getLiveTrackSb(track, token);
     if (!sb || this._destroyed) return false;
     await this.trimBuffer(sb, keepStart, keepEnd);
@@ -668,11 +622,7 @@ class Player {
     track.pruneTimer = null;
   }
 
-  async _pruneTrackBehind(
-    track: Track,
-    token: number,
-    keepStart: number,
-  ): Promise<void> {
+  async _pruneTrackBehind(track: Track, token: number, keepStart: number): Promise<void> {
     try {
       await this._trimTrackBuffer(track, token, keepStart, Infinity);
       this._pruneAppended(track);
@@ -681,11 +631,7 @@ class Player {
     }
   }
 
-  _schedulePruneTrackBehind(
-    track: Track,
-    token: number,
-    keepStart: number,
-  ): void {
+  _schedulePruneTrackBehind(track: Track, token: number, keepStart: number): void {
     if (this.BUFFER_PRUNE_DELAY_MS <= 0) {
       void this._pruneTrackBehind(track, token, keepStart);
       return;
@@ -737,10 +683,7 @@ class Player {
     }
     // Fallback: manual timer
     const ac = new AbortController();
-    const timer = setTimeout(
-      () => ac.abort(new DOMException("Timeout", "TimeoutError")),
-      ms,
-    );
+    const timer = setTimeout(() => ac.abort(new DOMException("Timeout", "TimeoutError")), ms);
     parent.addEventListener("abort", () => {
       clearTimeout(timer);
       ac.abort(parent.reason);
@@ -836,10 +779,7 @@ class Player {
       clearTimeout(this._stallWatchdogTimer);
       this._stallWatchdogTimer = null;
     }
-    this._stallWatchdogTimer = setTimeout(
-      () => this._stallCheck(),
-      Player.STALL_POLL_MS,
-    );
+    this._stallWatchdogTimer = setTimeout(() => this._stallCheck(), Player.STALL_POLL_MS);
   }
 
   _stallCheck(): void {
@@ -887,9 +827,7 @@ class Player {
     const asb = this.tracks.find((t) => t.type === "audio")?.sb ?? null;
     const audioBufEnd = asb ? this.getBufferedEnd(asb, ct) : bufEnd;
     const audioAhead = audioBufEnd - ct;
-    const duration =
-      this._video?.duration ??
-      (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
+    const duration = this._video?.duration ?? (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
 
     if (Number.isFinite(duration) && duration > 0 && duration - ct <= Player.AUTO_TIME_EPSILON) {
       console.warn(
@@ -902,10 +840,7 @@ class Player {
           this.ms.endOfStream();
         }
       } catch (e) {
-        console.error(
-          "[PLAYER] endOfStream() during stall finalize failed:",
-          (e as Error).message,
-        );
+        console.error("[PLAYER] endOfStream() during stall finalize failed:", (e as Error).message);
       }
       if (this._video) {
         this._internalSeek = true;
@@ -930,7 +865,10 @@ class Player {
       let gapStart = -1;
       for (let i = 0; i < vsb.buffered.length; i++) {
         const start = vsb.buffered.start(i);
-        if (start > ct && start - ct <= Player.AUTO_TIME_EPSILON) { gapStart = start; break; }
+        if (start > ct && start - ct <= Player.AUTO_TIME_EPSILON) {
+          gapStart = start;
+          break;
+        }
       }
       if (gapStart >= 0) {
         if (Math.abs(this._gapCandidateStart - gapStart) <= Player.AUTO_TIME_EPSILON) {
@@ -951,9 +889,8 @@ class Player {
 
     // If video has buffer but audio is still catching up, be patient, it's not a decoder stall.
     const audioIsBuffering = ahead >= Player.STALL_BUF_MIN && audioAhead < Player.STALL_BUF_MIN;
-    const strikeLimit = ahead >= Player.STALL_BUF_MIN && !audioIsBuffering
-      ? Player.STALL_DECODER_STRIKES
-      : Player.STALL_MAX_STRIKES;
+    const strikeLimit =
+      ahead >= Player.STALL_BUF_MIN && !audioIsBuffering ? Player.STALL_DECODER_STRIKES : Player.STALL_MAX_STRIKES;
 
     if (ahead < Player.STALL_BUF_MIN && this._hasInflightSegments()) {
       this._stallCheckCount = 0;
@@ -989,19 +926,12 @@ class Player {
           `[PLAYER] stall: ct=${resumeAt} looks bad, using lastKnownGood=${this._lastKnownGoodTime.toFixed(2)}`,
         );
       }
-      const safeResume =
-        resumeAt < 1 && this._lastKnownGoodTime !== null
-          ? this._lastKnownGoodTime
-          : resumeAt;
+      const safeResume = resumeAt < 1 && this._lastKnownGoodTime !== null ? this._lastKnownGoodTime : resumeAt;
 
       if (ahead < Player.STALL_BUF_MIN) {
-        console.warn(
-          `[PLAYER] stall confirmed (no buffer), reinit from ${safeResume.toFixed(2)}s`,
-        );
+        console.warn(`[PLAYER] stall confirmed (no buffer), reinit from ${safeResume.toFixed(2)}s`);
         if (this._isFirefox) this._emitCompatibilityWarning("stall");
-        this._reinitMediaSource(safeResume).catch((e) =>
-          console.error("[PLAYER] watchdog reinit failed:", e),
-        );
+        this._reinitMediaSource(safeResume).catch((e) => console.error("[PLAYER] watchdog reinit failed:", e));
         return;
       } else if (audioIsBuffering) {
         console.warn(
@@ -1009,9 +939,7 @@ class Player {
         );
         if (this._isFirefox) this._emitCompatibilityWarning("stall");
         this._nudgeCount = 0;
-        this._reinitMediaSource(safeResume).catch((e) =>
-          console.error("[PLAYER] audio-stall reinit failed:", e),
-        );
+        this._reinitMediaSource(safeResume).catch((e) => console.error("[PLAYER] audio-stall reinit failed:", e));
         return;
       } else {
         if (this._nudgeCount < Player.NUDGE_MAX) {
@@ -1029,18 +957,12 @@ class Player {
         const recoveryTime = this._getDecodeRecoveryTime(safeResume);
         const retryResume = Math.min(
           recoveryTime,
-          Number.isFinite(this._video?.duration)
-            ? this._video!.duration || recoveryTime
-            : recoveryTime,
+          Number.isFinite(this._video?.duration) ? this._video!.duration || recoveryTime : recoveryTime,
         );
-        console.warn(
-          `[PLAYER] decoder stall (buffer ok), reinitializing from ${retryResume.toFixed(2)}s`,
-        );
+        console.warn(`[PLAYER] decoder stall (buffer ok), reinitializing from ${retryResume.toFixed(2)}s`);
         if (this._isFirefox) this._emitCompatibilityWarning("stall");
         this._nudgeCount = 0;
-        this._reinitMediaSource(retryResume).catch((e) =>
-          console.error("[PLAYER] buffered-stall reinit failed:", e),
-        );
+        this._reinitMediaSource(retryResume).catch((e) => console.error("[PLAYER] buffered-stall reinit failed:", e));
         return;
       }
     }
@@ -1049,17 +971,10 @@ class Player {
   }
 
   _nudgeDecoder(ct: number): void {
-    const retryResume =
-      ct < 1 && this._lastKnownGoodTime !== null
-        ? this._lastKnownGoodTime
-        : Math.max(0, ct);
-    console.warn(
-      `[PLAYER] nudge path disabled, reinitializing from ${retryResume.toFixed(3)}s`,
-    );
+    const retryResume = ct < 1 && this._lastKnownGoodTime !== null ? this._lastKnownGoodTime : Math.max(0, ct);
+    console.warn(`[PLAYER] nudge path disabled, reinitializing from ${retryResume.toFixed(3)}s`);
     this._nudgeCount = 0;
-    this._reinitMediaSource(retryResume).catch((e) =>
-      console.error("[PLAYER] nudge fallback reinit failed:", e),
-    );
+    this._reinitMediaSource(retryResume).catch((e) => console.error("[PLAYER] nudge fallback reinit failed:", e));
   }
 
   _clearStallWatchdog(): void {
@@ -1077,10 +992,7 @@ class Player {
     return parseSegmentTimelineFn(template);
   }
 
-  segmentNumberToTimeRange(
-    track: Track,
-    segNum: number,
-  ): { start: number; end: number; duration: number } | null {
+  segmentNumberToTimeRange(track: Track, segNum: number): { start: number; end: number; duration: number } | null {
     if (!track.timeline) return null;
     return segmentNumberToTimeRangeFn(track.timeline, track.timescale, track.startNumber, segNum);
   }
@@ -1090,16 +1002,9 @@ class Player {
     return timeToSegmentNumberFn(track.timeline, track.timescale, track.startNumber, time);
   }
 
-  _buildTrackFromRep(
-    rep: Element,
-    set: Element,
-    baseUrl: string,
-    type: string,
-  ): Track | null {
+  _buildTrackFromRep(rep: Element, set: Element, baseUrl: string, type: string): Track | null {
     const mimeType =
-      rep.getAttribute("mimeType") ||
-      set.getAttribute("mimeType") ||
-      (type === "audio" ? "audio/mp4" : "video/mp4");
+      rep.getAttribute("mimeType") || set.getAttribute("mimeType") || (type === "audio" ? "audio/mp4" : "video/mp4");
     const codec =
       rep.getAttribute("codecs") ||
       set.getAttribute("codecs") ||
@@ -1123,10 +1028,7 @@ class Player {
     const fill = (s: string) => s.replace(/\$RepresentationID\$/g, repId);
     const timescale = parseInt(tmpl.getAttribute("timescale") || "1", 10);
     const startNumber = parseInt(tmpl.getAttribute("startNumber") || "1", 10);
-    const presentationTimeOffset = parseInt(
-      tmpl.getAttribute("presentationTimeOffset") || "0",
-      10,
-    );
+    const presentationTimeOffset = parseInt(tmpl.getAttribute("presentationTimeOffset") || "0", 10);
     const initUrl = baseUrl + fill(tmpl.getAttribute("initialization")!);
     const mediaPattern = baseUrl + fill(tmpl.getAttribute("media")!);
     const timeline = this.parseSegmentTimeline(tmpl);
@@ -1142,14 +1044,8 @@ class Player {
       presentationTimeOffset,
       timeline,
       bandwidth: parseInt(rep.getAttribute("bandwidth") || "0", 10),
-      width: parseInt(
-        rep.getAttribute("width") || set.getAttribute("width") || "0",
-        10,
-      ),
-      height: parseInt(
-        rep.getAttribute("height") || set.getAttribute("height") || "0",
-        10,
-      ),
+      width: parseInt(rep.getAttribute("width") || set.getAttribute("width") || "0", 10),
+      height: parseInt(rep.getAttribute("height") || set.getAttribute("height") || "0", 10),
       sb: null,
       sbToken: 0,
       appended: new Set(),
@@ -1187,8 +1083,7 @@ class Player {
         while (stack.length) {
           const node = stack.pop()!;
           if (node.tagName === tag) return node;
-          for (let i = node.children.length - 1; i >= 0; i--)
-            stack.push(node.children[i]);
+          for (let i = node.children.length - 1; i >= 0; i--) stack.push(node.children[i]);
         }
         return null;
       },
@@ -1198,20 +1093,14 @@ class Player {
         while (stack.length) {
           const node = stack.pop()!;
           if (node.tagName === tag) out.push(node);
-          for (let i = node.children.length - 1; i >= 0; i--)
-            stack.push(node.children[i]);
+          for (let i = node.children.length - 1; i >= 0; i--) stack.push(node.children[i]);
         }
         return out;
       },
     };
 
-    const EMPTY_ATTRS: Record<string, string> = Object.freeze(
-      Object.create(null),
-    ) as Record<string, string>;
-    const makeNode = (
-      tagName: string,
-      attrs: Record<string, string> = EMPTY_ATTRS,
-    ): XmlNode => {
+    const EMPTY_ATTRS: Record<string, string> = Object.freeze(Object.create(null)) as Record<string, string>;
+    const makeNode = (tagName: string, attrs: Record<string, string> = EMPTY_ATTRS): XmlNode => {
       const node: XmlNode = Object.create(nodeProto);
       node.tagName = tagName;
       node.attrs = attrs;
@@ -1242,8 +1131,7 @@ class Player {
       const parser = new DOMParser();
       xml = parser.parseFromString(text, "application/xml");
       const parseError = xml.querySelector("parsererror");
-      if (parseError)
-        console.error("[PLAYER] MPD parse error:", parseError.textContent);
+      if (parseError) console.error("[PLAYER] MPD parse error:", parseError.textContent);
     } else {
       xml = this._parseXmlFallback(text);
     }
@@ -1256,19 +1144,13 @@ class Player {
       const reps = Array.from((set as any).querySelectorAll("Representation"));
       if (reps.length === 0) continue;
       const contentType = String(
-        ((set as any).getAttribute("contentType") ||
-          (set as any).getAttribute("type") ||
-          "") as string,
+        ((set as any).getAttribute("contentType") || (set as any).getAttribute("type") || "") as string,
       ).toLowerCase();
       const firstMime = String(
-        (reps[0] as any).getAttribute("mimeType") ||
-          (set as any).getAttribute("mimeType") ||
-          "",
+        (reps[0] as any).getAttribute("mimeType") || (set as any).getAttribute("mimeType") || "",
       ).toLowerCase();
       const firstCodec = String(
-        (reps[0] as any).getAttribute("codecs") ||
-          (set as any).getAttribute("codecs") ||
-          "",
+        (reps[0] as any).getAttribute("codecs") || (set as any).getAttribute("codecs") || "",
       ).toLowerCase();
       const type =
         contentType.includes("video") ||
@@ -1281,26 +1163,17 @@ class Player {
 
       if (type === "video") {
         for (const rep of reps) {
-          const track = this._buildTrackFromRep(
-            rep as Element,
-            set as Element,
-            baseUrl,
-            "video",
-          );
+          const track = this._buildTrackFromRep(rep as Element, set as Element, baseUrl, "video");
           if (track) this.videoReps.push(track);
         }
         this.videoReps.sort((a, b) => b.bandwidth - a.bandwidth);
         if (this.videoReps.length > 0) {
           const prefBps =
             this._qualityPrefBps ||
-            (typeof localStorage !== "undefined"
-              ? parseInt(localStorage.getItem("quality_pref_bps") || "0", 10)
-              : 0);
+            (typeof localStorage !== "undefined" ? parseInt(localStorage.getItem("quality_pref_bps") || "0", 10) : 0);
           const prefHeight = !prefBps
             ? this._qualityPref ||
-              (typeof localStorage !== "undefined"
-                ? parseInt(localStorage.getItem("quality_pref") || "0", 10)
-                : 0)
+              (typeof localStorage !== "undefined" ? parseInt(localStorage.getItem("quality_pref") || "0", 10) : 0)
             : 0;
           console.log(
             `[PLAYER] videoReps: ${this.videoReps.map((r) => `${r.repId} ${r.width}x${r.height} ${r.bandwidth}bps`).join(" | ")}`,
@@ -1312,18 +1185,13 @@ class Player {
             // 비트레이트 모드: bps → bps/1000 = kbps 로 비교
             const targetBps = prefBps * 1000;
             chosen = this.videoReps.reduce((best, r) =>
-              Math.abs(r.bandwidth - targetBps) <
-              Math.abs(best.bandwidth - targetBps)
-                ? r
-                : best,
+              Math.abs(r.bandwidth - targetBps) < Math.abs(best.bandwidth - targetBps) ? r : best,
             );
           } else if (!prefHeight) {
             chosen = this.videoReps[0];
           } else if (hasHeight) {
             chosen =
-              this.videoReps.find(
-                (r) => (r.height ?? 0) > 0 && (r.height ?? 0) <= prefHeight,
-              ) ?? this.videoReps[0];
+              this.videoReps.find((r) => (r.height ?? 0) > 0 && (r.height ?? 0) <= prefHeight) ?? this.videoReps[0];
           } else {
             const idx =
               prefHeight >= 1080
@@ -1335,9 +1203,7 @@ class Player {
           }
           this.activeVideoRepId = chosen.repId;
           tracks.push(chosen);
-          console.log(
-            `[PLAYER] Default video: id=${chosen.repId} ${chosen.width}x${chosen.height}`,
-          );
+          console.log(`[PLAYER] Default video: id=${chosen.repId} ${chosen.width}x${chosen.height}`);
         }
       } else {
         reps.sort(
@@ -1346,12 +1212,7 @@ class Player {
             parseInt((a as any).getAttribute("bandwidth") || "0", 10),
         );
         for (const rep of reps) {
-          const track = this._buildTrackFromRep(
-            rep as Element,
-            set as Element,
-            baseUrl,
-            "audio",
-          );
+          const track = this._buildTrackFromRep(rep as Element, set as Element, baseUrl, "audio");
           if (track) {
             tracks.push(track);
             break;
@@ -1360,9 +1221,7 @@ class Player {
       }
     }
 
-    console.log(
-      `[PLAYER] Tracks: ${tracks.length}, VideoReps: ${this.videoReps.length}`,
-    );
+    console.log(`[PLAYER] Tracks: ${tracks.length}, VideoReps: ${this.videoReps.length}`);
     this._sendQualityOptions(
       this.videoReps.map((r) => ({
         id: r.repId,
@@ -1387,9 +1246,7 @@ class Player {
           await this.wait(50);
         }
         if (this._destroyed) return;
-        console.log(
-          `[PLAYER] Switching video → id=${nextRepId} ${newRep.width}x${newRep.height}`,
-        );
+        console.log(`[PLAYER] Switching video → id=${nextRepId} ${newRep.width}x${newRep.height}`);
         this.activeVideoRepId = nextRepId;
         this._updateQualitySelector();
         await this._reinitMediaSource(this._safeCurrentTime());
@@ -1403,9 +1260,7 @@ class Player {
     if (this._recovering) {
       this._queuedSeekTime = Math.max(0, resumeTime);
       this._setPendingResumeTime(this._queuedSeekTime);
-      console.warn(
-        `[PLAYER] Already recovering, queued reinit to ${this._queuedSeekTime.toFixed(3)}s`,
-      );
+      console.warn(`[PLAYER] Already recovering, queued reinit to ${this._queuedSeekTime.toFixed(3)}s`);
       return;
     }
     this._recovering = true;
@@ -1420,10 +1275,7 @@ class Player {
         })
       | null;
 
-    const wasInPiP =
-      v &&
-      (document.pictureInPictureElement === v ||
-        v.webkitPresentationMode === "picture-in-picture");
+    const wasInPiP = v && (document.pictureInPictureElement === v || v.webkitPresentationMode === "picture-in-picture");
 
     const playbackState = v
       ? {
@@ -1432,16 +1284,12 @@ class Player {
         }
       : undefined;
 
-    const shouldResume = this._video
-      ? !this._video.paused && !this._autoplayBlocked && !this._awaitingUserPlay
-      : true;
+    const shouldResume = this._video ? !this._video.paused && !this._autoplayBlocked && !this._awaitingUserPlay : true;
 
     if (resumeTime == null) {
       resumeTime = this._lastKnownGoodTime ?? 0;
     }
-    console.log(
-      `[PLAYER] Reinitializing MediaSource (resumeTime=${resumeTime.toFixed(3)})`,
-    );
+    console.log(`[PLAYER] Reinitializing MediaSource (resumeTime=${resumeTime.toFixed(3)})`);
     this._lastReinitAt = Date.now();
     this._lastReinitTime = resumeTime;
 
@@ -1456,9 +1304,7 @@ class Player {
       this._invalidateTrackSb(track);
     }
 
-    const activeRep = this.videoReps.find(
-      (r) => r.repId === this.activeVideoRepId,
-    );
+    const activeRep = this.videoReps.find((r) => r.repId === this.activeVideoRepId);
     if (activeRep) {
       const videoIdx = this.tracks.findIndex((t) => t.type === "video");
       if (videoIdx !== -1) {
@@ -1471,15 +1317,9 @@ class Player {
 
     const ms = new MS!() as MediaSource;
     this.ms = ms;
-    ms.addEventListener("sourceopen", () =>
-      console.log("[PLAYER] MediaSource: sourceopen"),
-    );
-    ms.addEventListener("sourceended", () =>
-      console.log("[PLAYER] MediaSource: sourceended"),
-    );
-    ms.addEventListener("sourceclose", () =>
-      console.log("[PLAYER] MediaSource: sourceclose"),
-    );
+    ms.addEventListener("sourceopen", () => console.log("[PLAYER] MediaSource: sourceopen"));
+    ms.addEventListener("sourceended", () => console.log("[PLAYER] MediaSource: sourceended"));
+    ms.addEventListener("sourceclose", () => console.log("[PLAYER] MediaSource: sourceclose"));
 
     this._reinitInProgress = true;
     try {
@@ -1489,9 +1329,7 @@ class Player {
         ms.addEventListener(
           "sourceopen",
           () => {
-            this._startPlayback(resumeTime, shouldResume, playbackState)
-              .then(resolve)
-              .catch(reject);
+            this._startPlayback(resumeTime, shouldResume, playbackState).then(resolve).catch(reject);
           },
           { once: true },
         );
@@ -1508,9 +1346,7 @@ class Player {
       Math.abs(queuedSeekTime - resumeTime) > Player.AUTO_TIME_EPSILON &&
       !this._destroyed
     ) {
-      console.warn(
-        `[PLAYER] applying queued seek after recovery → ${queuedSeekTime.toFixed(3)}s`,
-      );
+      console.warn(`[PLAYER] applying queued seek after recovery → ${queuedSeekTime.toFixed(3)}s`);
       this._clearPendingResumeTime();
       await this._reinitMediaSource(queuedSeekTime);
       return;
@@ -1529,15 +1365,12 @@ class Player {
       };
       const enterPiP = () => {
         if (v.webkitSetPresentationMode) {
-          v.addEventListener(
-            "webkitpresentationmodechanged",
-            function onMode() {
-              if (v.webkitPresentationMode === "picture-in-picture") {
-                v.removeEventListener("webkitpresentationmodechanged", onMode);
-                playAfterPiP();
-              }
-            },
-          );
+          v.addEventListener("webkitpresentationmodechanged", function onMode() {
+            if (v.webkitPresentationMode === "picture-in-picture") {
+              v.removeEventListener("webkitpresentationmodechanged", onMode);
+              playAfterPiP();
+            }
+          });
           try {
             v.webkitSetPresentationMode("picture-in-picture");
           } catch (e) {
@@ -1559,23 +1392,18 @@ class Player {
 
   async _appendInit(track: Track): Promise<void> {
     if (!track.initData) {
-      console.log(
-        `[${track.type.toUpperCase()}] Fetching init: ${track.initUrl}`,
-      );
+      console.log(`[${track.type.toUpperCase()}] Fetching init: ${track.initUrl}`);
       let lastErr: Error | null = null;
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
-          if (attempt > 0)
-            await this.wait(Math.min(1000 * 2 ** attempt, 15000));
+          if (attempt > 0) await this.wait(Math.min(1000 * 2 ** attempt, 15000));
           const resp = await fetch(track.initUrl, {
             signal: AbortSignal.timeout(Player.INIT_FETCH_TIMEOUT_MS),
           });
           if (!resp.ok) throw new Error(`Init fetch HTTP ${resp.status}`);
           const raw = new Uint8Array(await resp.arrayBuffer());
           track.initData = this.stripDrmSignaling(raw, track.type);
-          console.log(
-            `[${track.type.toUpperCase()}] Init fetched (${track.initData.byteLength}B)`,
-          );
+          console.log(`[${track.type.toUpperCase()}] Init fetched (${track.initData.byteLength}B)`);
           lastErr = null;
           break;
         } catch (e) {
@@ -1595,12 +1423,7 @@ class Player {
     console.log(`[${track.type.toUpperCase()}] Init appended`);
   }
 
-  async init(
-    mpdUrl: string,
-    kid: string,
-    key: string,
-    resumeTime: number | null = null,
-  ): Promise<void> {
+  async init(mpdUrl: string, kid: string, key: string, resumeTime: number | null = null): Promise<void> {
     if (this._destroyed) return;
     console.log("[PLAYER] Initializing");
     this._setupNetworkRecovery();
@@ -1629,36 +1452,56 @@ class Player {
         "seeked",
       ];
       for (const ev of videoEvents) {
-        this._video.addEventListener(ev, () => {
-          console.log(
-            `[VIDEO] ${ev} | ct=${this._video!.currentTime.toFixed(3)} rs=${this._video!.readyState}` +
-              ` ${this._video!.videoWidth}x${this._video!.videoHeight} dur=${this._video!.duration}`,
-          );
-        }, { signal });
-      }
-      this._video.addEventListener("error", () => {
-        const ve = this._video!.error;
-        console.error(
-          `[VIDEO] error | ct=${this._video!.currentTime.toFixed(3)} rs=${this._video!.readyState}` +
-            ` ERR code=${ve?.code} msg="${ve?.message}"`,
+        this._video.addEventListener(
+          ev,
+          () => {
+            console.log(
+              `[VIDEO] ${ev} | ct=${this._video!.currentTime.toFixed(3)} rs=${this._video!.readyState}` +
+                ` ${this._video!.videoWidth}x${this._video!.videoHeight} dur=${this._video!.duration}`,
+            );
+          },
+          { signal },
         );
-        this._handleVideoError(ve?.code);
-      }, { signal });
-      this._video.addEventListener("seeking", () => {
-        this._handleSeeking(this._video!.currentTime);
-      }, { signal });
-      this._video.addEventListener("timeupdate", () => {
-        const ct = this._video!.currentTime;
-        this._recordGoodTime(ct);
-      }, { signal });
-      this._video.addEventListener("playing", () => {
-        this._autoplayBlocked = false;
-        this._awaitingUserPlay = false;
-        this._stallCheckCount = 0;
-        this._stallSnapshotTime = this._video!.currentTime;
-        this._stallSnapshotBuf = null;
-        if (!this.seekInProgress) this._startStallWatchdog();
-      }, { signal });
+      }
+      this._video.addEventListener(
+        "error",
+        () => {
+          const ve = this._video!.error;
+          console.error(
+            `[VIDEO] error | ct=${this._video!.currentTime.toFixed(3)} rs=${this._video!.readyState}` +
+              ` ERR code=${ve?.code} msg="${ve?.message}"`,
+          );
+          this._handleVideoError(ve?.code);
+        },
+        { signal },
+      );
+      this._video.addEventListener(
+        "seeking",
+        () => {
+          this._handleSeeking(this._video!.currentTime);
+        },
+        { signal },
+      );
+      this._video.addEventListener(
+        "timeupdate",
+        () => {
+          const ct = this._video!.currentTime;
+          this._recordGoodTime(ct);
+        },
+        { signal },
+      );
+      this._video.addEventListener(
+        "playing",
+        () => {
+          this._autoplayBlocked = false;
+          this._awaitingUserPlay = false;
+          this._stallCheckCount = 0;
+          this._stallSnapshotTime = this._video!.currentTime;
+          this._stallSnapshotBuf = null;
+          if (!this.seekInProgress) this._startStallWatchdog();
+        },
+        { signal },
+      );
     }
 
     this._mpdUrl = mpdUrl;
@@ -1684,9 +1527,7 @@ class Player {
           break;
         } catch (e) {
           lastErr = e as Error;
-          console.warn(
-            `[PLAYER] MPD fetch attempt ${attempt + 1} failed: ${(e as Error).message}`,
-          );
+          console.warn(`[PLAYER] MPD fetch attempt ${attempt + 1} failed: ${(e as Error).message}`);
         }
       }
       if (lastErr) throw lastErr;
@@ -1704,15 +1545,9 @@ class Player {
 
     const ms = new MS!() as MediaSource;
     this.ms = ms;
-    ms.addEventListener("sourceopen", () =>
-      console.log("[PLAYER] MediaSource: sourceopen"),
-    );
-    ms.addEventListener("sourceended", () =>
-      console.log("[PLAYER] MediaSource: sourceended"),
-    );
-    ms.addEventListener("sourceclose", () =>
-      console.log("[PLAYER] MediaSource: sourceclose"),
-    );
+    ms.addEventListener("sourceopen", () => console.log("[PLAYER] MediaSource: sourceopen"));
+    ms.addEventListener("sourceended", () => console.log("[PLAYER] MediaSource: sourceended"));
+    ms.addEventListener("sourceclose", () => console.log("[PLAYER] MediaSource: sourceclose"));
 
     this._reinitInProgress = true;
     try {
@@ -1759,15 +1594,9 @@ class Player {
       track.sb = sb;
       track.sbToken++;
       sb.mode = "segments";
-      console.log(
-        `[${track.type.toUpperCase()}] SourceBuffer created: ${track.mime}`,
-      );
-      sb.addEventListener("error", (e) =>
-        console.error(`[${track.type.toUpperCase()}] SourceBuffer error`, e),
-      );
-      sb.addEventListener("abort", () =>
-        console.warn(`[${track.type.toUpperCase()}] SourceBuffer abort`),
-      );
+      console.log(`[${track.type.toUpperCase()}] SourceBuffer created: ${track.mime}`);
+      sb.addEventListener("error", (e) => console.error(`[${track.type.toUpperCase()}] SourceBuffer error`, e));
+      sb.addEventListener("abort", () => console.warn(`[${track.type.toUpperCase()}] SourceBuffer abort`));
       sb.addEventListener("updateend", () => {
         let buf = "";
         try {
@@ -1776,9 +1605,7 @@ class Player {
         } catch (e) {
           console.error(`[${track.type.toUpperCase()}] buffered read:`, e);
         }
-        console.log(
-          `[${track.type.toUpperCase()}] updateend buffered=${buf || "(empty)"}`,
-        );
+        console.log(`[${track.type.toUpperCase()}] updateend buffered=${buf || "(empty)"}`);
       });
     }
 
@@ -1824,10 +1651,7 @@ class Player {
     }
   }
 
-  async _resumeWhenBuffered(
-    resumeTime: number,
-    autoPlay: boolean = true,
-  ): Promise<void> {
+  async _resumeWhenBuffered(resumeTime: number, autoPlay: boolean = true): Promise<void> {
     if (this._destroyed) return;
 
     const requestedTime = Math.max(0, resumeTime);
@@ -1842,9 +1666,7 @@ class Player {
     this._resumeInProgress = true;
 
     try {
-      const duration =
-        this._video?.duration ??
-        (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
+      const duration = this._video?.duration ?? (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
 
       // 경계 직전에서 바로 재생하면 다시 stall 나므로,
       // 요청 시점보다 조금 앞(250ms)까지 버퍼가 찼는지 확인한다.
@@ -1855,22 +1677,14 @@ class Player {
       const deadline = Date.now() + 10000;
 
       while (Date.now() < deadline) {
-        if (
-          generation !== this.generation ||
-          mediaSource !== this.ms ||
-          this._destroyed
-        ) {
+        if (generation !== this.generation || mediaSource !== this.ms || this._destroyed) {
           return;
         }
 
         const videoSb = this._getVideoSb();
-        const videoEnd = videoSb
-          ? this.getBufferedEnd(videoSb, requestedTime)
-          : requestedTime;
+        const videoEnd = videoSb ? this.getBufferedEnd(videoSb, requestedTime) : requestedTime;
 
-        const audioEnd = audioTrack
-          ? this._bufferedEndForTrack(audioTrack, requestedTime)
-          : Number.POSITIVE_INFINITY;
+        const audioEnd = audioTrack ? this._bufferedEndForTrack(audioTrack, requestedTime) : Number.POSITIVE_INFINITY;
 
         const videoReady = !!videoSb && videoEnd >= readyThrough - 0.01;
         const audioReady = !audioTrack || audioEnd >= readyThrough - 0.01;
@@ -1879,11 +1693,7 @@ class Player {
         await this.wait(50);
       }
 
-      if (
-        generation !== this.generation ||
-        mediaSource !== this.ms ||
-        this._destroyed
-      ) {
+      if (generation !== this.generation || mediaSource !== this.ms || this._destroyed) {
         return;
       }
 
@@ -1893,9 +1703,7 @@ class Player {
       }
 
       const videoEnd = this.getBufferedEnd(videoSb, requestedTime);
-      const audioEnd = audioTrack
-        ? this._bufferedEndForTrack(audioTrack, requestedTime)
-        : Number.POSITIVE_INFINITY;
+      const audioEnd = audioTrack ? this._bufferedEndForTrack(audioTrack, requestedTime) : Number.POSITIVE_INFINITY;
       const sharedEnd = Math.min(videoEnd, audioEnd);
 
       let safeSeekTime = requestedTime;
@@ -1935,10 +1743,7 @@ class Player {
       let inBuffer = false;
       try {
         for (let i = 0; i < track.sb.buffered.length; i++) {
-          if (
-            track.sb.buffered.start(i) <= mid + 0.1 &&
-            track.sb.buffered.end(i) >= mid - 0.1
-          ) {
+          if (track.sb.buffered.start(i) <= mid + 0.1 && track.sb.buffered.end(i) >= mid - 0.1) {
             inBuffer = true;
             break;
           }
@@ -1993,9 +1798,7 @@ class Player {
     if (!range) return Math.max(0, time);
     const anchor = Math.max(0, range.start + 0.01);
     if (Math.abs(anchor - time) >= 0.25) {
-      console.log(
-        `[PLAYER] resume anchor ${time.toFixed(3)}s -> seg ${segNum} start ${anchor.toFixed(3)}s`,
-      );
+      console.log(`[PLAYER] resume anchor ${time.toFixed(3)}s -> seg ${segNum} start ${anchor.toFixed(3)}s`);
     }
     return anchor;
   }
@@ -2024,9 +1827,7 @@ class Player {
 
   _getDecodeRecoveryTime(time: number): number {
     const safe = Math.max(0, time + Player.AUTO_TIME_EPSILON);
-    console.warn(
-      `[PLAYER] decode recovery ${time.toFixed(3)}s -> ${safe.toFixed(3)}s`,
-    );
+    console.warn(`[PLAYER] decode recovery ${time.toFixed(3)}s -> ${safe.toFixed(3)}s`);
     return safe;
   }
 
@@ -2045,18 +1846,14 @@ class Player {
     if (this._destroyed) return;
     const ac = new AbortController();
     this.abortControllers.add(ac);
-    console.log(
-      `[${track.type.toUpperCase()}] fetchLoop start gen=${generation}`,
-    );
+    console.log(`[${track.type.toUpperCase()}] fetchLoop start gen=${generation}`);
 
     try {
       let pollCount = 0;
       while (generation === this.generation && !this._destroyed) {
         if (!track.sb) return;
         if (this._video?.error) {
-          console.warn(
-            `[${track.type.toUpperCase()}] fetchLoop stopped: media element is in error state`,
-          );
+          console.warn(`[${track.type.toUpperCase()}] fetchLoop stopped: media element is in error state`);
           return;
         }
         const ct = this._currentTime;
@@ -2095,10 +1892,7 @@ class Player {
 
         let segNum = this.timeToSegmentNumber(track, fetchFromTime);
         let skipCount = 0;
-        while (
-          (track.appended.has(segNum) || track.inflight.has(segNum)) &&
-          skipCount < track.timeline!.length
-        ) {
+        while ((track.appended.has(segNum) || track.inflight.has(segNum)) && skipCount < track.timeline!.length) {
           segNum++;
           skipCount++;
         }
@@ -2145,12 +1939,7 @@ class Player {
     }
   }
 
-  async _fetchAndAppend(
-    track: Track,
-    segNum: number,
-    signal: AbortSignal,
-    generation: number,
-  ): Promise<void> {
+  async _fetchAndAppend(track: Track, segNum: number, signal: AbortSignal, generation: number): Promise<void> {
     if (this._destroyed) return;
     if (track.inflight.has(segNum) || track.appended.has(segNum)) return;
     track.inflight.add(segNum);
@@ -2175,9 +1964,7 @@ class Player {
       try {
         if (attempt > 0) {
           const delay = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), 30000);
-          console.warn(
-            `[${track.type.toUpperCase()}] seg ${segNum} retry ${attempt}/${MAX_RETRIES} in ${delay}ms`,
-          );
+          console.warn(`[${track.type.toUpperCase()}] seg ${segNum} retry ${attempt}/${MAX_RETRIES} in ${delay}ms`);
           await this.waitOrOnline(delay);
           if (generation !== this.generation || this._destroyed) {
             track.inflight.delete(segNum);
@@ -2193,17 +1980,12 @@ class Player {
         }
 
         const url = track.mediaPattern.replace("$Number$", String(segNum));
-        if (attempt === 0)
-          console.log(
-            `[${track.type.toUpperCase()}] fetch seg ${segNum}: ${url}`,
-          );
+        if (attempt === 0) console.log(`[${track.type.toUpperCase()}] fetch seg ${segNum}: ${url}`);
 
         const resp = await fetch(url, {
           signal: this._timedSignal(signal, Player.SEG_FETCH_TIMEOUT_MS),
         });
-        console.log(
-          `[${track.type.toUpperCase()}] seg ${segNum} status=${resp.status}`,
-        );
+        console.log(`[${track.type.toUpperCase()}] seg ${segNum} status=${resp.status}`);
 
         if (!resp.ok) {
           if (resp.status === 404 || resp.status === 410) {
@@ -2214,9 +1996,7 @@ class Player {
           throw new Error(`HTTP ${resp.status}`);
         }
 
-        let data: Uint8Array<ArrayBufferLike> = new Uint8Array(
-          await resp.arrayBuffer(),
-        );
+        let data: Uint8Array<ArrayBufferLike> = new Uint8Array(await resp.arrayBuffer());
         data = await this.decryptSegment(data, track.type);
 
         if (generation !== this.generation || this._destroyed || !track.sb) {
@@ -2246,9 +2026,7 @@ class Player {
         }
         lastErr = e as Error;
         const msg = (e as Error).message || "";
-        console.warn(
-          `[${track.type.toUpperCase()}] seg ${segNum} attempt ${attempt} error: ${msg}`,
-        );
+        console.warn(`[${track.type.toUpperCase()}] seg ${segNum} attempt ${attempt} error: ${msg}`);
         if (
           msg.includes("no longer usable") ||
           msg.includes("no longer, usable") ||
@@ -2257,16 +2035,12 @@ class Player {
           msg.includes("InvalidStateError") ||
           msg.includes("HTMLMediaElement.error attribute is not null")
         ) {
-          console.warn(
-            `[${track.type.toUpperCase()}] SourceBuffer unusable; stopping retries for seg ${segNum}`,
-          );
+          console.warn(`[${track.type.toUpperCase()}] SourceBuffer unusable; stopping retries for seg ${segNum}`);
           track.inflight.delete(segNum);
           return;
         }
         if (attempt === MAX_RETRIES) {
-          console.error(
-            `[${track.type.toUpperCase()}] seg ${segNum} permanently failed after ${MAX_RETRIES} retries`,
-          );
+          console.error(`[${track.type.toUpperCase()}] seg ${segNum} permanently failed after ${MAX_RETRIES} retries`);
           track.appended.add(segNum);
         }
       }
@@ -2279,15 +2053,11 @@ class Player {
   _handleSeeking(seekTime: number): void {
     if (this._destroyed) return;
     if (this._video?.error) {
-      console.warn(
-        `[PLAYER] seeking while media element is in error state; reinitializing to ${seekTime.toFixed(3)}s`,
-      );
+      console.warn(`[PLAYER] seeking while media element is in error state; reinitializing to ${seekTime.toFixed(3)}s`);
       this.lastSeekTime = seekTime;
       this._setPendingResumeTime(seekTime);
       if (!this._recovering && !this._reinitInProgress) {
-        this._reinitMediaSource(seekTime).catch((e) =>
-          console.error("[PLAYER] error-state seek reinit failed:", e),
-        );
+        this._reinitMediaSource(seekTime).catch((e) => console.error("[PLAYER] error-state seek reinit failed:", e));
       }
       return;
     }
@@ -2295,9 +2065,7 @@ class Player {
       this.lastSeekTime = seekTime;
       this._setPendingResumeTime(seekTime);
       this._queuedSeekTime = seekTime;
-      console.log(
-        `[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`,
-      );
+      console.log(`[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`);
       return;
     }
     if (this._video?.ended) {
@@ -2306,21 +2074,13 @@ class Player {
     }
     if (this._internalSeek) {
       this._internalSeek = false;
-      console.log(
-        `[PLAYER] internal seek to ${seekTime.toFixed(3)}s, ignoring`,
-      );
+      console.log(`[PLAYER] internal seek to ${seekTime.toFixed(3)}s, ignoring`);
       return;
     }
 
-    if (
-      seekTime < 0.5 &&
-      this._expectBrowserResetUntil &&
-      Date.now() < this._expectBrowserResetUntil
-    ) {
+    if (seekTime < 0.5 && this._expectBrowserResetUntil && Date.now() < this._expectBrowserResetUntil) {
       this._expectBrowserResetUntil = 0;
-      console.log(
-        `[PLAYER] seek to ${seekTime.toFixed(3)}s ignored (browser reset on src attach)`,
-      );
+      console.log(`[PLAYER] seek to ${seekTime.toFixed(3)}s ignored (browser reset on src attach)`);
       return;
     }
 
@@ -2355,8 +2115,7 @@ class Player {
     this._seekTimeout = setTimeout(async () => {
       if (this._destroyed || seekGeneration !== this.generation) return;
       this.seekInProgress = false;
-      this._seekSettledAt =
-        typeof performance !== "undefined" ? performance.now() : Date.now();
+      this._seekSettledAt = typeof performance !== "undefined" ? performance.now() : Date.now();
       this._ct = this.lastSeekTime;
 
       const settled = this._video ? this._video.currentTime : this.lastSeekTime;
@@ -2384,9 +2143,7 @@ class Player {
             const keepStart = Math.max(0, settled - this.BUFFER_BEHIND_KEEP);
             const keepEnd = settled + this.BUFFER_AHEAD_MAX;
             await this._trimTrackBuffer(track, token, keepStart, keepEnd);
-            console.log(
-              `[${track.type.toUpperCase()}] seek: buffer trimmed (in-buffer seek)`,
-            );
+            console.log(`[${track.type.toUpperCase()}] seek: buffer trimmed (in-buffer seek)`);
           } else {
             const liveSb = this._getLiveTrackSb(track, token);
             if (liveSb?.buffered.length) {
@@ -2397,21 +2154,15 @@ class Player {
                 liveSb.buffered.end(liveSb.buffered.length - 1),
               );
             }
-            console.log(
-              `[${track.type.toUpperCase()}] seek: buffer cleared (out-of-buffer seek)`,
-            );
+            console.log(`[${track.type.toUpperCase()}] seek: buffer cleared (out-of-buffer seek)`);
             try {
               await this._appendInit(track);
             } catch (e) {
-              console.error(
-                `[${track.type.toUpperCase()}] seek init append failed: ${(e as Error).message}`,
-              );
+              console.error(`[${track.type.toUpperCase()}] seek init append failed: ${(e as Error).message}`);
             }
           }
         } catch (e) {
-          console.error(
-            `[${track.type.toUpperCase()}] seek buffer op failed: ${(e as Error).message}`,
-          );
+          console.error(`[${track.type.toUpperCase()}] seek buffer op failed: ${(e as Error).message}`);
         }
       }
 
@@ -2426,26 +2177,16 @@ class Player {
 
   _handleVideoError(code: number | undefined): void {
     if (this._destroyed) return;
-    console.error(
-      `[VIDEO] error code=${code} ct=${this._currentTime.toFixed(3)}`,
-    );
-    if (
-      code === 4 /* MEDIA_ERR_SRC_NOT_SUPPORTED */ &&
-      isAnonymousNetworkPage()
-    ) {
+    console.error(`[VIDEO] error code=${code} ct=${this._currentTime.toFixed(3)}`);
+    if (code === 4 /* MEDIA_ERR_SRC_NOT_SUPPORTED */ && isAnonymousNetworkPage()) {
       this._stopFetchLoops("anonymous network codec unsupported");
       this._emitCompatibilityWarning("anonymous-codec");
       return;
     }
-    if (
-      code === 3 /* MEDIA_ERR_DECODE */ ||
-      code === 2 /* MEDIA_ERR_NETWORK */
-    ) {
+    if (code === 3 /* MEDIA_ERR_DECODE */ || code === 2 /* MEDIA_ERR_NETWORK */) {
       let ct = Math.max(0, this._safeCurrentTime());
       const now = Date.now();
-      const duration =
-        this._video?.duration ??
-        (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
+      const duration = this._video?.duration ?? (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
       const vsb = this._getVideoSb();
       const bufEnd = vsb ? this.getBufferedEnd(vsb, ct) : ct;
       const ahead = Math.max(0, bufEnd - ct);
@@ -2454,27 +2195,19 @@ class Player {
       // 따라서 "끝 3초 이내"만으로 종료 처리하지 말고, 거의 실제 끝일 때만 finalize한다.
       if (Number.isFinite(duration) && duration > 0) {
         const remaining = duration - ct;
-        const inFirefoxTailWindow =
-          this._isFirefox && remaining <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS;
+        const inFirefoxTailWindow = this._isFirefox && remaining <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS;
         const atActualEnd = remaining <= Player.AUTO_TIME_EPSILON;
 
         if (inFirefoxTailWindow && !atActualEnd) {
           const explicitTailIntent = this._hasExplicitTailResumeIntent(ct, duration);
           const backoff = explicitTailIntent ? 0.15 : 0.25;
-          const recoveryTime = Math.max(
-            0,
-            Math.min(ct, duration - Player.AUTO_TIME_EPSILON) - backoff,
-          );
+          const recoveryTime = Math.max(0, Math.min(ct, duration - Player.AUTO_TIME_EPSILON) - backoff);
           console.warn(
             `[PLAYER] Firefox tail MediaError before actual end (ct=${ct.toFixed(3)} / dur=${duration.toFixed(3)}), reinitializing from ${recoveryTime.toFixed(3)}s`,
           );
           this._clearStallWatchdog();
           this._lastErrorTime = recoveryTime;
-          this._stopFetchLoops(
-            explicitTailIntent
-              ? "tail-explicit-target media error"
-              : "tail-firefox media error",
-          );
+          this._stopFetchLoops(explicitTailIntent ? "tail-explicit-target media error" : "tail-firefox media error");
           this._reinitMediaSource(recoveryTime).catch((e) =>
             console.error("[PLAYER] Firefox tail recovery reinit failed:", e),
           );
@@ -2492,10 +2225,7 @@ class Player {
               this.ms.endOfStream();
             }
           } catch (e) {
-            console.error(
-              "[PLAYER] endOfStream() during error finalize failed:",
-              (e as Error).message,
-            );
+            console.error("[PLAYER] endOfStream() during error finalize failed:", (e as Error).message);
           }
           if (this._video) {
             this._internalSeek = true;
@@ -2514,26 +2244,17 @@ class Player {
         Math.abs(ct - this._lastReinitTime) < 1.0
       ) {
         this._stopFetchLoops("throttled media error");
-        console.warn(
-          `[PLAYER] throttling immediate reinit loop at ${ct.toFixed(3)}s`,
-        );
+        console.warn(`[PLAYER] throttling immediate reinit loop at ${ct.toFixed(3)}s`);
         this._scheduleStallCheck();
         return;
       }
 
-      if (
-        this._lastErrorTime !== undefined &&
-        Math.abs(ct - this._lastErrorTime) < 2
-      ) {
+      if (this._lastErrorTime !== undefined && Math.abs(ct - this._lastErrorTime) < 2) {
         this._errorStreak = (this._errorStreak || 0) + 1;
         if (this._errorStreak >= Player.DECODE_RECOVERY_MAX_RETRIES) {
           const nearEndFallback =
-            Number.isFinite(duration) &&
-            duration > 0 &&
-            duration - ct <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS + 2;
-          const fallbackTime = nearEndFallback
-            ? 0
-            : Math.max(0, Math.min(this._lastKnownGoodTime ?? 0, ct - 1));
+            Number.isFinite(duration) && duration > 0 && duration - ct <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS + 2;
+          const fallbackTime = nearEndFallback ? 0 : Math.max(0, Math.min(this._lastKnownGoodTime ?? 0, ct - 1));
           this._errorStreak = 0;
           this._lastErrorTime = fallbackTime;
           console.error(
@@ -2554,12 +2275,8 @@ class Player {
       if (this._isFirefox && (code === 3 || this._errorStreak > 0)) {
         this._emitCompatibilityWarning("decode");
       }
-      console.warn(
-        `[PLAYER] MediaError, reinitializing from ${ct.toFixed(3)}s`,
-      );
-      this._reinitMediaSource(ct).catch((e) =>
-        console.error("[PLAYER] Reinitialization failed:", e),
-      );
+      console.warn(`[PLAYER] MediaError, reinitializing from ${ct.toFixed(3)}s`);
+      this._reinitMediaSource(ct).catch((e) => console.error("[PLAYER] Reinitialization failed:", e));
     }
   }
 
@@ -2567,10 +2284,7 @@ class Player {
     return stripPlayerDrmSignaling(initBuffer, trackType);
   }
 
-  async decryptSegment(
-    data: Uint8Array,
-    trackType?: string,
-  ): Promise<Uint8Array<ArrayBufferLike>> {
+  async decryptSegment(data: Uint8Array, trackType?: string): Promise<Uint8Array<ArrayBufferLike>> {
     return decryptPlayerSegment(data, this.key, trackType);
   }
 
@@ -2605,7 +2319,11 @@ class Player {
     this._recovering = false;
     this._reinitInProgress = false;
     if (this._objectUrl) {
-      try { URL.revokeObjectURL(this._objectUrl); } catch (e) { console.error("[PLAYER] revokeObjectURL during destroy failed:", e); }
+      try {
+        URL.revokeObjectURL(this._objectUrl);
+      } catch (e) {
+        console.error("[PLAYER] revokeObjectURL during destroy failed:", e);
+      }
       this._objectUrl = null;
     }
     if (this._video) {
@@ -2627,8 +2345,7 @@ class Player {
 
 export { Player };
 
-const IS_WORKER =
-  typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+const IS_WORKER = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
 
 if (IS_WORKER) {
   if (MS === undefined) {
@@ -2644,31 +2361,20 @@ if (IS_WORKER) {
       switch (data.type) {
         case "init":
           player = new Player();
-          player._qualityPref = parseInt(
-            (data.qualityPref as string) || "0",
-            10,
-          );
-          player._qualityPrefBps = parseInt(
-            (data.qualityPrefBps as string) || "0",
-            10,
-          );
-          player
-            .init(data.mpdUrl!, data.kid!, data.key!, data.resumeTime ?? null)
-            .catch((err: Error) => {
-              console.error("[PLAYER] Init failed:", err);
-              (self as unknown as DedicatedWorkerGlobalScope).postMessage({
-                type: "error",
-                message: err.message || "재생을 시작할 수 없습니다.",
-              });
+          player._qualityPref = parseInt((data.qualityPref as string) || "0", 10);
+          player._qualityPrefBps = parseInt((data.qualityPrefBps as string) || "0", 10);
+          player.init(data.mpdUrl!, data.kid!, data.key!, data.resumeTime ?? null).catch((err: Error) => {
+            console.error("[PLAYER] Init failed:", err);
+            (self as unknown as DedicatedWorkerGlobalScope).postMessage({
+              type: "error",
+              message: err.message || "재생을 시작할 수 없습니다.",
             });
+          });
           break;
 
         case "timeupdate":
           if (player) {
-            const now =
-              typeof performance !== "undefined"
-                ? performance.now()
-                : Date.now();
+            const now = typeof performance !== "undefined" ? performance.now() : Date.now();
             if (
               player._seekSettledAt !== undefined &&
               now - player._seekSettledAt < 5000 &&
@@ -2733,10 +2439,7 @@ if (IS_WORKER) {
 
         case "dlStripInit":
           if (player) {
-            const stripped = player.stripDrmSignaling(
-              new Uint8Array(data.buffer!),
-              data.trackType!,
-            );
+            const stripped = player.stripDrmSignaling(new Uint8Array(data.buffer!), data.trackType!);
             (self as unknown as DedicatedWorkerGlobalScope).postMessage(
               { type: "dlStrippedInit", id: data.id, buffer: stripped.buffer },
               [stripped.buffer as ArrayBuffer],

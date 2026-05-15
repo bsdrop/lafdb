@@ -34,11 +34,7 @@ export const WATCH_STORAGE_KEY = "watch_history_v1";
 const WATCH_TIME_BASE_MS = Date.UTC(2026, 3, 1, 0, 0, 0, 0);
 const WATCH_TIME_STEP_MS = 5000;
 export const EXPORT_PREFIXES = [WATCH_STORAGE_KEY];
-export const EXPORT_EXACT = [
-  "player_autoskip",
-  "player_autoplay",
-  "time_pref",
-];
+export const EXPORT_EXACT = ["player_autoskip", "player_autoplay", "time_pref"];
 
 export const WatchHistory = {
   saveItem(itemId: string, meta: Partial<WatchItemEntry>): void {
@@ -198,7 +194,9 @@ export function listWatchHistory(storage: Storage = localStorage): WatchHistoryG
   const store = readWatchStore(storage);
   const itemIds = new Set<string>([
     ...Object.keys(store.items),
-    ...Object.values(store.episodes).map((progress) => String(progress.itemId ?? "")).filter(Boolean),
+    ...Object.values(store.episodes)
+      .map((progress) => String(progress.itemId ?? ""))
+      .filter(Boolean),
   ]);
 
   const groups: WatchHistoryGroup[] = [];
@@ -211,10 +209,7 @@ export function listWatchHistory(storage: Storage = localStorage): WatchHistoryG
     const latestEpisodeId = String(item?.lastEpisodeId ?? progresses[0]?.epId ?? "");
     const latestData = (latestEpisodeId ? store.episodes[latestEpisodeId] : null) ?? progresses[0]?.data ?? null;
     const latestEpisodeTitle = formatStoredEpisodeLabel(latestData);
-    const updatedAt = Math.max(
-      getUpdatedAt(item),
-      progresses[0] ? getUpdatedAt(progresses[0].data) : 0,
-    );
+    const updatedAt = Math.max(getUpdatedAt(item), progresses[0] ? getUpdatedAt(progresses[0].data) : 0);
     groups.push({
       itemId,
       item,
@@ -264,8 +259,9 @@ function normalizeImportedStore(data: Record<string, unknown>, base: WatchStore)
 function coerceStore(value: unknown): WatchStore | null {
   if (!value || typeof value !== "object") return null;
   const store = value as Partial<WatchStore>;
-  const items = store.items && typeof store.items === "object" ? store.items as Record<string, WatchItemEntry> : {};
-  const episodes = store.episodes && typeof store.episodes === "object" ? store.episodes as Record<string, WatchProgressEntry> : {};
+  const items = store.items && typeof store.items === "object" ? (store.items as Record<string, WatchItemEntry>) : {};
+  const episodes =
+    store.episodes && typeof store.episodes === "object" ? (store.episodes as Record<string, WatchProgressEntry>) : {};
   return { version: 2, items, episodes };
 }
 

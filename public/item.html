@@ -3,14 +3,14 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-		<link rel="manifest" href="/manifest.webmanifest">
-		<meta name="mobile-web-app-capable" content="yes">
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="theme-color" content="#6e58ff" />
-		<link rel="apple-touch-icon" href="app-icon.png">
+		<link rel="apple-touch-icon" href="app-icon.png" />
 		<title>작품 정보</title>
 		<script src="/common.js"></script>
 		<script src="/accessible.js"></script>
-		<link rel="stylesheet" href="/item.css">
+		<link rel="stylesheet" href="/item.css" />
 	</head>
 	<body>
 		<noscript>JavaScript가 비활성화되어 있습니다. 활성화 후 다시 시도해주세요.</noscript>
@@ -59,9 +59,7 @@
 
 		<div id="tab-episodes" role="tabpanel" aria-labelledby="tab-button-episodes">
 			<div class="sort-bar" id="ep-sort">
-				<button class="sort-btn active" data-sort="oldest" aria-pressed="true">
-					오래된 순
-				</button>
+				<button class="sort-btn active" data-sort="oldest" aria-pressed="true">오래된 순</button>
 				<button class="sort-btn" data-sort="newest" aria-pressed="false">최신 순</button>
 				<button class="sort-btn-inline" id="btn-load-all-thumbs" type="button">썸네일 모두 로드</button>
 			</div>
@@ -70,9 +68,7 @@
 		<div id="tab-reviews" role="tabpanel" aria-labelledby="tab-button-reviews" style="display: none" hidden>
 			<div id="item-stats"></div>
 			<div class="sort-bar" id="rev-sort">
-				<button class="sort-btn active" data-sorting="like" aria-pressed="true">
-					좋아요 순
-				</button>
+				<button class="sort-btn active" data-sorting="like" aria-pressed="true">좋아요 순</button>
 				<button class="sort-btn" data-sorting="newest" aria-pressed="false">최신 순</button>
 			</div>
 			<div id="reviews"></div>

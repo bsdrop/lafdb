@@ -142,7 +142,12 @@ const ShareSheet = (() => {
   const handle = document.getElementById("share-handle");
   let raised = false;
 
-  function open({ epId, itemId, epTitle, getTime }: {
+  function open({
+    epId,
+    itemId,
+    epTitle,
+    getTime,
+  }: {
     epId: string | null;
     itemId: string | null;
     epTitle?: string;
@@ -233,14 +238,8 @@ const ShareSheet = (() => {
       const row = document.createElement("div");
       row.className = "share-row";
 
-      const displayUrl = item.url.replace(
-        location.origin,
-        "",
-      );
-      const timeHint =
-        item.withTime && _getTime
-          ? ` (${fmtTime(_getTime())}부터)`
-          : "";
+      const displayUrl = item.url.replace(location.origin, "");
+      const timeHint = item.withTime && _getTime ? ` (${fmtTime(_getTime())}부터)` : "";
 
       row.innerHTML = `
 <div class="share-row-left">
@@ -300,8 +299,7 @@ const ShareSheet = (() => {
           url,
         });
       } catch (err) {
-        if ((err as Error).name !== "AbortError")
-          console.error("[PLAYER] native share failed:", err);
+        if ((err as Error).name !== "AbortError") console.error("[PLAYER] native share failed:", err);
       }
     }
   });
@@ -314,38 +312,50 @@ const ShareSheet = (() => {
   if (handle) {
     let touchStartY = 0;
     let raisedPx = 0;
-    handle.addEventListener("touchstart", (e) => {
-      touchStartY = e.touches[0].clientY;
-      raisedPx = -Math.round(window.innerHeight * 0.42);
-      sheet.style.transition = "none";
-    }, { passive: true });
-    handle.addEventListener("touchmove", (e) => {
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      const base = raised ? raisedPx : 0;
-      sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
-    }, { passive: true });
-    handle.addEventListener("touchend", (e) => {
-      const dy = e.changedTouches[0].clientY - touchStartY;
-      sheet.style.transition = "";
-      if (raised) {
-        if (dy > 80) {
-          raised = false;
-          sheet.style.transform = "";
+    handle.addEventListener(
+      "touchstart",
+      (e) => {
+        touchStartY = e.touches[0].clientY;
+        raisedPx = -Math.round(window.innerHeight * 0.42);
+        sheet.style.transition = "none";
+      },
+      { passive: true },
+    );
+    handle.addEventListener(
+      "touchmove",
+      (e) => {
+        const dy = e.changedTouches[0].clientY - touchStartY;
+        const base = raised ? raisedPx : 0;
+        sheet.style.transform = `translateY(${Math.max(raisedPx, base + dy)}px)`;
+      },
+      { passive: true },
+    );
+    handle.addEventListener(
+      "touchend",
+      (e) => {
+        const dy = e.changedTouches[0].clientY - touchStartY;
+        sheet.style.transition = "";
+        if (raised) {
+          if (dy > 80) {
+            raised = false;
+            sheet.style.transform = "";
+          } else {
+            sheet.style.transform = `translateY(${raisedPx}px)`;
+          }
         } else {
-          sheet.style.transform = `translateY(${raisedPx}px)`;
+          if (dy < -80) {
+            raised = true;
+            sheet.style.transform = `translateY(${raisedPx}px)`;
+          } else if (dy > 80) {
+            sheet.style.transform = "";
+            close();
+          } else {
+            sheet.style.transform = "";
+          }
         }
-      } else {
-        if (dy < -80) {
-          raised = true;
-          sheet.style.transform = `translateY(${raisedPx}px)`;
-        } else if (dy > 80) {
-          sheet.style.transform = "";
-          close();
-        } else {
-          sheet.style.transform = "";
-        }
-      }
-    }, { passive: true });
+      },
+      { passive: true },
+    );
   }
 
   return { open, close };
@@ -397,18 +407,12 @@ window.addEventListener("storage", (e) => {
 });
 btnAutoSkip.addEventListener("click", () => {
   autoSkip = !autoSkip;
-  localStorage.setItem(
-    "player_autoskip",
-    autoSkip ? "on" : "off",
-  );
+  localStorage.setItem("player_autoskip", autoSkip ? "on" : "off");
   syncOptBtns();
 });
 btnAutoPlay.addEventListener("click", () => {
   autoPlay = !autoPlay;
-  localStorage.setItem(
-    "player_autoplay",
-    autoPlay ? "on" : "off",
-  );
+  localStorage.setItem("player_autoplay", autoPlay ? "on" : "off");
   syncOptBtns();
 });
 autoPlayDelayInput?.addEventListener("change", () => {
@@ -423,18 +427,25 @@ autoPlayDelayInput?.addEventListener("blur", () => {
 
 {
   const btnDown = document.getElementById("btn-speed-down") as HTMLButtonElement | null;
-  const btnUp   = document.getElementById("btn-speed-up")   as HTMLButtonElement | null;
-  const btnVal  = document.getElementById("btn-speed-val")  as HTMLButtonElement | null;
-  const MIN = 0.125, MAX = 8;
+  const btnUp = document.getElementById("btn-speed-up") as HTMLButtonElement | null;
+  const btnVal = document.getElementById("btn-speed-val") as HTMLButtonElement | null;
+  const MIN = 0.125,
+    MAX = 8;
 
   let curSpeed = parseFloat(localStorage.getItem("player_speed") || "1") || 1;
 
   // Customizable via localStorage ㅡ not exposed in settings UI
-  const getMul    = () => parseFloat(localStorage.getItem("player_speed_step_mul") || "1.1") || 1.1;
-  const getBigMul = () => parseFloat(localStorage.getItem("player_speed_big_mul") || "2")   || 2;
+  const getMul = () => parseFloat(localStorage.getItem("player_speed_step_mul") || "1.1") || 1.1;
+  const getBigMul = () => parseFloat(localStorage.getItem("player_speed_big_mul") || "2") || 2;
   const getPresets = (): number[] => {
     const raw = localStorage.getItem("player_speed_presets");
-    if (raw) { const p = raw.split(",").map(Number).filter(n => n > 0); if (p.length) return p; }
+    if (raw) {
+      const p = raw
+        .split(",")
+        .map(Number)
+        .filter((n) => n > 0);
+      if (p.length) return p;
+    }
     return [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
   };
 
@@ -461,8 +472,10 @@ autoPlayDelayInput?.addEventListener("blur", () => {
   applySpeed(curSpeed, true);
   (document.getElementById("v") as HTMLVideoElement | null)?.addEventListener("ratechange", () => {
     const v = document.getElementById("v") as HTMLVideoElement | null;
-    if (!v) return;
-    if (v.playbackRate !== curSpeed) applySpeed(v.playbackRate, true);
+    if (!v || v.playbackRate === curSpeed) return;
+    // readyState <= 1: 소스 교체 중 브라우저가 1로 리셋하는 케이스는 curSpeed 보존
+    if (v.readyState <= 1 && v.playbackRate === 1) return;
+    applySpeed(v.playbackRate, true);
   });
   (document.getElementById("v") as HTMLVideoElement | null)?.addEventListener("playing", () => {
     const v = document.getElementById("v") as HTMLVideoElement | null;
@@ -470,20 +483,40 @@ autoPlayDelayInput?.addEventListener("blur", () => {
   });
 
   btnDown?.addEventListener("click", () => applySpeed(Math.round((curSpeed - 0.05) * 100) / 100));
-  btnUp?.addEventListener("click",   () => applySpeed(Math.round((curSpeed + 0.05) * 100) / 100));
-  btnVal?.addEventListener("click",  () => applySpeed(1));
+  btnUp?.addEventListener("click", () => applySpeed(Math.round((curSpeed + 0.05) * 100) / 100));
+  btnVal?.addEventListener("click", () => applySpeed(1));
 
   document.addEventListener("keydown", (e) => {
     if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     switch (e.key) {
-      case "]": applySpeed(curSpeed * getMul()); break;
-      case "[": applySpeed(curSpeed / getMul()); break;
-      case "}": applySpeed(curSpeed * getBigMul()); break;
-      case "{": applySpeed(curSpeed / getBigMul()); break;
-      case ">": { const p = getPresets(); const i = p.findIndex(v => v > curSpeed + 0.01); applySpeed(i >= 0 ? p[i] : p[p.length - 1]); break; }
-      case "<": { const p = getPresets(); const i = [...p].reverse().findIndex(v => v < curSpeed - 0.01); applySpeed(i >= 0 ? p[p.length - 1 - i] : p[0]); break; }
-      case "Backspace": if (localStorage.getItem("player_speed_bs_reset") !== "off") applySpeed(1); break;
+      case "]":
+        applySpeed(curSpeed * getMul());
+        break;
+      case "[":
+        applySpeed(curSpeed / getMul());
+        break;
+      case "}":
+        applySpeed(curSpeed * getBigMul());
+        break;
+      case "{":
+        applySpeed(curSpeed / getBigMul());
+        break;
+      case ">": {
+        const p = getPresets();
+        const i = p.findIndex((v) => v > curSpeed + 0.01);
+        applySpeed(i >= 0 ? p[i] : p[p.length - 1]);
+        break;
+      }
+      case "<": {
+        const p = getPresets();
+        const i = [...p].reverse().findIndex((v) => v < curSpeed - 0.01);
+        applySpeed(i >= 0 ? p[p.length - 1 - i] : p[0]);
+        break;
+      }
+      case "Backspace":
+        if (localStorage.getItem("player_speed_bs_reset") !== "off") applySpeed(1);
+        break;
     }
   });
 }
@@ -499,9 +532,7 @@ btnSettings.addEventListener("click", (e) => {
   e.stopPropagation();
   setSettingsPanelOpen(!settingsPanel.classList.contains("open"));
 });
-document.addEventListener("click", () =>
-  setSettingsPanelOpen(false),
-);
+document.addEventListener("click", () => setSettingsPanelOpen(false));
 settingsPanel.addEventListener("click", (e) => e.stopPropagation());
 
 const params = new URLSearchParams(location.hash.slice(1));
@@ -557,7 +588,7 @@ async function initUIForEpisode(id: string): Promise<void> {
       });
       try {
         const item = await apiFetch<Record<string, unknown>>(`/api/items/v4/${_currentItemId}`);
-        const images = Array.isArray(item["images"]) ? item["images"] as Array<Record<string, unknown>> : [];
+        const images = Array.isArray(item["images"]) ? (item["images"] as Array<Record<string, unknown>>) : [];
         const thumbPath =
           String(images.find((image) => image["option_name"] === "home_default")?.["img_url"] ?? "") ||
           String(images[0]?.["img_url"] ?? "") ||
@@ -582,9 +613,7 @@ async function initUIForEpisode(id: string): Promise<void> {
   }
 
   try {
-    const info = await apiFetch<Record<string, unknown>>(
-      `/api/episodes/v3/${id}/video`,
-    );
+    const info = await apiFetch<Record<string, unknown>>(`/api/episodes/v3/${id}/video`);
     if (loadToken !== markerLoadToken || id !== epId) return;
     setupMarkers(info["markers"] as MarkerData | null | undefined);
   } catch (e) {
@@ -623,19 +652,27 @@ function showSpeedToast(prev: number, next: number): void {
     toast = document.createElement("div");
     toast.id = "speed-toast";
     toast.style.cssText = [
-      "position:absolute", "top:50%", "left:50%",
+      "position:absolute",
+      "top:50%",
+      "left:50%",
       "transform:translate(-50%,-50%)",
-      "z-index:30", "pointer-events:none",
-      "display:flex", "flex-direction:column", "align-items:center", "gap:4px",
-      "background:rgba(0,0,0,.55)", "border-radius:10px",
+      "z-index:30",
+      "pointer-events:none",
+      "display:flex",
+      "flex-direction:column",
+      "align-items:center",
+      "gap:4px",
+      "background:rgba(0,0,0,.55)",
+      "border-radius:10px",
       "padding:10px 18px",
       'font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-      "color:#fff", "text-align:center",
+      "color:#fff",
+      "text-align:center",
       "transition:opacity .15s",
     ].join(";");
     box.appendChild(toast);
   }
-  const fmtSpeed = (v: number) => v === 1 ? "1x" : v.toPrecision(3).replace(/\.?0+$/, "") + "x";
+  const fmtSpeed = (v: number) => (v === 1 ? "1x" : v.toPrecision(3).replace(/\.?0+$/, "") + "x");
   const arrow = next > prev ? "▶▶" : next < prev ? "◀◀" : "";
   const unsafe = next < 0.5 || next > 2;
   const valColor = unsafe ? "#f97316" : "#fff";
@@ -659,13 +696,18 @@ function showVolumeToast(video: HTMLVideoElement): void {
     toast = document.createElement("div");
     toast.id = "volume-toast";
     toast.style.cssText = [
-      "position:absolute", "top:50%", "left:50%",
+      "position:absolute",
+      "top:50%",
+      "left:50%",
       "transform:translate(-50%,-50%)",
-      "z-index:30", "pointer-events:none",
-      "background:rgba(0,0,0,.55)", "border-radius:10px",
+      "z-index:30",
+      "pointer-events:none",
+      "background:rgba(0,0,0,.55)",
+      "border-radius:10px",
       "padding:10px 18px",
       'font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-      "color:#fff", "text-align:center",
+      "color:#fff",
+      "text-align:center",
       "transition:opacity .15s",
     ].join(";");
     box.appendChild(toast);
@@ -737,7 +779,9 @@ function setupMediaSession(): void {
   function syncMetadata(): void {
     try {
       ms.metadata = new MediaMetadata({ title: _currentEpTitle || document.title });
-    } catch (e) { console.error("[PLAYER] media session metadata update failed:", e); }
+    } catch (e) {
+      console.error("[PLAYER] media session metadata update failed:", e);
+    }
   }
   syncMetadata();
   const titleEl = document.getElementById("ep-title");
@@ -748,7 +792,11 @@ function setupMediaSession(): void {
   }
 
   function syncPlaybackState(): void {
-    try { ms.playbackState = video.paused ? "paused" : "playing"; } catch (e) { console.error("[PLAYER] media session playbackState update failed:", e); }
+    try {
+      ms.playbackState = video.paused ? "paused" : "playing";
+    } catch (e) {
+      console.error("[PLAYER] media session playbackState update failed:", e);
+    }
   }
   video.addEventListener("play", syncPlaybackState, { signal });
   video.addEventListener("pause", syncPlaybackState, { signal });
@@ -759,45 +807,77 @@ function setupMediaSession(): void {
       const dur = video.duration;
       if (!dur || !isFinite(dur)) return;
       ms.setPositionState({
-        duration:     dur,
+        duration: dur,
         playbackRate: video.playbackRate || 1,
-        position:     Math.min(video.currentTime, dur),
+        position: Math.min(video.currentTime, dur),
       });
-    } catch (e) { console.error("[PLAYER] media session positionState update failed:", e); }
+    } catch (e) {
+      console.error("[PLAYER] media session positionState update failed:", e);
+    }
   }
   let _posTimer: ReturnType<typeof setTimeout> | 0 = 0;
-  video.addEventListener("timeupdate", () => {
-    if (_posTimer) return;
-    _posTimer = setTimeout(() => { _posTimer = 0; syncPositionState(); }, 1000);
-  }, { signal });
-  signal.addEventListener("abort", () => {
-    if (_posTimer) clearTimeout(_posTimer);
-    _posTimer = 0;
-  }, { once: true });
+  video.addEventListener(
+    "timeupdate",
+    () => {
+      if (_posTimer) return;
+      _posTimer = setTimeout(() => {
+        _posTimer = 0;
+        syncPositionState();
+      }, 1000);
+    },
+    { signal },
+  );
+  signal.addEventListener(
+    "abort",
+    () => {
+      if (_posTimer) clearTimeout(_posTimer);
+      _posTimer = 0;
+    },
+    { once: true },
+  );
   video.addEventListener("loadedmetadata", syncPositionState, { signal });
   video.addEventListener("durationchange", syncPositionState, { signal });
-  video.addEventListener("seeked",         syncPositionState, { signal });
-  video.addEventListener("ratechange",     syncPositionState, { signal });
+  video.addEventListener("seeked", syncPositionState, { signal });
+  video.addEventListener("ratechange", syncPositionState, { signal });
 
   function safeSeek(t: number): void {
     try {
       const dur = video.duration;
       if (!dur || !isFinite(dur)) return;
       video.currentTime = Math.max(0, Math.min(t, dur));
-    } catch (e) { console.error("[PLAYER] media session seek failed:", e); }
+    } catch (e) {
+      console.error("[PLAYER] media session seek failed:", e);
+    }
   }
 
   const videoWithFastSeek = video as HTMLVideoElement & { fastSeek?: (t: number) => void };
 
   const handlers: Record<string, (details?: MediaSessionActionDetails | null) => void> = {
-    play:         () => { try { video.play().catch((err) => console.error("[PLAYER] media session play failed:", err)); } catch (e) { console.error("[PLAYER] media session play threw:", e); } },
-    pause:        () => { try { video.pause(); } catch (e) { console.error("[PLAYER] media session pause failed:", e); } },
-    seekforward:  (details) => safeSeek(video.currentTime + (details?.seekOffset ?? 10)),
+    play: () => {
+      try {
+        video.play().catch((err) => console.error("[PLAYER] media session play failed:", err));
+      } catch (e) {
+        console.error("[PLAYER] media session play threw:", e);
+      }
+    },
+    pause: () => {
+      try {
+        video.pause();
+      } catch (e) {
+        console.error("[PLAYER] media session pause failed:", e);
+      }
+    },
+    seekforward: (details) => safeSeek(video.currentTime + (details?.seekOffset ?? 10)),
     seekbackward: (details) => safeSeek(video.currentTime - (details?.seekOffset ?? 10)),
-    seekto:       (details) => {
+    seekto: (details) => {
       if (details?.seekTime == null) return;
       if (details.fastSeek && videoWithFastSeek.fastSeek) {
-        try { videoWithFastSeek.fastSeek(details.seekTime); } catch (e) { console.error("[PLAYER] media session fastSeek failed:", e); safeSeek(details.seekTime); }
+        try {
+          videoWithFastSeek.fastSeek(details.seekTime);
+        } catch (e) {
+          console.error("[PLAYER] media session fastSeek failed:", e);
+          safeSeek(details.seekTime);
+        }
       } else {
         safeSeek(details.seekTime);
       }
@@ -805,7 +885,11 @@ function setupMediaSession(): void {
   };
 
   for (const [action, handler] of Object.entries(handlers)) {
-    try { ms.setActionHandler(action as MediaSessionAction, handler); } catch (e) { console.error(`[PLAYER] media session action handler failed (${action}):`, e); }
+    try {
+      ms.setActionHandler(action as MediaSessionAction, handler);
+    } catch (e) {
+      console.error(`[PLAYER] media session action handler failed (${action}):`, e);
+    }
   }
 }
 
@@ -816,13 +900,7 @@ function setupProgressSave(): void {
   function save(): void {
     const t = video.currentTime;
     if (!t || t < 1) return;
-    WatchHistory.saveProgress(
-      epId!,
-      t,
-      video.duration,
-      _currentItemId,
-      _currentEpTitle,
-    );
+    WatchHistory.saveProgress(epId!, t, video.duration, _currentItemId, _currentEpTitle);
   }
 
   video.addEventListener("timeupdate", () => {
@@ -838,16 +916,14 @@ function setupProgressSave(): void {
 
 function setupShareButton(): void {
   const video = document.getElementById("v") as HTMLVideoElement;
-  document
-    .getElementById("btn-share")!
-    .addEventListener("click", () => {
-      ShareSheet.open({
-        epId,
-        itemId: _currentItemId,
-        epTitle: _currentEpTitle,
-        getTime: () => video.currentTime,
-      });
+  document.getElementById("btn-share")!.addEventListener("click", () => {
+    ShareSheet.open({
+      epId,
+      itemId: _currentItemId,
+      epTitle: _currentEpTitle,
+      getTime: () => video.currentTime,
     });
+  });
 }
 
 function togglePlayerFullscreen(): void {
@@ -1062,10 +1138,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   const p = (window as Window & { _currentPlayer?: SkipPlayer })._currentPlayer;
   if (p) {
     p.skipRanges = markers
-      ? [
-          ...(markers.opening ? [markers.opening] : []),
-          ...(markers.ending ? [markers.ending] : []),
-        ]
+      ? [...(markers.opening ? [markers.opening] : []), ...(markers.ending ? [markers.ending] : [])]
       : [];
   }
   if (!markers) return;
@@ -1103,13 +1176,8 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
 
     const dur = video.duration;
     const nearEndEntry =
-      kind === "ending" &&
-      isFinite(dur) &&
-      dur > 0 &&
-      dur - currentTime <= AUTO_SKIP_NEAR_END_WINDOW_SECONDS;
-    const delaySeconds = nearEndEntry
-      ? AUTO_SKIP_NEAR_END_GRACE_SECONDS
-      : 0;
+      kind === "ending" && isFinite(dur) && dur > 0 && dur - currentTime <= AUTO_SKIP_NEAR_END_WINDOW_SECONDS;
+    const delaySeconds = nearEndEntry ? AUTO_SKIP_NEAR_END_GRACE_SECONDS : 0;
     const key = `${kind}:${seg.start}:${seg.end}:${target}:${delaySeconds}`;
     if (pendingAutoSkipKey === key) return;
 
@@ -1130,9 +1198,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   function renderTimelineMarkers(): void {
     const dur = video.duration;
     if (!dur || !isFinite(dur)) return;
-    document
-      .querySelectorAll(".tl-marker")
-      .forEach((el) => el.remove());
+    document.querySelectorAll(".tl-marker").forEach((el) => el.remove());
     for (const [type, seg] of [
       ["opening", markers!.opening],
       ["ending", markers!.ending],
@@ -1141,21 +1207,12 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       const el = document.createElement("div");
       el.className = `tl-marker ${type}`;
       el.style.left = (seg.start / dur) * 100 + "%";
-      el.style.width =
-        ((seg.end - seg.start) / dur) * 100 + "%";
-      document
-        .getElementById("timeline-track")!
-        .appendChild(el);
+      el.style.width = ((seg.end - seg.start) / dur) * 100 + "%";
+      document.getElementById("timeline-track")!.appendChild(el);
     }
   }
-  if (video.readyState >= 1 && isFinite(video.duration))
-    renderTimelineMarkers();
-  else
-    video.addEventListener(
-      "loadedmetadata",
-      renderTimelineMarkers,
-      { once: true, signal },
-    );
+  if (video.readyState >= 1 && isFinite(video.duration)) renderTimelineMarkers();
+  else video.addEventListener("loadedmetadata", renderTimelineMarkers, { once: true, signal });
 
   video.addEventListener("seeking", cancelScheduledAutoSkip, { signal });
   video.addEventListener("ended", cancelScheduledAutoSkip, { signal });
@@ -1202,18 +1259,14 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   video.addEventListener("timeupdate", () => {
     const dur = video.duration;
     if (!dur || !isFinite(dur)) return;
-    progress.style.width =
-      (video.currentTime / dur) * 100 + "%";
+    progress.style.width = (video.currentTime / dur) * 100 + "%";
   });
 
   function seekFromEvent(e: { clientX: number }): void {
     const dur = video.duration;
     if (!dur || !isFinite(dur)) return;
     const rect = bar.getBoundingClientRect();
-    const ratio = Math.max(
-      0,
-      Math.min(1, (e.clientX - rect.left) / rect.width),
-    );
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const wasPlaying = !video.paused;
     video.currentTime = ratio * dur;
     if (ratio * dur < 1) {
@@ -1246,10 +1299,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
 (function setupTimeSync() {
   const video = document.getElementById("v") as HTMLVideoElement;
   const _tParam = params.get("t");
-  const startT =
-    _tParam !== null
-      ? (parseShareTime(_tParam) ?? 0)
-      : (WatchHistory.getProgress(epId!)?.t ?? 0);
+  const startT = _tParam !== null ? (parseShareTime(_tParam) ?? 0) : (WatchHistory.getProgress(epId!)?.t ?? 0);
   if (startT > 0 && _tParam === null) {
     const p = new URLSearchParams(location.hash.slice(1));
     p.set("t", Math.floor(startT).toString());
@@ -1298,7 +1348,9 @@ function shouldResetNearEndProgress(epId: string | number): boolean {
 
 async function buildEpUrl(id: string | number, opts?: { resetNearEndProgress?: boolean }): Promise<string | null> {
   try {
-    const info = await apiFetch<{ dash_url?: string; keys?: Array<{ key_id?: string; key?: string }> }>(`/api/episodes/v3/${id}/video`);
+    const info = await apiFetch<{ dash_url?: string; keys?: Array<{ key_id?: string; key?: string }> }>(
+      `/api/episodes/v3/${id}/video`,
+    );
     if (!info.dash_url) return null;
     const localDash = rewriteCDN(info.dash_url);
     const key = info.keys?.[0] ?? {};
@@ -1380,9 +1432,7 @@ function setupAutoplay(epId: string): void {
         `/api/episode/${epId}/episodes`,
       );
       epList = (data.results ?? []).slice();
-      currentIdx = epList.findIndex(
-        (ep) => String(ep.id) === String(epId),
-      );
+      currentIdx = epList.findIndex((ep) => String(ep.id) === String(epId));
 
       if (!_currentItemId && data.item_id) {
         _currentItemId = String(data.item_id);
@@ -1390,26 +1440,25 @@ function setupAutoplay(epId: string): void {
       }
 
       btnPrev.disabled = currentIdx <= 0;
-      btnNext.disabled =
-        currentIdx < 0 || currentIdx + 1 >= epList.length;
+      btnNext.disabled = currentIdx < 0 || currentIdx + 1 >= epList.length;
       panel.innerHTML = "";
       epList.forEach((ep, i) => {
         const btn = document.createElement("button");
-        btn.className =
-          "ep-item" +
-          (i === currentIdx ? " current" : "");
+        btn.className = "ep-item" + (i === currentIdx ? " current" : "");
         btn.textContent = episodeLabel(ep, i);
         btn.title = btn.textContent;
         if (i === currentIdx) btn.setAttribute("aria-current", "page");
-        btn.addEventListener("click", () => {
-          closePanel();
-          navigate(ep.id);
-        }, { signal });
+        btn.addEventListener(
+          "click",
+          () => {
+            closePanel();
+            navigate(ep.id);
+          },
+          { signal },
+        );
         panel.appendChild(btn);
       });
-      panel
-        .querySelector(".ep-item.current")
-        ?.scrollIntoView({ block: "nearest" });
+      panel.querySelector(".ep-item.current")?.scrollIntoView({ block: "nearest" });
     } catch (e) {
       console.error("loadEpList:", e);
     }
@@ -1429,24 +1478,35 @@ function setupAutoplay(epId: string): void {
     panel.setAttribute("aria-hidden", "true");
     btnList.setAttribute("aria-expanded", "false");
   };
-  btnList.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const isOpen = panel.classList.toggle("open");
-    btnList.classList.toggle("on", isOpen);
-    panel.setAttribute("aria-hidden", String(!isOpen));
-    btnList.setAttribute("aria-expanded", String(isOpen));
-    if (isOpen && epList.length === 0) loadEpList();
-  }, { signal });
+  btnList.addEventListener(
+    "click",
+    (e) => {
+      e.stopPropagation();
+      const isOpen = panel.classList.toggle("open");
+      btnList.classList.toggle("on", isOpen);
+      panel.setAttribute("aria-hidden", String(!isOpen));
+      btnList.setAttribute("aria-expanded", String(isOpen));
+      if (isOpen && epList.length === 0) loadEpList();
+    },
+    { signal },
+  );
   document.addEventListener("click", closePanel, { signal });
   panel.addEventListener("click", (e) => e.stopPropagation(), { signal });
 
-  btnPrev.addEventListener("click", () => {
-    if (currentIdx > 0) navigate(epList[currentIdx - 1].id);
-  }, { signal });
-  btnNext.addEventListener("click", () => {
-    if (currentIdx >= 0 && currentIdx + 1 < epList.length)
-      navigate(epList[currentIdx + 1].id);
-  }, { signal });
+  btnPrev.addEventListener(
+    "click",
+    () => {
+      if (currentIdx > 0) navigate(epList[currentIdx - 1].id);
+    },
+    { signal },
+  );
+  btnNext.addEventListener(
+    "click",
+    () => {
+      if (currentIdx >= 0 && currentIdx + 1 < epList.length) navigate(epList[currentIdx + 1].id);
+    },
+    { signal },
+  );
 
   let autoplayTriggered = false;
   let pendingPiPAutoNext = false;
@@ -1472,10 +1532,7 @@ function setupAutoplay(epId: string): void {
       }
     }
     autoplayTriggered = true;
-    const url = await buildEpUrl(
-      epList[currentIdx + 1].id,
-      { resetNearEndProgress: true },
-    ).catch((e: Error) => {
+    const url = await buildEpUrl(epList[currentIdx + 1].id, { resetNearEndProgress: true }).catch((e: Error) => {
       console.error("buildEpUrl (autoplay):", e);
       return null;
     });
@@ -1547,6 +1604,7 @@ function setupAutoplay(epId: string): void {
     if (pendingPiPAutoNext || isNearEnd())
       requestAutoplayNext("leave PiP");
   }
+  
   video.addEventListener("leavepictureinpicture", onLeavePiP, { signal });
   video.addEventListener("webkitpresentationmodechanged", () => {
     if (video.webkitPresentationMode === "inline" &&
@@ -1651,16 +1709,16 @@ function buildCommentEl(
   el.dataset["cid"] = String(c.id);
   const isSpoiler = !!c.is_spoiler;
   const canExtAct = isExtEnabled() && isExtLoggedIn();
-  const avatarHtml = c.profile?.image && !manualCommentThumbs
-    ? `<img class="comment-avatar" src="${esc(rewriteCDN(c.profile.image))}" alt="" loading="lazy">`
-    : `<div class="comment-avatar"></div>`;
-  const dateHtml = c.created
-    ? `<span class="comment-date" data-ts="${esc(c.created)}">${fmtTs(c.created)}</span>`
-    : "";
-  const likesHtml =
-    canExtAct
-      ? `<button class="comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}" aria-pressed="${c.is_click_like ? "true" : "false"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`
-      : ((c.count_like ?? 0) > 0 ? `<span class="comment-likes">♥ ${(c.count_like ?? 0).toLocaleString()}</span>` : "");
+  const avatarHtml =
+    c.profile?.image && !manualCommentThumbs
+      ? `<img class="comment-avatar" src="${esc(rewriteCDN(c.profile.image))}" alt="" loading="lazy">`
+      : `<div class="comment-avatar"></div>`;
+  const dateHtml = c.created ? `<span class="comment-date" data-ts="${esc(c.created)}">${fmtTs(c.created)}</span>` : "";
+  const likesHtml = canExtAct
+    ? `<button class="comment-like-btn${c.is_click_like ? " active" : ""}" data-liked="${c.is_click_like ? "yes" : "no"}" aria-pressed="${c.is_click_like ? "true" : "false"}">♥ ${(c.count_like ?? 0).toLocaleString()}</button>`
+    : (c.count_like ?? 0) > 0
+      ? `<span class="comment-likes">♥ ${(c.count_like ?? 0).toLocaleString()}</span>`
+      : "";
   const repliesHtml =
     !isReply && ((c.count_reply_comment ?? 0) > 0 || canExtAct)
       ? `<button class="comment-replies-btn">답글 ${(c.count_reply_comment ?? 0).toLocaleString()}개</button>`
@@ -1669,9 +1727,10 @@ function buildCommentEl(
   const copyBtnHtml = `<button class="link-copy-btn comment-copy-btn" title="링크 복사" aria-label="댓글 링크 복사">🔗</button>`;
   const myName = getMyName();
   const isMine = !!myName && c.profile?.name === myName;
-  const myActionsHtml = (canExtAct && isMine)
-    ? `<button class="ext-action-btn" data-action="edit-comment">수정</button><button class="ext-action-btn ext-action-del" data-action="del-comment">삭제</button>`
-    : "";
+  const myActionsHtml =
+    canExtAct && isMine
+      ? `<button class="ext-action-btn" data-action="edit-comment">수정</button><button class="ext-action-btn ext-action-del" data-action="del-comment">삭제</button>`
+      : "";
 
   el.innerHTML = `
 	<div class="comment-header">${avatarHtml}<span class="comment-user">${esc(c.profile?.name ?? "익명")}</span></div>
@@ -1741,19 +1800,13 @@ function buildCommentEl(
     });
   }
 
-  el.querySelector(".comment-date")?.addEventListener(
-    "click",
-    () => {
-      timePref =
-        timePref === "relative" ? "absolute" : "relative";
-      localStorage.setItem("time_pref", timePref);
-      document
-        .querySelectorAll(".comment-date[data-ts]")
-        .forEach((d) => {
-          (d as HTMLElement).textContent = fmtTs((d as HTMLElement).dataset["ts"]);
-        });
-    },
-  );
+  el.querySelector(".comment-date")?.addEventListener("click", () => {
+    timePref = timePref === "relative" ? "absolute" : "relative";
+    localStorage.setItem("time_pref", timePref);
+    document.querySelectorAll(".comment-date[data-ts]").forEach((d) => {
+      (d as HTMLElement).textContent = fmtTs((d as HTMLElement).dataset["ts"]);
+    });
+  });
 
   const repliesBtn = el.querySelector(".comment-replies-btn") as HTMLButtonElement | null;
   if (repliesBtn) {
@@ -1820,7 +1873,9 @@ function buildCommentEl(
           if (!rLoading) {
             rOffset = 0;
             rTotal = Infinity;
-            repliesContainer.querySelectorAll(".reply, .reply-load-more, .reply-prev-btn").forEach((node) => node.remove());
+            repliesContainer
+              .querySelectorAll(".reply, .reply-load-more, .reply-prev-btn")
+              .forEach((node) => node.remove());
             void fetchReplies();
           }
         } else {
@@ -1865,12 +1920,16 @@ function buildCommentEl(
                 repliesContainer.before(prev);
               }
             }
-          } catch (e) { console.error("[PLAYER] deep-link reply setup failed:", e); }
+          } catch (e) {
+            console.error("[PLAYER] deep-link reply setup failed:", e);
+          }
         }
         const fetchUrl = rNextCursor
           ? `/api${new URL(rNextCursor).pathname}${new URL(rNextCursor).search}`
           : `/api/comments/v1/list?parent_comment_id=${c.id}&sorting=oldest&offset=${rOffset}&limit=${REPLY_PAGE}`;
-        const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number; next?: string | null }>(fetchUrl);
+        const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number; next?: string | null }>(
+          fetchUrl,
+        );
         const replies = data.results ?? [];
         if (data.count != null) {
           rTotal = c.count_reply_comment ?? data.count;
@@ -1913,8 +1972,7 @@ function buildCommentEl(
     }
 
     repliesBtn.addEventListener("click", () => {
-      const isOpen =
-        repliesContainer.classList.toggle("open");
+      const isOpen = repliesContainer.classList.toggle("open");
       repliesBtn!.classList.toggle("open", isOpen);
       repliesBtn!.setAttribute("aria-expanded", String(isOpen));
       if (canExtAct) ensureReplyComposer();
@@ -1931,11 +1989,15 @@ function buildCommentEl(
 function waitForEl(sel: string, root: Document | Element = document, maxMs: number = 5000): Promise<Element | null> {
   return new Promise((resolve) => {
     const el = root.querySelector(sel);
-    if (el) { resolve(el); return; }
+    if (el) return void resolve(el);
+
     const deadline = Date.now() + maxMs;
     const mo = new MutationObserver(() => {
       const found = root.querySelector(sel);
-      if (found || Date.now() >= deadline) { mo.disconnect(); resolve(found ?? null); }
+      if (found || Date.now() >= deadline) {
+        mo.disconnect();
+        resolve(found ?? null);
+      }
     });
     mo.observe(root, { childList: true, subtree: true });
   });
@@ -1951,7 +2013,7 @@ async function loadComments(epId: string): Promise<void> {
   toggle.textContent = "댓글";
   document.getElementById("comments-prev-btn")?.remove();
 
-  // PC layout toggle (sidebar ↔ below player)
+  // PC layout toggle (sidebar <---> below player)
   const layoutBtn = document.getElementById("btn-comments-layout");
   const mainLayout = document.getElementById("main-layout");
   const playerCol = document.getElementById("player-col");
@@ -1975,9 +2037,7 @@ async function loadComments(epId: string): Promise<void> {
       document.body.classList.toggle("comments-below-layout", useBelow);
       document.documentElement.classList.toggle("viewport-scroll-layout", needsViewportScroll);
       document.body.classList.toggle("viewport-scroll-layout", needsViewportScroll);
-      layoutBtn.title = forcedSide
-        ? "화면 높이가 부족해 댓글을 옆에 표시 중"
-        : "댓글 위치 변경";
+      layoutBtn.title = forcedSide ? "화면 높이가 부족해 댓글을 옆에 표시 중" : "댓글 위치 변경";
       onLayoutChange?.();
     };
 
@@ -1985,7 +2045,7 @@ async function loadComments(epId: string): Promise<void> {
       if (!playerCol) return false;
       const w = window.innerWidth;
       const h = window.innerHeight;
-      
+
       if (w < 660) return false;
 
       // 1. If it overflows vertically when placed "below", we MUST use side-layout
@@ -2052,13 +2112,15 @@ async function loadComments(epId: string): Promise<void> {
     deepLinked = false,
     cHighlighted = false;
 
-  void fetchCommentCountRoute(epId).then((count) => {
-    if (loadToken !== activeCommentsLoadToken || count == null) return;
-    total = count;
-    toggle.textContent = `댓글 ${count.toLocaleString()}개`;
-  }).catch((e) => {
-    console.error("[PLAYER] comment count fetch failed:", e);
-  });
+  void fetchCommentCountRoute(epId)
+    .then((count) => {
+      if (loadToken !== activeCommentsLoadToken || count == null) return;
+      total = count;
+      toggle.textContent = `댓글 ${count.toLocaleString()}개`;
+    })
+    .catch((e) => {
+      console.error("[PLAYER] comment count fetch failed:", e);
+    });
 
   sortBar.querySelectorAll(".csort-btn").forEach((b) => {
     const isActive = (b as HTMLElement).dataset["sorting"] === sorting;
@@ -2079,9 +2141,7 @@ async function loadComments(epId: string): Promise<void> {
     const video = document.getElementById("v") as HTMLVideoElement;
     video.currentTime = parseFloat(btn.dataset["t"]!);
     video.play().catch((err) => console.error("[PLAYER] comment seek play failed:", err));
-    document
-      .getElementById("video-box")!
-      .scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("video-box")!.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   list.onkeydown = (e) => {
     const btn = (e.target as Element).closest(".ts-btn") as HTMLElement | null;
@@ -2117,7 +2177,10 @@ async function loadComments(epId: string): Promise<void> {
     loading = false;
     deepLinked = false;
     cHighlighted = false;
-    if (io) { io.disconnect(); io = null; }
+    if (io) {
+      io.disconnect();
+      io = null;
+    }
     sentinel.remove();
     list.innerHTML = "";
     document.getElementById("comments-prev-btn")?.remove();
@@ -2172,7 +2235,9 @@ async function loadComments(epId: string): Promise<void> {
       const fetchUrl = nextCursor
         ? `/api${new URL(nextCursor).pathname}${new URL(nextCursor).search}`
         : `/api/comments/v1/list?episode_id=${epId}&offset=${offset}&limit=${PAGE}&sorting=${sorting}`;
-      const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number; next?: string | null }>(fetchUrl);
+      const data = await fetchCommentListRoute<{ results?: CommentData[]; count?: number; next?: string | null }>(
+        fetchUrl,
+      );
       if (loadToken !== activeCommentsLoadToken) return;
       const items = data.results ?? [];
       if (data.count != null) {
@@ -2186,8 +2251,7 @@ async function loadComments(epId: string): Promise<void> {
       }
       if (Number.isFinite(total)) toggle.textContent = `댓글 ${total.toLocaleString()}개`;
       if (offset === 0 && items.length === 0) {
-        list.innerHTML =
-          '<p id="comments-empty">댓글이 없습니다.</p>';
+        list.innerHTML = '<p id="comments-empty">댓글이 없습니다.</p>';
         return;
       }
       for (const c of items)
@@ -2208,8 +2272,7 @@ async function loadComments(epId: string): Promise<void> {
             window.ShareLink?.highlight(parentEl);
           } else {
             const replyBtn = parentEl.querySelector(".comment-replies-btn") as HTMLButtonElement | null;
-            if (replyBtn && !replyBtn.classList.contains("open"))
-              replyBtn.click();
+            if (replyBtn && !replyBtn.classList.contains("open")) replyBtn.click();
             waitForEl(`[data-cid="${targetRid}"]`, list, 30000).then((replyEl) => {
               if (loadToken !== activeCommentsLoadToken) return;
               window.ShareLink?.highlight(replyEl ?? parentEl);
@@ -2224,9 +2287,7 @@ async function loadComments(epId: string): Promise<void> {
     } catch (e) {
       if (loadToken !== activeCommentsLoadToken) return;
       console.error("fetchPage:", e);
-      if (offset === 0)
-        list.innerHTML =
-          '<p id="comments-empty">댓글을 불러올 수 없습니다.</p>';
+      if (offset === 0) list.innerHTML = '<p id="comments-empty">댓글을 불러올 수 없습니다.</p>';
     } finally {
       if (loadToken !== activeCommentsLoadToken) return;
       loading = false;
@@ -2243,12 +2304,10 @@ async function loadComments(epId: string): Promise<void> {
   sortBar.onclick = (e) => {
     const btn = (e.target as Element).closest(".csort-btn") as HTMLElement | null;
     if (!btn || btn.classList.contains("active")) return;
-    sortBar
-      .querySelectorAll(".csort-btn")
-      .forEach((b) => {
-        b.classList.remove("active");
-        b.setAttribute("aria-pressed", "false");
-      });
+    sortBar.querySelectorAll(".csort-btn").forEach((b) => {
+      b.classList.remove("active");
+      b.setAttribute("aria-pressed", "false");
+    });
     btn.classList.add("active");
     btn.setAttribute("aria-pressed", "true");
     sorting = btn.dataset["sorting"]!;
@@ -2293,9 +2352,11 @@ function openCommentEdit(el: HTMLElement, comment: CommentData): void {
     const is_spoiler = (form.querySelector(".ext-spoiler-chk") as HTMLInputElement).checked;
     const btn = form.querySelector("[data-action='save']") as HTMLButtonElement;
     const errEl = form.querySelector(".ext-err") as HTMLElement;
-    btn.disabled = true; errEl.textContent = "";
+    btn.disabled = true;
+    errEl.textContent = "";
     const res = await extSend({
-      type: "api", method: "PATCH",
+      type: "api",
+      method: "PATCH",
       path: `/comments/v1/${comment.id}/`,
       body: JSON.stringify({ content, is_spoiler: is_spoiler }),
     });
@@ -2343,10 +2404,15 @@ function setupExtCommentForm(currentEpId: string): void {
       const is_spoiler = (document.getElementById("ext-comment-spoiler") as HTMLInputElement).checked;
       const btn = document.getElementById("ext-comment-submit") as HTMLButtonElement;
       const errEl = document.getElementById("ext-comment-err")!;
-      if (!content) { errEl.textContent = "내용을 입력하세요."; return; }
-      btn.disabled = true; errEl.textContent = "";
+      if (!content) {
+        errEl.textContent = "내용을 입력하세요.";
+        return;
+      }
+      btn.disabled = true;
+      errEl.textContent = "";
       const res = await extSend({
-        type: "api", method: "POST",
+        type: "api",
+        method: "POST",
         path: "/comments/v1/list/",
         body: JSON.stringify({ episode: Number(extCommentFormEpId), content, is_spoiler }),
       });
