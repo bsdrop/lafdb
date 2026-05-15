@@ -200,6 +200,9 @@ body {
   margin: 0 auto;
   justify-content: center;
 }
+@media (max-width: 480px) and (orientation: portrait) {
+  #grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+}
 @media (min-width: 480px) {
   #grid {
     grid-template-columns: repeat(auto-fill, 130px);
@@ -265,7 +268,8 @@ body {
 }
 .card-thumb {
   width: 100%;
-  aspect-ratio: 4/5;
+  height: auto;
+  aspect-ratio: 3/4;
   object-fit: cover;
   background: #1a1a1a;
   display: block;
@@ -277,7 +281,7 @@ body {
   color: var(--muted);
 }
 .card-thumb.skel {
-  aspect-ratio: 4/5;
+  aspect-ratio: 3/4;
 }
 .card-body {
   padding: 6px 2px 2px;
