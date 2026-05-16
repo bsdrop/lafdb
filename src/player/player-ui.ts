@@ -393,34 +393,75 @@ autoPlayDelayInput?.addEventListener("blur", () => {
   document.addEventListener("keydown", (e) => {
     if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const v = document.getElementById("v") as HTMLVideoElement | null;
     switch (e.key) {
       case "]":
         applySpeed(curSpeed * getMul());
-        break;
+        return;
       case "[":
         applySpeed(curSpeed / getMul());
-        break;
+        return;
       case "}":
         applySpeed(curSpeed * getBigMul());
-        break;
+        return;
       case "{":
         applySpeed(curSpeed / getBigMul());
-        break;
+        return;
       case ">": {
         const p = getPresets();
-        const i = p.findIndex((v) => v > curSpeed + 0.01);
+        const i = p.findIndex((x) => x > curSpeed + 0.01);
         applySpeed(i >= 0 ? p[i] : p[p.length - 1]);
-        break;
+        return;
       }
       case "<": {
         const p = getPresets();
-        const i = [...p].reverse().findIndex((v) => v < curSpeed - 0.01);
+        const i = [...p].reverse().findIndex((x) => x < curSpeed - 0.01);
         applySpeed(i >= 0 ? p[p.length - 1 - i] : p[0]);
-        break;
+        return;
       }
       case "Backspace":
         if (localStorage.getItem("player_speed_bs_reset") !== "off") applySpeed(1);
-        break;
+        return;
+    }
+    if (!v) return;
+    if (e.key === " ") {
+      if (e.target === v || document.activeElement === v) return;
+      e.preventDefault();
+      if (v.paused) v.play().catch((err) => console.error("[PLAYER] keyboard play failed:", err));
+      else v.pause();
+      return;
+    }
+    if (e.key === "," || e.key === ".") {
+      e.preventDefault();
+      const frame = 1 / 24; // FUCK
+      const dir = e.key === "." ? 1 : -1;
+      const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
+      v.currentTime = Math.max(0, Math.min(dur, v.currentTime + dir * frame));
+      return;
+    }
+    if (e.key.toLowerCase() === "s" && !e.shiftKey) {
+      e.preventDefault();
+      return void saveCurrentFramePng(v);
+    }
+    if (e.key.toLowerCase() === "m" && !e.shiftKey) {
+      e.preventDefault();
+      v.muted = !v.muted;
+      showVolumeToast(v);
+      return;
+    }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const delta = e.key === "ArrowUp" ? 0.05 : -0.05;
+      const next = Math.max(0, Math.min(1, Math.round((v.volume + delta) * 100) / 100));
+      v.volume = next;
+      v.muted = next <= 0;
+      showVolumeToast(v);
+      return;
+    }
+    if (e.key.toLowerCase() === "f" && !e.shiftKey) {
+      e.preventDefault();
+      togglePlayerFullscreen();
+      return;
     }
   });
 }
@@ -630,53 +671,6 @@ function showVolumeToast(video: HTMLVideoElement): void {
   }, 800);
 }
 
-document.addEventListener("keydown", (e) => {
-  if ((e.target as Element).matches("input, textarea, [contenteditable]")) return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const v = document.getElementById("v") as HTMLVideoElement | null;
-  if (e.key === " ") {
-    if (!v) return;
-    if (e.target === v || document.activeElement === v) return;
-    e.preventDefault();
-    if (v.paused) v.play().catch((err) => console.error("[PLAYER] keyboard play failed:", err));
-    else v.pause();
-    return;
-  }
-  if ((e.key === "," || e.key === ".") && v) {
-    e.preventDefault();
-    const frame = 1 / 24; // FUCK
-    const dir = e.key === "." ? 1 : -1;
-    const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
-    const next = Math.max(0, Math.min(dur, v.currentTime + dir * frame));
-    v.currentTime = next;
-    return;
-  }
-  if (e.key.toLowerCase() === "s" && !e.shiftKey && v) {
-    e.preventDefault();
-    return void saveCurrentFramePng(v);
-  }
-  if (e.key.toLowerCase() === "m" && !e.shiftKey && v) {
-    e.preventDefault();
-    v.muted = !v.muted;
-    showVolumeToast(v);
-    return;
-  }
-  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && v) {
-    e.preventDefault();
-    const delta = e.key === "ArrowUp" ? 0.05 : -0.05;
-    const next = Math.max(0, Math.min(1, Math.round((v.volume + delta) * 100) / 100));
-    v.volume = next;
-    v.muted = next <= 0;
-    showVolumeToast(v);
-    return;
-  }
-  if (e.key.toLowerCase() === "f" && !e.shiftKey && v) {
-    e.preventDefault();
-    togglePlayerFullscreen();
-    return;
-  }
-});
-
 function setupMediaSession(): void {
   if (!("mediaSession" in navigator)) return;
   const video = document.getElementById("v") as HTMLVideoElement;
@@ -802,7 +796,7 @@ function setupMediaSession(): void {
   }
 }
 
-// Set up progress saving once (not per-episode — avoid listener accumulation).
+// Set up progress saving once (not per-episode, avoid listener accumulation).
 // playingEpId tracks the episode the video is actually playing; it lags behind the
 // module-level epId during source transitions so that a pause fired by Player.destroy()
 // doesn't write the old currentTime into the new episode's WatchHistory.
@@ -816,13 +810,21 @@ let playingEpId: string | null = null;
     if (!savedEpId || savedEpId !== epId) return;
     const t = video.currentTime;
     if (!t || t < 1) return;
+    // TODO: FIXME: This is SHIT!!!!!!!!!!!!!!
+    // Don't let a near-zero position overwrite a much-larger saved position
+    // (happens when the player fails to seek to resumeTime and plays from 0)
+    if (t < 16) {
+      const existing = WatchHistory.getProgress(savedEpId);
+      if (existing?.t && existing.t > 32) return;
+    }
     WatchHistory.saveProgress(savedEpId, t, video.duration, _currentItemId, _currentEpTitle);
-    lastSaved = Date.now();
   }
 
   video.addEventListener("playing", () => { playingEpId = epId; });
-  video.addEventListener("timeupdate", () => {
-    if (Date.now() - lastSaved < 5000) return;
+  video.addEventListener("timeupdate", () => { // TODO: FIXME: hmm........
+    const now = Date.now();
+    if (now - lastSaved < 5000) return;
+    lastSaved = now;
     save();
   });
   video.addEventListener("pause", save);
@@ -1215,7 +1217,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
 
 (function setupTimeSync() {
   const video = document.getElementById("v") as HTMLVideoElement;
-  // capture epId at init time — if the user navigates to a different episode,
+  // capture epId at init time. if the user navigates to a different episode,
   // this IIFE's handlers must not write the old video's position into the new hash
   const initEpId = epId;
   const _tParam = params.get("t");

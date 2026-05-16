@@ -245,7 +245,6 @@ async function startPlayer(
   const qualityPrefBps = parseInt(localStorage.getItem("quality_pref_bps") || "0", 10);
 
   const MSWithWorker = MS as (typeof MediaSource & { canConstructInDedicatedWorker?: boolean }) | undefined;
-  //const workerMseOptIn = localStorage.getItem("player_worker_mse") === "on"; // TODO: FIXME: 이거 항상 false임. player_worker_mse 쓰일 일 없음
   //const canUseWorkerMse = !!(MSWithWorker?.canConstructInDedicatedWorker && workerMseOptIn);
   const canUseWorkerMse = MSWithWorker?.canConstructInDedicatedWorker;
 
@@ -425,7 +424,7 @@ async function startPlayer(
 // mid-fetch doesn't trigger the stale-route guard.
 function hashCoreKey(hash: string): string {
   const p = new URLSearchParams(hash.slice(1));
-  p.delete("t");
+  p.delete("t"); p.sort();
   return p.toString();
 }
 
@@ -495,14 +494,6 @@ async function handleRoute() {
       if (hashCoreKey(location.hash) !== hashCoreKey(expectedHash)) {
         console.log("[ROUTE] Hash changed during fetch, aborting stale route:", expectedHash);
         return;
-      }
-      // setupTimeSync가 fetch 중 t= 를 추가했을 수 있으므로 재읽기를 하기는 하는데 TODO: 솔직히 필요없을 것 같음
-      if (resumeTime === null) {
-        const latestT = new URLSearchParams(location.hash.slice(1)).get("t");
-        if (latestT !== null) {
-          const p = parseShareTime(latestT);
-          if (p !== null && Number.isFinite(p)) resumeTime = p;
-        }
       }
       if (!info?.dash_url) {
         console.error("[ROUTE] episode has no DASH URL; redirecting to index");

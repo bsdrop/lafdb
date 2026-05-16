@@ -1,38 +1,32 @@
 // Treat naive timestamps (no timezone suffix) as KST (+09:00).
 export function parseKSTDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const iso = /[Zz]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}+09:00`; // TODO: FIXME?
-  return new Date(iso);
+  if (/[Zz]|[+-]\d{2}:?\d{2}$/.test(value)) return new Date(value);
+  return new Date(`${value.replace(" ", "T")}+09:00`);
 }
 
 export function formatDateTimeKo(value: string | null | undefined): string {
   const d = parseKSTDate(value);
-  if (!d) return "";
-  return d.toLocaleString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  if (!d || isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 export function formatRelativeTimeKo(value: string | null | undefined): string {
   const d = parseKSTDate(value);
   if (!d) return "";
-  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (sec < 60) return "방금 전";
+  let sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  let r = sec < 0 ? "뒤" : "전"; sec = Math.abs(sec);
+  if (sec < 60) return r == '전' ? '방금 전' : '곧'; // `${sec}초 ${r}`
   const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}분 전`;
+  if (min < 60) return `${min}분 ${r}`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}시간 전`;
+  if (hr < 24) return `${hr}시간 ${r}`;
   const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}일 전`;
+  if (day < 30) return `${day}일 ${r}`;
   const month = Math.floor(day / 30.5);
-  if (month < 12) return `${month}개월 전`;
-  return `${Math.floor(month / 12)}년 전`;
+  if (month < 12) return `${month}개월 ${r}`;
+  return `${Math.floor(month / 12)}년 ${r}`;
 }
 
 // "0:04:43.300000" or "0:44:00" -> "44분" / "1시간 23분"
