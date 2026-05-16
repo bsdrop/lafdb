@@ -527,7 +527,6 @@ async function initUIForEpisode(id: string): Promise<void> {
   }
 
   setupAutoplay(id);
-  setupProgressSave();
   setupMediaSession();
   loadComments(id);
   setupShareButton();
@@ -539,6 +538,12 @@ window.addEventListener("hashchange", () => {
   const newParams = new URLSearchParams(location.hash.slice(1));
   const newEpId = newParams.get("epId");
   if (newEpId && newEpId !== epId) {
+    // Save progress for the departing episode before epId changes
+    if (epId && _currentItemId && playingEpId === epId) {
+      const vid = document.getElementById("v") as HTMLVideoElement | null;
+      const t = vid?.currentTime ?? 0;
+      if (t >= 1) WatchHistory.saveProgress(epId, t, vid!.duration, _currentItemId, _currentEpTitle);
+    }
     console.log("[UI] Episode changed, refreshing UI for:", newEpId);
     epId = newEpId;
     initUIForEpisode(newEpId);
@@ -797,26 +802,34 @@ function setupMediaSession(): void {
   }
 }
 
-function setupProgressSave(): void {
+// Set up progress saving once (not per-episode — avoid listener accumulation).
+// playingEpId tracks the episode the video is actually playing; it lags behind the
+// module-level epId during source transitions so that a pause fired by Player.destroy()
+// doesn't write the old currentTime into the new episode's WatchHistory.
+let playingEpId: string | null = null;
+(function setupProgressSave() {
   const video = document.getElementById("v") as HTMLVideoElement;
   let lastSaved = 0;
 
   function save(): void {
+    const savedEpId = playingEpId;
+    if (!savedEpId || savedEpId !== epId) return;
     const t = video.currentTime;
     if (!t || t < 1) return;
-    WatchHistory.saveProgress(epId!, t, video.duration, _currentItemId, _currentEpTitle);
+    WatchHistory.saveProgress(savedEpId, t, video.duration, _currentItemId, _currentEpTitle);
+    lastSaved = Date.now();
   }
 
+  video.addEventListener("playing", () => { playingEpId = epId; });
   video.addEventListener("timeupdate", () => {
-    const now = Date.now();
-    if (now - lastSaved < 5000) return;
-    lastSaved = now;
+    if (Date.now() - lastSaved < 5000) return;
     save();
   });
   video.addEventListener("pause", save);
   video.addEventListener("ended", save);
   window.addEventListener("beforeunload", save);
-}
+  document.addEventListener("visibilitychange", () => { if (document.hidden) save(); });
+})();
 
 function setupShareButton(): void {
   const video = document.getElementById("v") as HTMLVideoElement;
@@ -1202,22 +1215,28 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
 
 (function setupTimeSync() {
   const video = document.getElementById("v") as HTMLVideoElement;
+  // capture epId at init time — if the user navigates to a different episode,
+  // this IIFE's handlers must not write the old video's position into the new hash
+  const initEpId = epId;
   const _tParam = params.get("t");
   const startT = _tParam !== null ? (parseShareTime(_tParam) ?? 0) : (WatchHistory.getProgress(epId!)?.t ?? 0);
   if (startT > 0 && _tParam === null) {
     const p = new URLSearchParams(location.hash.slice(1));
     p.set("t", Math.floor(startT).toString());
-    history.replaceState(null, "", "#" + p.toString());
+    history.replaceState(history.state, "", "#" + p.toString());
   }
 
   function saveHash(ct: number): void {
+    // stop updating hash once episode has changed (e.g. Player.destroy pause fires with stale currentTime)
+    if (epId !== initEpId) return;
     const p = new URLSearchParams(location.hash.slice(1));
     if (!ct || ct < 1) {
       p.delete("t");
     } else {
       p.set("t", Math.floor(ct).toString());
     }
-    history.replaceState(null, "", "#" + p.toString());
+    // preserve history.state so share sheet pushState entry isn't clobbered
+    history.replaceState(history.state, "", "#" + p.toString());
   }
   let lastSaved = 0;
   video.addEventListener("timeupdate", () => {
@@ -1239,7 +1258,7 @@ function saveHash(ct: number): void {
   } else {
     p.set("t", Math.floor(ct).toString());
   }
-  history.replaceState(null, "", "#" + p.toString());
+  history.replaceState(history.state, "", "#" + p.toString());
 }
 
 function shouldResetNearEndProgress(epId: string | number): boolean {

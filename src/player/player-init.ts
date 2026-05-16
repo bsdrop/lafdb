@@ -516,7 +516,7 @@ async function handleRoute() {
       p.set("mpd", info.dash_url);
       if (kid) p.set("kid", kid);
       if (key) p.set("key", key);
-      history.replaceState(null, "", "#" + p.toString());
+      history.replaceState(history.state, "", "#" + p.toString());
 
       if (ep?.running_time) {
         const parts = ep.running_time.split(":");
