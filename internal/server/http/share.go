@@ -75,8 +75,10 @@ func (a *App) handlePlayerShare(c fiber.Ctx) error {
 		}
 	}
 
-	// Build redirect URL
 	redirectURL := fmt.Sprintf("/player.html#epId=%d", episodeID)
+	if itemOk {
+		redirectURL += fmt.Sprintf("&itemId=%d", itemID)
+	}
 	if drmOk {
 		var drmData struct {
 			DashURL string `json:"dash_url"`
@@ -389,7 +391,6 @@ func (a *App) handleSitemap(c fiber.Ctx) error {
 	ending := a.ds.GetEndingItemIDs()
 	a.mu.RUnlock()
 
-	// XML-encode the base URL so a crafted Host header cannot inject XML.
 	baseURL := escapeHTML(proto + "://" + host)
 
 	var sb strings.Builder
@@ -553,9 +554,9 @@ func normalizeShareTimeParam(s string) (string, bool) {
 	}
 
 	// Unit-suffixed formats (e.g. 1h2m3.456s or 12m34.567 or 12m34)
-	// Fast path: if there are no unit letters, treat as numeric (cheap),
-	// otherwise parse token-by-token without regex to save CPU cycles.
-	if strings.IndexAny(s, "hHmMsS") == -1 {
+	// Fast path: if there are no unit letters, treat as numeric,
+	// otherwise parse token-by-token.
+	if !strings.ContainsAny(s, "hHmMsS") {
 		// Fallback numeric literal (integer or float) - fast path
 		dotCount := 0
 		hasDigit := false
@@ -627,14 +628,10 @@ func normalizeShareTimeParam(s string) (string, bool) {
 	return formatFloatTrunc(f), true
 }
 
-// formatFloatTrunc truncates to at most 4 decimal places (no rounding),
-// normalizes leading zeros (multiple leading zeros collapse to a single 0),
-// and enforces a maximum length of 25 characters.
 func formatFloatTrunc(f float64) string {
 	truncated := math.Trunc(f*shareTimeMul) / shareTimeMul
 	s := strconv.FormatFloat(truncated, 'f', -1, 64)
 
-	// Normalize leading zeros: collapse excessive leading zeros but keep single 0
 	if strings.Contains(s, ".") {
 		parts := strings.SplitN(s, ".", 2)
 		intp := strings.TrimLeft(parts[0], "0")
@@ -658,8 +655,7 @@ func formatFloatTrunc(f float64) string {
 	return s
 }
 
-// parseUnitTime parses strings containing unit tokens like "1h2m3.456s" or "12m34s".
-// It's implemented manually (no regex) to reduce allocations and CPU overhead.
+// parses strings containing unit tokens like "1h2m3.456s" or "12m34s".
 func parseUnitTime(s string) (float64, bool) {
 	n := len(s)
 	i := 0

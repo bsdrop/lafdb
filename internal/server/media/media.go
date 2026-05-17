@@ -29,7 +29,7 @@ var mediaExtensions = map[string]bool{
 }
 
 var mediaHTTPClient = &http.Client{
-	Timeout: 30 * time.Second,
+	Timeout: 15 * time.Second,
 	Transport: &http.Transport{
 		MaxIdleConns:        64,
 		MaxIdleConnsPerHost: 16,

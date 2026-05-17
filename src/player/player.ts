@@ -57,6 +57,7 @@ interface Track {
   sbToken: number;
   appended: Set<number>;
   inflight: Set<number>;
+  inflightAcs: Map<number, AbortController>;
   initData: Uint8Array | null;
   pruneTimer: ReturnType<typeof setTimeout> | null;
   pruneAbort: AbortController | null;
@@ -219,10 +220,10 @@ class Player {
     this.BUFFER_BEHIND_KEEP = Player._readBufferPref("player_buffer_behind", Player.DEFAULT_BUFFER_BEHIND);
     this.BUFFER_PRUNE_DELAY_MS =
       Player._readNonNegativeNumberPref("player_buffer_prune_delay", Player.DEFAULT_BUFFER_PRUNE_DELAY_SECONDS) * 1000;
-    this.POLL_INTERVAL = 200;
+    this.POLL_INTERVAL = 100;
 
     this.lastSeekTime = -1;
-    this.seekDebounceMs = 200;
+    this.seekDebounceMs = 50;
     this.seekInProgress = false;
     this._seekTimeout = null;
 
@@ -1050,6 +1051,7 @@ class Player {
       sbToken: 0,
       appended: new Set(),
       inflight: new Set(),
+      inflightAcs: new Map(),
       initData: null,
       pruneTimer: null,
       pruneAbort: null,
@@ -1299,6 +1301,8 @@ class Player {
     this.abortControllers.clear();
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
+      for (const [, ac] of track.inflightAcs) ac.abort();
+      track.inflightAcs.clear();
       track.inflight.clear();
       track.appended = new Set();
       this._invalidateTrackSb(track);
@@ -1311,6 +1315,7 @@ class Player {
         this._invalidateTrackSb(activeRep);
         activeRep.appended = new Set();
         activeRep.inflight = new Set();
+        activeRep.inflightAcs = new Map();
         this.tracks[videoIdx] = activeRep;
       }
     }
@@ -1804,7 +1809,7 @@ class Player {
   }
 
   _getSeekFetchTime(track: Track, time: number): number {
-    if (!this._isFirefox || track.type !== "video" || !track.timeline?.length) {
+    if (track.type !== "video" || !track.timeline?.length) {
       return time;
     }
     if (this._video?.ended) return time;
@@ -1816,7 +1821,7 @@ class Player {
     if (!prevRange) return time;
     const fetchTime = Math.max(0, prevRange.start + 0.01);
     console.log(
-      `[PLAYER] Firefox seek fetch preroll ${time.toFixed(3)}s -> seg ${segNum - 1} @ ${fetchTime.toFixed(3)}s`,
+      `[PLAYER] seek fetch preroll ${time.toFixed(3)}s -> seg ${segNum - 1} @ ${fetchTime.toFixed(3)}s`,
     );
     return fetchTime;
   }
@@ -1837,6 +1842,8 @@ class Player {
     this.abortControllers.clear();
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
+      for (const [, ac] of track.inflightAcs) ac.abort();
+      track.inflightAcs.clear();
       track.inflight.clear();
     }
     console.warn(`[PLAYER] fetch loops stopped: ${reason}`);
@@ -1943,7 +1950,11 @@ class Player {
     if (this._destroyed) return;
     if (track.inflight.has(segNum) || track.appended.has(segNum)) return;
     track.inflight.add(segNum);
-
+    const segAc = new AbortController();
+    track.inflightAcs.set(segNum, segAc);
+    if (signal.aborted) segAc.abort(signal.reason);
+    const fetchSignal = segAc.signal;
+    try {
     const MAX_RETRIES = 6;
     const BASE_DELAY_MS = 1000;
 
@@ -1983,7 +1994,7 @@ class Player {
         if (attempt === 0) console.log(`[${track.type.toUpperCase()}] fetch seg ${segNum}: ${url}`);
 
         const resp = await fetch(url, {
-          signal: this._timedSignal(signal, Player.SEG_FETCH_TIMEOUT_MS),
+          signal: this._timedSignal(fetchSignal, Player.SEG_FETCH_TIMEOUT_MS),
         });
         console.log(`[${track.type.toUpperCase()}] seg ${segNum} status=${resp.status}`);
 
@@ -2048,6 +2059,9 @@ class Player {
 
     void lastErr;
     track.inflight.delete(segNum);
+    } finally {
+      if (track.inflightAcs.get(segNum) === segAc) track.inflightAcs.delete(segNum);
+    }
   }
 
   _handleSeeking(seekTime: number): void {
@@ -2106,6 +2120,8 @@ class Player {
     // 이전 generation의 append 결과만 무시되도록 token만 올린다.
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
+      for (const [, ac] of track.inflightAcs) ac.abort();
+      track.inflightAcs.clear();
       track.inflight.clear();
       this._bumpTrackSbToken(track);
     }
@@ -2127,9 +2143,6 @@ class Player {
       }
       console.log(`[PLAYER] seek settled at ${settled.toFixed(3)}s`);
 
-      const firstTrack = this.tracks[0];
-      const seekInBuffer = this._trackTimeInBuffer(firstTrack, settled);
-
       for (const track of this.tracks) {
         if (this._destroyed || seekGeneration !== this.generation) return;
         try {
@@ -2139,6 +2152,7 @@ class Player {
           await this.waitForIdle(sb);
           if (this._destroyed || seekGeneration !== this.generation) return;
           if (!this._getLiveTrackSb(track, token)) continue;
+          const seekInBuffer = this._trackTimeInBuffer(track, settled);
           if (seekInBuffer) {
             const keepStart = Math.max(0, settled - this.BUFFER_BEHIND_KEEP);
             const keepEnd = settled + this.BUFFER_AHEAD_MAX;
@@ -2299,6 +2313,10 @@ class Player {
     this.generation++;
     for (const ac of this.abortControllers) ac.abort();
     this.abortControllers.clear();
+    for (const track of this.tracks) {
+      for (const [, ac] of track.inflightAcs) ac.abort();
+      track.inflightAcs.clear();
+    }
     this._eventAc?.abort();
     this._eventAc = null;
     if (this._onOnline) {

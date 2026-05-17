@@ -19,7 +19,7 @@ declare const ManagedMediaSource: (typeof MediaSource & { canConstructInDedicate
   if (!isAndroid && !(isI2P && (lacksWebCrypto || lacksMediaSource))) return;
 
   const message =
-    isI2P && (lacksWebCrypto || lacksMediaSource) // TODO
+    isI2P && (lacksWebCrypto || lacksMediaSource) // TODO: FIXME: 
       ? `이 브라우저는 ${lacks.join(", ")} 지원이 부족합니다. i2pd 내장 브라우저류 대신 Cromite, Brave 같은 일반 브라우저에 I2P 프록시를 설정해 접속해주시기 바랍니다.`
       : `이 Android 브라우저는 ${lacks.join(", ")} 지원이 부족해 재생이나 오프라인 기능이 제대로 동작하지 않을 수 있습니다.
 	이 기기에서 설치 가능한 마지막 IronFox 버전을 사용해 영상을 다운로드하신 뒤, VLC 또는 MPV로 감상하실 것을 권장드립니다.`;

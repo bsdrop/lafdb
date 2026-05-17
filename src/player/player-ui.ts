@@ -458,6 +458,14 @@ autoPlayDelayInput?.addEventListener("blur", () => {
       showVolumeToast(v);
       return;
     }
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const step = parseFloat(localStorage.getItem("player_seek_step") || "5") || 5;
+      const dir = e.key === "ArrowRight" ? 1 : -1;
+      const dur = Number.isFinite(v.duration) ? v.duration : Infinity;
+      v.currentTime = Math.max(0, Math.min(dur, v.currentTime + dir * step));
+      return;
+    }
     if (e.key.toLowerCase() === "f" && !e.shiftKey) {
       e.preventDefault();
       togglePlayerFullscreen();
