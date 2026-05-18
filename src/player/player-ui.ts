@@ -948,11 +948,30 @@ function togglePlayerFullscreen(): void {
   const video = document.getElementById("v");
   if (!box) return;
   if (document.fullscreenElement) {
-    document.exitFullscreen?.();
+    // 일부 브라우저(특히 구버전 Firefox)는 fullscreen을 스택으로 관리해 한 번의
+    // exitFullscreen()이 한 레벨만 pop한다(box + video 둘 다 fs인 경우 video만 빠지고
+    // box는 남음). 사용자 의도는 "완전히 빠져나가기"이므로 루프로 비울 때까지 exit.
+    console.warn("[PLAYER] toggle exit fullscreen");
+    void exitAllFullscreen();
     return;
   }
   const target = prefersNativeVideoFullscreen() && video ? video : box;
-  target.requestFullscreen?.();
+  console.warn("[PLAYER] toggle request fullscreen on", target === video ? "video" : "box");
+  target.requestFullscreen?.()?.catch((e) => {
+    console.error("[PLAYER] requestFullscreen failed:", e);
+  });
+}
+
+async function exitAllFullscreen(): Promise<void> {
+  let guard = 0;
+  while (document.fullscreenElement && guard++ < 4) {
+    try {
+      await document.exitFullscreen?.();
+    } catch (e) {
+      console.error("[PLAYER] exitFullscreen failed:", e);
+      break;
+    }
+  }
 }
 
 function syncPlayerFullscreenClass(): void {
@@ -1022,8 +1041,14 @@ async function forceBoxFullscreenFromNativeRequest(): Promise<void> {
 
 async function exitFullscreenAfterNativeToggle(): Promise<void> {
   fullscreenCoercionInProgress = true;
+  console.warn("[PLAYER] native fullscreen toggle → exiting all fullscreen levels");
   try {
-    await document.exitFullscreen?.();
+    // 스택형 fullscreen(box → video push) 환경에서 한 번의 exit는 한 레벨만 pop한다.
+    // 사용자 의도는 "토글로 빠져나가기"이므로 비워질 때까지 반복.
+    let guard = 0;
+    while (document.fullscreenElement && guard++ < 4) {
+      await document.exitFullscreen?.();
+    }
   } catch (e) {
     console.error("[PLAYER] native fullscreen toggle exit failed:", e);
   } finally {
@@ -1037,6 +1062,13 @@ document.addEventListener("fullscreenchange", () => {
   if (!box) return;
   const video = document.getElementById("v");
   const fsEl = document.fullscreenElement;
+
+  // 진단용 — 사용자가 fs 동작 보고할 때 어떤 경로로 갔는지 추적 가능하게.
+  const fsLabel = fsEl === box ? "box" : fsEl === video ? "video" : fsEl ? "other" : "none";
+  console.warn(
+    `[PLAYER] fullscreenchange: fsEl=${fsLabel} coerce=${fullscreenCoercionInProgress}` +
+      ` wasBox=${lastFullscreenWasBox} exitAt=${lastBoxExitAt ? Date.now() - lastBoxExitAt + "ms ago" : "0"}`,
+  );
 
   if (fullscreenCoercionInProgress) {
     if (fsEl === box) {
@@ -1056,6 +1088,7 @@ document.addEventListener("fullscreenchange", () => {
   const recentBoxExit =
     !lastFullscreenWasBox && lastBoxExitAt > 0 && Date.now() - lastBoxExitAt <= BOX_TO_VIDEO_SWAP_WINDOW_MS;
   if (video && fsEl === video && (lastFullscreenWasBox || recentBoxExit)) {
+    console.warn("[PLAYER] detected box→video swap (native fs button); exiting");
     lastFullscreenWasBox = false;
     lastBoxExitAt = 0;
     void exitFullscreenAfterNativeToggle();
