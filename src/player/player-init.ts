@@ -1,17 +1,30 @@
-import { Player } from "./player.js";
+import type { Player as PlayerType } from "./player.js";
 import { rewriteCdnUrl } from "../shared/cdn";
 import { parseShareTime } from "../shared/time";
 
+// Player 클래스는 fallback 경로에서만 필요. 페이지 번들에서 빼고 dynamic import로 가져온다.
+// (build.mjs에서 player-page 번들에 external: ["/player.js"] 지정)
+type PlayerClass = typeof PlayerType;
+let _playerClassPromise: Promise<PlayerClass> | null = null;
+function loadPlayerClass(): Promise<PlayerClass> {
+  if (!_playerClassPromise) {
+    _playerClassPromise = import("/player.js" as string).then(
+      (m: { Player: PlayerClass }) => m.Player,
+    );
+  }
+  return _playerClassPromise;
+}
+
 declare const ManagedMediaSource: (typeof MediaSource & { canConstructInDedicatedWorker?: boolean }) | undefined;
 
-declare function _dlInit(mpdUrl: string, playerOrWorker: Player | Worker, isWorker: boolean): void;
+declare function _dlInit(mpdUrl: string, playerOrWorker: PlayerType | Worker, isWorker: boolean): void;
 declare function _dlHandleMsg(data: Record<string, unknown>): void;
 
 declare global {
   interface Window {
     _dlDurSecs?: number;
     _currentWorker?: Worker | null;
-    _currentPlayer?: Player | null;
+    _currentPlayer?: PlayerType | null;
     _workerAc?: AbortController | null;
   }
 }
@@ -259,7 +272,16 @@ async function startPlayer(
     showError(buildUnsupportedBrowserMessage());
     return showCompatWarning(buildUnsupportedBrowserMessage());
   } else if (canUseWorkerMse) {
-    const worker = new Worker("/player.js", { type: "module" });
+    let worker: Worker;
+    try {
+      worker = new Worker("/player.js", { type: "module" });
+    } catch (e) {
+      // 모듈 워커 생성이 동기 throw하면 곧장 메인 스레드 폴백.
+      // (canConstructInDedicatedWorker가 true여도 환경에 따라 모듈 워커가 막혀 있을 수 있음.)
+      console.warn("[PLAYER] worker spawn failed; falling back to main thread:", e);
+      void startMainThreadPlayer(mpdUrl, kid, key, resumeTime, qualityPref, qualityPrefBps, video);
+      return;
+    }
     window._currentWorker = worker;
     const ac = new AbortController();
     window._workerAc = ac;
@@ -271,12 +293,7 @@ async function startPlayer(
       fellBackToMainThread = true;
       ac.abort();
       worker.terminate();
-      const player = new Player(video);
-      window._currentPlayer = player;
-      player._qualityPref = qualityPref;
-      player._qualityPrefBps = qualityPrefBps;
-      player.init(mpdUrl, kid ?? "", key ?? "", resumeTime).catch((err: Error) => showError(err.message));
-      _dlInit(mpdUrl, player, false);
+      void startMainThreadPlayer(mpdUrl, kid, key, resumeTime, qualityPref, qualityPrefBps, video);
     }
 
     worker.addEventListener("error", () => {
@@ -410,14 +427,34 @@ async function startPlayer(
     if (canUseWorkerMse) {
       console.log("[PLAYER] Dedicated worker MSE disabled; using main-thread player");
     }
-    const player = new Player(video);
-    window._currentPlayer = player;
-    player._qualityPref = qualityPref;
-    player._qualityPrefBps = qualityPrefBps;
-    player.init(mpdUrl, kid ?? "", key ?? "", resumeTime).catch((err: Error) => showError(err.message));
-    _dlInit(mpdUrl, player, false);
-    video?.addEventListener("playing", clearAutoplayPrompt, { once: true });
+    void startMainThreadPlayer(mpdUrl, kid, key, resumeTime, qualityPref, qualityPrefBps, video);
   }
+}
+
+async function startMainThreadPlayer(
+  mpdUrl: string,
+  kid: string | null,
+  key: string | null,
+  resumeTime: number | null,
+  qualityPref: number,
+  qualityPrefBps: number,
+  video: HTMLVideoElement | null,
+): Promise<void> {
+  let PlayerClass: PlayerClass;
+  try {
+    PlayerClass = await loadPlayerClass();
+  } catch (e) {
+    showError("플레이어 모듈을 불러오지 못했습니다.");
+    console.error("[PLAYER] dynamic Player import failed:", e);
+    return;
+  }
+  const player = new PlayerClass(video);
+  window._currentPlayer = player;
+  player._qualityPref = qualityPref;
+  player._qualityPrefBps = qualityPrefBps;
+  player.init(mpdUrl, kid ?? "", key ?? "", resumeTime).catch((err: Error) => showError(err.message));
+  _dlInit(mpdUrl, player, false);
+  video?.addEventListener("playing", clearAutoplayPrompt, { once: true });
 }
 
 // Compare hashes ignoring `t=` so that setupTimeSync adding a timestamp

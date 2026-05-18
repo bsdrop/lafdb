@@ -75,7 +75,16 @@ const common = {
 
 const scripts = [
   { entryPoints: ["src/player/player.ts"], bundle: true, format: "esm", outfile: "public/player.js" },
-  { entryPoints: ["src/player/player-page.ts"], bundle: true, format: "iife", outfile: "public/player-page.js" },
+  // 페이지 번들에서 Player 클래스(워커 경로에선 안 쓰임, fallback에서만 필요)는 제외.
+  // fallback 경로에서 dynamic import("/player.js")로 가져온다.
+  // 이로써 페이지 번들에서 Player 본체(약 50KB)가 빠진다.
+  {
+    entryPoints: ["src/player/player-page.ts"],
+    bundle: true,
+    format: "iife",
+    outfile: "public/player-page.js",
+    external: ["/player.js"],
+  },
   { entryPoints: ["src/index.ts"], bundle: true, format: "iife", outfile: "public/index.js" },
   { entryPoints: ["src/item.ts"], bundle: true, format: "iife", outfile: "public/item.js" },
   { entryPoints: ["src/history.ts"], bundle: true, format: "iife", outfile: "public/history.js" },

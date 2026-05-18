@@ -497,8 +497,20 @@ const itemId = params.get("itemId");
 // we refuse to save progress/hash — this prevents transient 0-position playback during
 // reinit/buffering from clobbering a much-larger saved value. Adapts to any network/device
 // speed because the gate is "did currentTime reach the target", not a hardcoded delay.
+//
+// 장시간 시청 시 누적 누수를 막기 위해 단순 LRU 한도를 두고, 한도를 넘으면 가장 오래된
+// 엔트리부터 정리한다.
+const _RESUME_TRACKING_LIMIT = 64;
 const _initialResumeTargets = new Map<string, number>();
 const _passedResume = new Set<string>();
+function _trimResumeTracking(): void {
+  while (_initialResumeTargets.size > _RESUME_TRACKING_LIMIT) {
+    const oldestKey = _initialResumeTargets.keys().next().value;
+    if (oldestKey === undefined) break;
+    _initialResumeTargets.delete(oldestKey);
+    _passedResume.delete(oldestKey);
+  }
+}
 
 function captureInitialResumeTarget(targetEpId: string | null): void {
   if (!targetEpId || _initialResumeTargets.has(targetEpId)) return;
@@ -513,6 +525,7 @@ function captureInitialResumeTarget(targetEpId: string | null): void {
   }
   _initialResumeTargets.set(targetEpId, target);
   if (!(target > 0)) _passedResume.add(targetEpId);
+  _trimResumeTracking();
 }
 
 function markPastResumeIfReached(targetEpId: string | null, currentTime: number): void {
@@ -566,8 +579,14 @@ if (_currentItemId) updateItemBtn(_currentItemId);
 async function initUIForEpisode(id: string): Promise<void> {
   const loadToken = ++markerLoadToken;
   if (!id) return;
+  // 이 함수의 모든 await 직후에 토큰/epId가 유효한지 검사한다. 사용자가 빠르게
+  // 다음 화로 넘어간 사이에 이전 화의 응답이 도착해 새 _currentItemId/_currentEpTitle를
+  // 덮어쓰거나, 다른 작품의 메타데이터로 WatchHistory.save{Item,Episode}를 호출하는
+  // 사고를 방지한다.
+  const stillCurrent = () => loadToken === markerLoadToken && id === epId;
   try {
     const ep = await apiFetch<Record<string, unknown>>(`/api/episodes/v3/${id}`);
+    if (!stillCurrent()) return;
     const t = (ep["subject"] ?? ep["title"] ?? "") as string;
     const episodeNum = String(ep["episode_num"] ?? "").trim();
     _currentEpTitle = t;
@@ -581,19 +600,23 @@ async function initUIForEpisode(id: string): Promise<void> {
       updateItemBtn(_currentItemId);
     }
 
-    if (_currentItemId) {
-      WatchHistory.saveEpisode(_currentItemId, id, {
+    // 이후 비동기 호출에서도 같은 itemId를 보장하려고 로컬에 캡처해둔다.
+    const itemIdAtEntry = _currentItemId;
+
+    if (itemIdAtEntry) {
+      WatchHistory.saveEpisode(itemIdAtEntry, id, {
         episodeTitle: t || undefined,
         episodeNum: episodeNum || undefined,
       });
       try {
-        const item = await apiFetch<Record<string, unknown>>(`/api/items/v4/${_currentItemId}`);
+        const item = await apiFetch<Record<string, unknown>>(`/api/items/v4/${itemIdAtEntry}`);
+        if (!stillCurrent()) return;
         const images = Array.isArray(item["images"]) ? (item["images"] as Array<Record<string, unknown>>) : [];
         const thumbPath =
           String(images.find((image) => image["option_name"] === "home_default")?.["img_url"] ?? "") ||
           String(images[0]?.["img_url"] ?? "") ||
           undefined;
-        WatchHistory.saveItem(_currentItemId, {
+        WatchHistory.saveItem(itemIdAtEntry, {
           itemName: String(item["name"] ?? "").trim() || undefined,
           itemThumbPath: thumbPath,
           itemMedium: String(item["medium"] ?? "").trim() || undefined,
@@ -612,13 +635,15 @@ async function initUIForEpisode(id: string): Promise<void> {
     console.error("ep info fetch:", e);
   }
 
+  if (!stillCurrent()) return;
+
   try {
     const info = await apiFetch<Record<string, unknown>>(`/api/episodes/v3/${id}/video`);
-    if (loadToken !== markerLoadToken || id !== epId) return;
+    if (!stillCurrent()) return;
     setupMarkers(info["markers"] as MarkerData | null | undefined);
   } catch (e) {
     console.error("markers fetch:", e);
-    if (loadToken !== markerLoadToken || id !== epId) return;
+    if (!stillCurrent()) return;
     setupMarkers(null);
   }
 
@@ -634,12 +659,20 @@ window.addEventListener("hashchange", () => {
   const newParams = new URLSearchParams(location.hash.slice(1));
   const newEpId = newParams.get("epId");
   if (newEpId && newEpId !== epId) {
-    // Save progress for the departing episode before epId changes
+    // 다음 epId로 넘어가기 전 마지막 위치 저장. reinit 직전이라 vid.currentTime이
+    // 이미 0으로 떨어졌을 수 있으므로 _lastKnownGoodTime 캐시도 같이 본다.
     if (epId && _currentItemId && playingEpId === epId) {
       const vid = document.getElementById("v") as HTMLVideoElement | null;
-      const t = vid?.currentTime ?? 0;
-      if (t >= 1) WatchHistory.saveProgress(epId, t, vid!.duration, _currentItemId, _currentEpTitle);
+      const live = vid?.currentTime ?? 0;
+      const fallback = Number((window as Window & { _currentPlayer?: { _lastKnownGoodTime?: number | null } | null })._currentPlayer?._lastKnownGoodTime ?? 0);
+      const t = live >= 1 ? live : fallback >= 1 ? fallback : 0;
+      if (t >= 1 && vid && vid.duration > 0) {
+        WatchHistory.saveProgress(epId, t, vid.duration, _currentItemId, _currentEpTitle);
+      }
     }
+    // 다음 video의 playing 이벤트가 도착하기 전까지 어느 ep도 "재생 중"이 아닌 상태로 둔다.
+    // 그 사이의 pause/visibilitychange가 옛 epId 또는 새 epId 어느 쪽도 잘못 갱신하지 않게.
+    playingEpId = null;
     console.log("[UI] Episode changed, refreshing UI for:", newEpId);
     epId = newEpId;
     captureInitialResumeTarget(newEpId);
@@ -902,14 +935,24 @@ function setupShareButton(): void {
   });
 }
 
+// VR 브라우저(특히 Quest)는 비디오 element의 native fullscreen이 시네마 모드라
+// 박스로 강제 변환하면 (a) 시네마 모드를 잃고 (b) 박스에 exit UI가 없는 상태로 갇힌다.
+// 이 경우 coercion을 끄고 비디오에 직접 풀스크린을 요청한다.
+function prefersNativeVideoFullscreen(): boolean {
+  const ua = navigator.userAgent || "";
+  return /OculusBrowser|Quest|Meta Quest|Pico Browser/i.test(ua);
+}
+
 function togglePlayerFullscreen(): void {
   const box = document.getElementById("video-box");
+  const video = document.getElementById("v");
   if (!box) return;
   if (document.fullscreenElement) {
     document.exitFullscreen?.();
-  } else {
-    box.requestFullscreen?.();
+    return;
   }
+  const target = prefersNativeVideoFullscreen() && video ? video : box;
+  target.requestFullscreen?.();
 }
 
 function syncPlayerFullscreenClass(): void {
@@ -919,8 +962,30 @@ function syncPlayerFullscreenClass(): void {
 }
 
 let fullscreenCoercionInProgress = false;
+// 직전 fullscreen element가 우리 박스였는지 기억한다.
+// 사용자가 박스-풀스크린 중 비디오의 native 풀스크린 버튼을 누르면 브라우저는
+// 박스 -> 비디오로 풀스크린 element를 swap한다. 이 swap을 "exit 의도"로 해석한다
+// (사용자에게는 동일한 버튼이 toggle처럼 보여야 정상).
+let lastFullscreenWasBox = false;
+// 첫 coercion 시도에서 NotAllowedError(유저 제스쳐 부재) 등이 나오면 이 세션 동안
+// 더 이상 강제 변환을 시도하지 않는다. 다음 새로고침 전까지 native 풀스크린을 존중한다.
+let coercionDisabledForSession = false;
+
+function isUserGestureError(err: unknown): boolean {
+  if (!err) return false;
+  const e = err as { name?: string; message?: string };
+  if (e.name === "NotAllowedError" || e.name === "SecurityError" || e.name === "TypeError") return true;
+  const msg = (e.message ?? "").toLowerCase();
+  return (
+    msg.includes("user gesture") ||
+    msg.includes("user activation") ||
+    msg.includes("permission denied") ||
+    msg.includes("not allowed")
+  );
+}
 
 async function forceBoxFullscreenFromNativeRequest(): Promise<void> {
+  if (coercionDisabledForSession) return;
   const box = document.getElementById("video-box");
   if (!box) return;
   if (document.fullscreenElement === box) {
@@ -934,6 +999,27 @@ async function forceBoxFullscreenFromNativeRequest(): Promise<void> {
       await document.exitFullscreen?.();
     }
     await box.requestFullscreen?.();
+  } catch (err) {
+    if (isUserGestureError(err)) {
+      coercionDisabledForSession = true;
+      console.warn(
+        "[PLAYER] fullscreen coercion blocked (likely no user gesture);" +
+          " disabling box-fullscreen coercion for the rest of this session.",
+      );
+    } else {
+      console.error("[PLAYER] fullscreen coercion failed:", err);
+    }
+  } finally {
+    fullscreenCoercionInProgress = false;
+  }
+}
+
+async function exitFullscreenAfterNativeToggle(): Promise<void> {
+  fullscreenCoercionInProgress = true;
+  try {
+    await document.exitFullscreen?.();
+  } catch (e) {
+    console.error("[PLAYER] native fullscreen toggle exit failed:", e);
   } finally {
     fullscreenCoercionInProgress = false;
   }
@@ -943,8 +1029,41 @@ document.addEventListener("fullscreenchange", () => {
   syncPlayerFullscreenClass();
   const box = document.getElementById("video-box");
   if (!box) return;
-  if (fullscreenCoercionInProgress) return;
-  if (document.fullscreenElement && document.fullscreenElement !== box) {
+  const video = document.getElementById("v");
+  const fsEl = document.fullscreenElement;
+
+  if (fullscreenCoercionInProgress) {
+    // coercion으로 인한 swap도 lastFullscreenWasBox 추적은 그대로 갱신해두면
+    // 다음 사용자 액션이 일관되게 동작한다.
+    if (fsEl === box) lastFullscreenWasBox = true;
+    else if (!fsEl) lastFullscreenWasBox = false;
+    return;
+  }
+
+  // 박스 풀스크린 중 native 비디오 풀스크린 버튼을 누른 경우 = exit 의도.
+  // 기존 동작(다시 박스로 강제 복귀)은 Quest에서 빠져나갈 방법을 없애 사용자를 가둔다.
+  if (lastFullscreenWasBox && video && fsEl === video) {
+    lastFullscreenWasBox = false;
+    void exitFullscreenAfterNativeToggle();
+    return;
+  }
+
+  if (fsEl === box) {
+    lastFullscreenWasBox = true;
+    return;
+  }
+
+  if (!fsEl) {
+    lastFullscreenWasBox = false;
+    return;
+  }
+
+  // 다른 element가 풀스크린에 들어간 경우. VR 브라우저에서는 native 시네마 모드를
+  // 유지하기 위해 box로의 강제 변환을 건너뛴다.
+  if (prefersNativeVideoFullscreen()) {
+    return;
+  }
+  if (fsEl !== box) {
     void forceBoxFullscreenFromNativeRequest();
   }
 });
@@ -1193,6 +1312,15 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   video.addEventListener("seeking", cancelScheduledAutoSkip, { signal });
   video.addEventListener("ended", cancelScheduledAutoSkip, { signal });
 
+  // localStorage read는 timeupdate(최대 60Hz) 핫 패스에서 부담이라 캐시한다.
+  // 설정 변경은 storage 이벤트로만 갱신(같은 탭에서 즉시 반영이 필수는 아님).
+  let endingWindowCached = parseFloat(localStorage.getItem("player_ending_skip_window") ?? "10");
+  const onStorageEndingWindow = (e: StorageEvent): void => {
+    if (e.key !== "player_ending_skip_window") return;
+    endingWindowCached = parseFloat(e.newValue ?? "10");
+  };
+  window.addEventListener("storage", onStorageEndingWindow, { signal });
+
   video.addEventListener("timeupdate", () => {
     const t = video.currentTime;
     let inAnySkipRange = false;
@@ -1209,7 +1337,7 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       const { start, end } = markers!.ending;
       const inSeg = t >= start && t < end;
       inAnySkipRange ||= inSeg;
-      const endingWindow = parseFloat(localStorage.getItem("player_ending_skip_window") ?? "10");
+      const endingWindow = endingWindowCached;
       const inWindow = endingWindow < 0 || (endingWindow > 0 && t - start < endingWindow);
       btnEnd.classList.toggle("visible", inSeg && inWindow);
       if (inSeg && autoSkip) scheduleAutoSkip("ending", markers!.ending, t);
@@ -1232,10 +1360,23 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   const progress = document.getElementById("timeline-progress") as HTMLElement;
   applyTimelineBarVisibility();
 
+  // timeupdate는 최대 ~60Hz로 발생하지만, style write는 frame당 1회면 충분하다.
+  // rAF로 합쳐 layout/style 비용을 1프레임당 1회로 제한한다.
+  let rafScheduled = false;
+  let lastWidthPct = -1;
   video.addEventListener("timeupdate", () => {
-    const dur = video.duration;
-    if (!dur || !isFinite(dur)) return;
-    progress.style.width = (video.currentTime / dur) * 100 + "%";
+    if (rafScheduled) return;
+    rafScheduled = true;
+    requestAnimationFrame(() => {
+      rafScheduled = false;
+      const dur = video.duration;
+      if (!dur || !isFinite(dur)) return;
+      const pct = (video.currentTime / dur) * 100;
+      // 같은 프레임 within 0.05% 이내면 write 자체를 생략(보급형 GPU의 style invalidation 절감).
+      if (Math.abs(pct - lastWidthPct) < 0.05) return;
+      lastWidthPct = pct;
+      progress.style.width = pct + "%";
+    });
   });
 
   function seekFromEvent(e: { clientX: number }): void {

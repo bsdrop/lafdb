@@ -64,13 +64,6 @@ interface Track {
   tracks?: Track[];
 }
 
-interface Segment {
-  url: string;
-  start: number;
-  end: number;
-  number: number;
-}
-
 interface QualityOption {
   id: string;
   label: string;
@@ -101,6 +94,21 @@ interface WorkerMessage {
 
 const ANONYMOUS_NETWORK_CODEC_MESSAGE =
   "현재 브라우저에서 H.264/AAC 재생을 지원하지 않습니다. Brave의 Tor 비공개 창을 사용하시거나, 로컬 프록시를 통해 일반 브라우저로 접속해주시기 바랍니다.";
+
+// 디버그 로깅 게이트. 보급형 디바이스에서 매 timeupdate/fetchLoop poll마다 발생하는
+// console.log + console-log-store 가로채기가 누적 frame drop의 원인.
+// localStorage.player_debug = "on" 일 때만 활성. warn/error는 항상 출력.
+const _DEBUG_PLAYER =
+  typeof localStorage !== "undefined" && (() => {
+    try {
+      return localStorage.getItem("player_debug") === "on";
+    } catch {
+      return false;
+    }
+  })();
+function plog(...args: unknown[]): void {
+  if (_DEBUG_PLAYER) plog(...args);
+}
 
 interface XmlNode {
   tagName: string;
@@ -494,11 +502,15 @@ class Player {
       }
       this._video.src = nextUrl;
       if (prevUrl) {
-        try {
-          URL.revokeObjectURL(prevUrl);
-        } catch (e) {
-          console.error("[PLAYER] revokeObjectURL failed:", e);
-        }
+        // 일부 Chromium에서 src 설정 직후 같은 microtask에서 prev URL을 revoke하면
+        // 새 nextUrl까지 같이 무효화되는 케이스가 보고된 바 있다. 다음 task로 미룬다.
+        setTimeout(() => {
+          try {
+            URL.revokeObjectURL(prevUrl);
+          } catch (e) {
+            console.error("[PLAYER] revokeObjectURL failed:", e);
+          }
+        }, 0);
       }
     } else {
       const msWithHandle = ms as MediaSource & { handle?: unknown };
@@ -698,7 +710,7 @@ class Player {
 
   async setKey(kidHex: string, keyHex: string): Promise<void> {
     if (!kidHex || !keyHex) {
-      console.log("[PLAYER] No key provided, skipping DRM setup");
+      plog("[PLAYER] No key provided, skipping DRM setup");
       return;
     }
     this.kid = this.hexToUint8(kidHex);
@@ -709,7 +721,7 @@ class Player {
       false,
       ["decrypt"],
     );
-    console.log("[PLAYER] Key imported");
+    plog("[PLAYER] Key imported");
   }
 
   waitForIdle(sb: SourceBuffer, timeoutMs = 5000): Promise<void> {
@@ -861,7 +873,7 @@ class Player {
           this._seekTo(gapStart);
           this._emitGapJump();
         } else {
-          console.log(`[PLAYER] Gap candidate ${gapStart.toFixed(3)}s, confirming next check`);
+          plog(`[PLAYER] Gap candidate ${gapStart.toFixed(3)}s, confirming next check`);
           this._gapCandidateStart = gapStart;
         }
         this._scheduleStallCheck();
@@ -1104,7 +1116,7 @@ class Player {
   }
 
   parseMPD(text: string, baseUrl: string): Track[] {
-    console.log("[PLAYER] Parsing MPD...");
+    plog("[PLAYER] Parsing MPD...");
     let xml: Document | XmlNode;
     if (typeof DOMParser !== "undefined") {
       const parser = new DOMParser();
@@ -1154,10 +1166,10 @@ class Player {
             ? this._qualityPref ||
               (typeof localStorage !== "undefined" ? parseInt(localStorage.getItem("quality_pref") || "0", 10) : 0)
             : 0;
-          console.log(
+          plog(
             `[PLAYER] videoReps: ${this.videoReps.map((r) => `${r.repId} ${r.width}x${r.height} ${r.bandwidth}bps`).join(" | ")}`,
           );
-          console.log(`[PLAYER] prefHeight=${prefHeight} prefBps=${prefBps}`);
+          plog(`[PLAYER] prefHeight=${prefHeight} prefBps=${prefBps}`);
           const hasHeight = this.videoReps.some((r) => (r.height ?? 0) > 0);
           let chosen: Track;
           if (prefBps) {
@@ -1182,7 +1194,7 @@ class Player {
           }
           this.activeVideoRepId = chosen.repId;
           tracks.push(chosen);
-          console.log(`[PLAYER] Default video: id=${chosen.repId} ${chosen.width}x${chosen.height}`);
+          plog(`[PLAYER] Default video: id=${chosen.repId} ${chosen.width}x${chosen.height}`);
         }
       } else {
         reps.sort(
@@ -1200,7 +1212,7 @@ class Player {
       }
     }
 
-    console.log(`[PLAYER] Tracks: ${tracks.length}, VideoReps: ${this.videoReps.length}`);
+    plog(`[PLAYER] Tracks: ${tracks.length}, VideoReps: ${this.videoReps.length}`);
     this._sendQualityOptions(
       this.videoReps.map((r) => ({
         id: r.repId,
@@ -1225,7 +1237,7 @@ class Player {
           await this.wait(50);
         }
         if (this._destroyed) return;
-        console.log(`[PLAYER] Switching video → id=${nextRepId} ${newRep.width}x${newRep.height}`);
+        plog(`[PLAYER] Switching video → id=${nextRepId} ${newRep.width}x${newRep.height}`);
         this.activeVideoRepId = nextRepId;
         this._updateQualitySelector();
         await this._reinitMediaSource(this._safeCurrentTime());
@@ -1268,7 +1280,7 @@ class Player {
     if (resumeTime == null) {
       resumeTime = this._lastKnownGoodTime ?? 0;
     }
-    console.log(`[PLAYER] Reinitializing MediaSource (resumeTime=${resumeTime.toFixed(3)})`);
+    plog(`[PLAYER] Reinitializing MediaSource (resumeTime=${resumeTime.toFixed(3)})`);
     this._lastReinitAt = Date.now();
     this._lastReinitTime = resumeTime;
 
@@ -1299,9 +1311,9 @@ class Player {
 
     const ms = new MS!() as MediaSource;
     this.ms = ms;
-    ms.addEventListener("sourceopen", () => console.log("[PLAYER] MediaSource: sourceopen"));
-    ms.addEventListener("sourceended", () => console.log("[PLAYER] MediaSource: sourceended"));
-    ms.addEventListener("sourceclose", () => console.log("[PLAYER] MediaSource: sourceclose"));
+    ms.addEventListener("sourceopen", () => plog("[PLAYER] MediaSource: sourceopen"));
+    ms.addEventListener("sourceended", () => plog("[PLAYER] MediaSource: sourceended"));
+    ms.addEventListener("sourceclose", () => plog("[PLAYER] MediaSource: sourceclose"));
 
     this._reinitInProgress = true;
     try {
@@ -1374,7 +1386,7 @@ class Player {
 
   async _appendInit(track: Track): Promise<void> {
     if (!track.initData) {
-      console.log(`[${track.type.toUpperCase()}] Fetching init: ${track.initUrl}`);
+      plog(`[${track.type.toUpperCase()}] Fetching init: ${track.initUrl}`);
       let lastErr: Error | null = null;
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
@@ -1385,7 +1397,7 @@ class Player {
           if (!resp.ok) throw new Error(`Init fetch HTTP ${resp.status}`);
           const raw = new Uint8Array(await resp.arrayBuffer());
           track.initData = this.stripDrmSignaling(raw, track.type);
-          console.log(`[${track.type.toUpperCase()}] Init fetched (${track.initData.byteLength}B)`);
+          plog(`[${track.type.toUpperCase()}] Init fetched (${track.initData.byteLength}B)`);
           lastErr = null;
           break;
         } catch (e) {
@@ -1397,17 +1409,17 @@ class Player {
       }
       if (lastErr) throw lastErr;
     } else {
-      console.log(`[${track.type.toUpperCase()}] Init cache hit`);
+      plog(`[${track.type.toUpperCase()}] Init cache hit`);
     }
     const token = track.sbToken;
     const appended = await this._appendToTrack(track, token, track.initData!);
     if (!appended) return;
-    console.log(`[${track.type.toUpperCase()}] Init appended`);
+    plog(`[${track.type.toUpperCase()}] Init appended`);
   }
 
   async init(mpdUrl: string, kid: string, key: string, resumeTime: number | null = null): Promise<void> {
     if (this._destroyed) return;
-    console.log("[PLAYER] Initializing");
+    plog("[PLAYER] Initializing");
     this._setupNetworkRecovery();
 
     if (this._video) {
@@ -1437,7 +1449,7 @@ class Player {
         this._video.addEventListener(
           ev,
           () => {
-            console.log(
+            plog(
               `[VIDEO] ${ev} | ct=${this._video!.currentTime.toFixed(3)} rs=${this._video!.readyState}` +
                 ` ${this._video!.videoWidth}x${this._video!.videoHeight} dur=${this._video!.duration}`,
             );
@@ -1516,7 +1528,7 @@ class Player {
     }
 
     this._baseUrl = mpdUrl.substring(0, mpdUrl.lastIndexOf("/") + 1);
-    console.log(`[PLAYER] baseUrl: ${this._baseUrl}`);
+    plog(`[PLAYER] baseUrl: ${this._baseUrl}`);
 
     this.tracks = this.parseMPD(mpdText!, this._baseUrl);
     if (this._destroyed) return;
@@ -1527,9 +1539,9 @@ class Player {
 
     const ms = new MS!() as MediaSource;
     this.ms = ms;
-    ms.addEventListener("sourceopen", () => console.log("[PLAYER] MediaSource: sourceopen"));
-    ms.addEventListener("sourceended", () => console.log("[PLAYER] MediaSource: sourceended"));
-    ms.addEventListener("sourceclose", () => console.log("[PLAYER] MediaSource: sourceclose"));
+    ms.addEventListener("sourceopen", () => plog("[PLAYER] MediaSource: sourceopen"));
+    ms.addEventListener("sourceended", () => plog("[PLAYER] MediaSource: sourceended"));
+    ms.addEventListener("sourceclose", () => plog("[PLAYER] MediaSource: sourceclose"));
 
     this._reinitInProgress = true;
     try {
@@ -1561,7 +1573,7 @@ class Player {
     if (this.started || this._destroyed) return;
     this.started = true;
     this._endOfStreamCalled = false;
-    console.log(`[PLAYER] _startPlayback resumeTime=${resumeTime ?? "null"}`);
+    plog(`[PLAYER] _startPlayback resumeTime=${resumeTime ?? "null"}`);
 
     for (const track of this.tracks) {
       let sb: SourceBuffer;
@@ -1576,7 +1588,7 @@ class Player {
       track.sb = sb;
       track.sbToken++;
       sb.mode = "segments";
-      console.log(`[${track.type.toUpperCase()}] SourceBuffer created: ${track.mime}`);
+      plog(`[${track.type.toUpperCase()}] SourceBuffer created: ${track.mime}`);
       sb.addEventListener("error", (e) => console.error(`[${track.type.toUpperCase()}] SourceBuffer error`, e));
       sb.addEventListener("abort", () => console.warn(`[${track.type.toUpperCase()}] SourceBuffer abort`));
       sb.addEventListener("updateend", () => {
@@ -1587,7 +1599,7 @@ class Player {
         } catch (e) {
           console.error(`[${track.type.toUpperCase()}] buffered read:`, e);
         }
-        console.log(`[${track.type.toUpperCase()}] updateend buffered=${buf || "(empty)"}`);
+        plog(`[${track.type.toUpperCase()}] updateend buffered=${buf || "(empty)"}`);
       });
     }
 
@@ -1616,13 +1628,13 @@ class Player {
       this._play();
     }
 
-    console.log("[PLAYER] Init complete");
+    plog("[PLAYER] Init complete");
   }
 
   _startFetchLoopsInner(): void {
     if (this._destroyed) return;
     const gen = this.generation;
-    console.log(`[PLAYER] _startFetchLoopsInner gen=${gen}`);
+    plog(`[PLAYER] _startFetchLoopsInner gen=${gen}`);
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
       track.inflight.clear();
@@ -1680,7 +1692,7 @@ class Player {
         return;
       }
 
-      console.log(`[PLAYER] Resuming at ${requestedTime.toFixed(3)}s`);
+      plog(`[PLAYER] Resuming at ${requestedTime.toFixed(3)}s`);
       this._setPendingResumeTime(requestedTime);
       this._internalSeek = true;
       this._seekTo(requestedTime);
@@ -1734,7 +1746,7 @@ class Player {
 
     this._endOfStreamCalled = true;
     try {
-      console.log("[PLAYER] All segments appended, calling endOfStream()");
+      plog("[PLAYER] All segments appended, calling endOfStream()");
       this.ms.endOfStream();
     } catch (e) {
       console.error("[PLAYER] endOfStream() failed:", e);
@@ -1758,7 +1770,7 @@ class Player {
     if (!range) return Math.max(0, time);
     const anchor = Math.max(0, range.start + 0.01);
     if (Math.abs(anchor - time) >= 0.25) {
-      console.log(`[PLAYER] resume anchor ${time.toFixed(3)}s -> seg ${segNum} start ${anchor.toFixed(3)}s`);
+      plog(`[PLAYER] resume anchor ${time.toFixed(3)}s -> seg ${segNum} start ${anchor.toFixed(3)}s`);
     }
     return anchor;
   }
@@ -1775,7 +1787,7 @@ class Player {
     const prevRange = this.segmentNumberToTimeRange(track, segNum - 1);
     if (!prevRange) return time;
     const fetchTime = Math.max(0, prevRange.start + 0.01);
-    console.log(
+    plog(
       `[PLAYER] seek fetch preroll ${time.toFixed(3)}s -> seg ${segNum - 1} @ ${fetchTime.toFixed(3)}s`,
     );
     return fetchTime;
@@ -1808,7 +1820,7 @@ class Player {
     if (this._destroyed) return;
     const ac = new AbortController();
     this.abortControllers.add(ac);
-    console.log(`[${track.type.toUpperCase()}] fetchLoop start gen=${generation}`);
+    plog(`[${track.type.toUpperCase()}] fetchLoop start gen=${generation}`);
 
     try {
       let pollCount = 0;
@@ -1823,7 +1835,7 @@ class Player {
         const ahead = bufferedEnd - ct;
 
         if (pollCount % 25 === 0) {
-          console.log(
+          plog(
             `[${track.type.toUpperCase()}] poll ct=${ct.toFixed(3)} ahead=${ahead.toFixed(3)}` +
               ` rs=${this._readyState} ${this._videoWidth}x${this._videoHeight}`,
           );
@@ -1894,7 +1906,7 @@ class Player {
       if ((e as Error).name !== "AbortError") {
         console.error(`[${track.type.toUpperCase()}] fetchLoop error:`, e);
       } else {
-        console.log(`[${track.type.toUpperCase()}] fetchLoop aborted`);
+        plog(`[${track.type.toUpperCase()}] fetchLoop aborted`);
       }
     } finally {
       this.abortControllers.delete(ac);
@@ -1946,12 +1958,12 @@ class Player {
         }
 
         const url = track.mediaPattern.replace("$Number$", String(segNum));
-        if (attempt === 0) console.log(`[${track.type.toUpperCase()}] fetch seg ${segNum}: ${url}`);
+        if (attempt === 0) plog(`[${track.type.toUpperCase()}] fetch seg ${segNum}: ${url}`);
 
         const resp = await fetch(url, {
           signal: this._timedSignal(fetchSignal, Player.SEG_FETCH_TIMEOUT_MS),
         });
-        console.log(`[${track.type.toUpperCase()}] seg ${segNum} status=${resp.status}`);
+        plog(`[${track.type.toUpperCase()}] seg ${segNum} status=${resp.status}`);
 
         if (!resp.ok) {
           if (resp.status === 404 || resp.status === 410) {
@@ -1979,7 +1991,7 @@ class Player {
         track.appended.add(segNum);
 
         const range = this.segmentNumberToTimeRange(track, segNum);
-        console.log(
+        plog(
           `[${track.type.toUpperCase()}] Seg ${segNum} appended (${range!.start.toFixed(3)}-${range!.end.toFixed(3)}s)` +
             ` rs=${this._readyState}`,
         );
@@ -2034,22 +2046,22 @@ class Player {
       this.lastSeekTime = seekTime;
       this._setPendingResumeTime(seekTime);
       this._queuedSeekTime = seekTime;
-      console.log(`[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`);
+      plog(`[PLAYER] seeking queued during recovery → ${seekTime.toFixed(3)}s`);
       return;
     }
     if (this._video?.ended) {
-      console.log(`[PLAYER] seeking ignored (video ended) at ${seekTime.toFixed(3)}s`);
+      plog(`[PLAYER] seeking ignored (video ended) at ${seekTime.toFixed(3)}s`);
       return;
     }
     if (this._internalSeek) {
       this._internalSeek = false;
-      console.log(`[PLAYER] internal seek to ${seekTime.toFixed(3)}s, ignoring`);
+      plog(`[PLAYER] internal seek to ${seekTime.toFixed(3)}s, ignoring`);
       return;
     }
 
     if (seekTime < 0.5 && this._expectBrowserResetUntil && Date.now() < this._expectBrowserResetUntil) {
       this._expectBrowserResetUntil = 0;
-      console.log(`[PLAYER] seek to ${seekTime.toFixed(3)}s ignored (browser reset on src attach)`);
+      plog(`[PLAYER] seek to ${seekTime.toFixed(3)}s ignored (browser reset on src attach)`);
       return;
     }
 
@@ -2060,7 +2072,7 @@ class Player {
       seekTime = normalizedSeekTime;
     }
 
-    console.log(`[PLAYER] seeking → ${seekTime.toFixed(3)}s`);
+    plog(`[PLAYER] seeking → ${seekTime.toFixed(3)}s`);
     this.lastSeekTime = seekTime;
     this._rememberExplicitTarget(seekTime);
     this._ct = seekTime;
@@ -2096,7 +2108,7 @@ class Player {
         );
         return;
       }
-      console.log(`[PLAYER] seek settled at ${settled.toFixed(3)}s`);
+      plog(`[PLAYER] seek settled at ${settled.toFixed(3)}s`);
 
       for (const track of this.tracks) {
         if (this._destroyed || seekGeneration !== this.generation) return;
@@ -2112,7 +2124,7 @@ class Player {
             const keepStart = Math.max(0, settled - this.BUFFER_BEHIND_KEEP);
             const keepEnd = settled + this.BUFFER_AHEAD_MAX;
             await this._trimTrackBuffer(track, token, keepStart, keepEnd);
-            console.log(`[${track.type.toUpperCase()}] seek: buffer trimmed (in-buffer seek)`);
+            plog(`[${track.type.toUpperCase()}] seek: buffer trimmed (in-buffer seek)`);
           } else {
             const liveSb = this._getLiveTrackSb(track, token);
             if (liveSb?.buffered.length) {
@@ -2123,7 +2135,7 @@ class Player {
                 liveSb.buffered.end(liveSb.buffered.length - 1),
               );
             }
-            console.log(`[${track.type.toUpperCase()}] seek: buffer cleared (out-of-buffer seek)`);
+            plog(`[${track.type.toUpperCase()}] seek: buffer cleared (out-of-buffer seek)`);
             try {
               await this._appendInit(track);
             } catch (e) {
@@ -2156,9 +2168,6 @@ class Player {
       let ct = Math.max(0, this._safeCurrentTime());
       const now = Date.now();
       const duration = this._video?.duration ?? (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
-      const vsb = this._getVideoSb();
-      const bufEnd = vsb ? this.getBufferedEnd(vsb, ct) : ct;
-      const ahead = Math.max(0, bufEnd - ct);
 
       // Firefox는 tail decode EOF를 실제 종료보다 훨씬 이르게 올릴 수 있다.
       // 따라서 "끝 3초 이내"만으로 종료 처리하지 말고, 거의 실제 끝일 때만 finalize한다.

@@ -31,8 +31,17 @@ interface WatchStore {
 }
 
 export const WATCH_STORAGE_KEY = "watch_history_v1";
-const WATCH_TIME_BASE_MS = Date.UTC(2026, 3, 1, 0, 0, 0, 0);
+// 기존 base가 2026-04-01이었는데, 그보다 이전 시점(시계 오차, 다른 기기에서
+// import한 옛 기록)이 들어오면 음수가 0으로 잘려 정렬이 깨졌다. 안전한 과거로
+// 옮긴다. normalizeStoredTimestamps에서 옛 base로 인코딩된 값을 새 base로 재인코딩한다.
+const WATCH_TIME_BASE_MS = Date.UTC(2020, 0, 1, 0, 0, 0, 0);
+const LEGACY_WATCH_TIME_BASE_MS = Date.UTC(2026, 3, 1, 0, 0, 0, 0);
 const WATCH_TIME_STEP_MS = 5000;
+// 옛 base와 새 base의 step 단위 차이. 옛 인코딩 값에 더하면 새 인코딩 값이 된다.
+const WATCH_BASE_SHIFT_STEPS = Math.floor((LEGACY_WATCH_TIME_BASE_MS - WATCH_TIME_BASE_MS) / WATCH_TIME_STEP_MS);
+// 옛 base/새 base를 값만으로 구별할 수 없으므로(둘 다 작은 양수 범위) 1회성 마이그레이션 마커를 둔다.
+const WATCH_TIME_BASE_VERSION_KEY = "watch_history_base_v";
+const WATCH_TIME_BASE_VERSION_CURRENT = "2020-01-01";
 export const EXPORT_PREFIXES = [WATCH_STORAGE_KEY];
 export const EXPORT_EXACT = ["player_autoskip", "player_autoplay", "time_pref"];
 
@@ -82,12 +91,16 @@ export const WatchHistory = {
     if (!epId || !itemId || t < 1) return;
     try {
       const store = readWatchStore(localStorage);
-      store.episodes[epId] = mergeEpisode(store.episodes[epId], {
+      // dur=0(아직 metadata 미도착, reinit 중)이면 기존 dur을 보존한다.
+      // compactDefined가 0을 통과시키므로 명시적으로 undefined로 패치에서 제외.
+      const durPatch = dur > 0 ? Math.floor(dur) : undefined;
+      const patch: Partial<WatchProgressEntry> = {
         itemId,
         episodeTitle: epTitle ?? store.episodes[epId]?.episodeTitle,
         t: Math.floor(t),
-        dur: dur > 0 ? Math.floor(dur) : 0,
-      });
+      };
+      if (durPatch !== undefined) patch.dur = durPatch;
+      store.episodes[epId] = mergeEpisode(store.episodes[epId], patch);
       store.items[itemId] = mergeItem(store.items[itemId], {
         lastEpisodeId: epId,
       });
@@ -108,20 +121,42 @@ export const WatchHistory = {
 
 export function normalizeStoredTimestamps(storage: Storage = localStorage): void {
   const store = readWatchStore(storage);
+  let baseVersion: string | null = null;
+  try {
+    baseVersion = storage.getItem(WATCH_TIME_BASE_VERSION_KEY);
+  } catch {
+    /* private mode 등 */
+  }
+  const needsBaseShift = baseVersion !== WATCH_TIME_BASE_VERSION_CURRENT;
   let dirty = false;
-  for (const value of Object.values(store.items)) {
-    const updatedAt = Number(value?.updatedAt);
-    if (!Number.isFinite(updatedAt) || updatedAt <= 1_000_000_000_000) continue;
-    value.updatedAt = encodeWatchTimestamp(updatedAt);
-    dirty = true;
-  }
-  for (const value of Object.values(store.episodes)) {
-    const updatedAt = Number(value?.updatedAt);
-    if (!Number.isFinite(updatedAt) || updatedAt <= 1_000_000_000_000) continue;
-    value.updatedAt = encodeWatchTimestamp(updatedAt);
-    dirty = true;
-  }
+
+  const fix = (value: { updatedAt?: number } | null | undefined): void => {
+    if (!value) return;
+    const updatedAt = Number(value.updatedAt);
+    if (!Number.isFinite(updatedAt) || updatedAt <= 0) return;
+    // raw ms 형태(>1e12): 새 base로 인코딩.
+    if (updatedAt > 1_000_000_000_000) {
+      value.updatedAt = encodeWatchTimestamp(updatedAt);
+      dirty = true;
+      return;
+    }
+    // 옛 base로 인코딩된 작은 양수: 새 base로 옮긴다.
+    if (needsBaseShift) {
+      value.updatedAt = updatedAt + WATCH_BASE_SHIFT_STEPS;
+      dirty = true;
+    }
+  };
+  for (const value of Object.values(store.items)) fix(value);
+  for (const value of Object.values(store.episodes)) fix(value);
+
   if (dirty) writeWatchStore(storage, store);
+  if (needsBaseShift) {
+    try {
+      storage.setItem(WATCH_TIME_BASE_VERSION_KEY, WATCH_TIME_BASE_VERSION_CURRENT);
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function isExportKey(key: string): boolean {
@@ -160,6 +195,16 @@ export function removeEpisodeHistory(epId: string, storage: Storage = localStora
 
 export function clearAllWatchHistory(storage: Storage = localStorage): void {
   try {
+    // 캐시·보류 write 무효화.
+    if (storage === localStorage) {
+      if (_writeDebounceTimer !== null) {
+        clearTimeout(_writeDebounceTimer);
+        _writeDebounceTimer = null;
+      }
+      _pendingWriteStorage = null;
+      _cachedStore = null;
+      _cachedStoreFor = null;
+    }
     storage.removeItem(WATCH_STORAGE_KEY);
   } catch (err) {
     console.error(err);
@@ -172,6 +217,8 @@ export function updateItemHistoryMeta(
   storage: Storage = localStorage,
 ): void {
   if (!itemId) return;
+  // WatchHistory.saveItem과 의도가 같다(메타 머지). 차이는 saveItem이 lastEpisodeId까지
+  // 받을 수 있다는 것뿐. 호출처가 lastEpisodeId 없이 메타만 갱신하려면 이 헬퍼를 쓴다.
   const store = readWatchStore(storage);
   store.items[itemId] = mergeItem(store.items[itemId], meta);
   writeWatchStore(storage, store);
@@ -233,6 +280,16 @@ export function applyImportData(
 ): { imported: number; failed: number } {
   try {
     const nextStore = normalizeImportedStore(data, mode === "merge" ? readWatchStore(storage) : emptyWatchStore());
+    // 보류 중인 debounce write가 import 결과를 덮어쓰지 않도록 먼저 캐시·타이머 초기화.
+    if (storage === localStorage) {
+      if (_writeDebounceTimer !== null) {
+        clearTimeout(_writeDebounceTimer);
+        _writeDebounceTimer = null;
+      }
+      _pendingWriteStorage = null;
+      _cachedStore = nextStore;
+      _cachedStoreFor = storage;
+    }
     storage.setItem(WATCH_STORAGE_KEY, JSON.stringify(nextStore));
     for (const exactKey of EXPORT_EXACT) {
       if (data[exactKey] === undefined) continue;
@@ -265,12 +322,67 @@ function coerceStore(value: unknown): WatchStore | null {
   return { version: 2, items, episodes };
 }
 
+// localStorage I/O 비용을 줄이기 위한 메모리 캐시.
+// 호출처가 1초마다 saveProgress + 5/10초마다 hash 저장 등 빈번하게 호출되는데,
+// 매번 JSON.parse → mutate → JSON.stringify → setItem은 100건+ 시청기록 사용자에게 큰 부담.
+// 캐시는 같은 storage 참조에만 유효(테스트 등에서 다른 Storage를 넘기는 케이스는 미적용).
+let _cachedStore: WatchStore | null = null;
+let _cachedStoreFor: Storage | null = null;
+let _writeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingWriteStorage: Storage | null = null;
+const WRITE_DEBOUNCE_MS = 1500;
+
 function readWatchStore(storage: Storage): WatchStore {
-  return coerceStore(safeParseJSON<WatchStore>(storage.getItem(WATCH_STORAGE_KEY))) ?? emptyWatchStore();
+  if (storage === _cachedStoreFor && _cachedStore) return _cachedStore;
+  const parsed = coerceStore(safeParseJSON<WatchStore>(storage.getItem(WATCH_STORAGE_KEY))) ?? emptyWatchStore();
+  if (storage === localStorage) {
+    _cachedStore = parsed;
+    _cachedStoreFor = storage;
+  }
+  return parsed;
+}
+
+function flushWatchStoreWrite(): void {
+  if (_writeDebounceTimer !== null) {
+    clearTimeout(_writeDebounceTimer);
+    _writeDebounceTimer = null;
+  }
+  const storage = _pendingWriteStorage;
+  _pendingWriteStorage = null;
+  if (!storage || !_cachedStore) return;
+  try {
+    storage.setItem(WATCH_STORAGE_KEY, JSON.stringify(_cachedStore));
+  } catch (e) {
+    console.warn("[WatchHistory] write failed:", e);
+  }
 }
 
 function writeWatchStore(storage: Storage, store: WatchStore): void {
+  // 캐시 갱신은 즉시(같은 페이지 내 후속 read는 새 값을 본다).
+  if (storage === localStorage) {
+    _cachedStore = store;
+    _cachedStoreFor = storage;
+    _pendingWriteStorage = storage;
+    if (_writeDebounceTimer === null) {
+      _writeDebounceTimer = setTimeout(() => {
+        _writeDebounceTimer = null;
+        flushWatchStoreWrite();
+      }, WRITE_DEBOUNCE_MS);
+    }
+    return;
+  }
+  // 캐시 미적용 경로(별도 Storage 객체): 그대로 동기 write.
   storage.setItem(WATCH_STORAGE_KEY, JSON.stringify(store));
+}
+
+// 페이지 종료/숨김 시 보류 중인 write를 반드시 동기로 내보낸다.
+if (typeof window !== "undefined") {
+  const flushOnExit = (): void => flushWatchStoreWrite();
+  window.addEventListener("pagehide", flushOnExit);
+  window.addEventListener("beforeunload", flushOnExit);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushWatchStoreWrite();
+  });
 }
 
 function emptyWatchStore(): WatchStore {

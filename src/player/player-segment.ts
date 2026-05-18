@@ -35,20 +35,32 @@ export function segmentNumberToTimeRange(
   };
 }
 
+// fetchLoop가 100ms마다 트랙별로 호출하므로 timeline이 수천 개면 누적 부담이 커진다.
+// 이진탐색으로 O(log n).
 export function timeToSegmentNumber(
   timeline: SegmentEntry[],
   timescale: number,
   startNumber: number,
   time: number,
 ): number {
-  for (let i = 0; i < timeline.length; i++) {
-    const seg = timeline[i];
-    const start = seg.time / timescale;
-    const end = (seg.time + seg.duration) / timescale;
-    if (time >= start && time < end) return startNumber + i;
-    if (time < start) return Math.max(startNumber, startNumber + i - 1);
+  const n = timeline.length;
+  if (n === 0) return startNumber;
+  const target = time * timescale;
+  // 경계 빠르게: 첫 세그먼트보다 이전이면 첫 세그먼트, 마지막보다 이후면 마지막.
+  if (target < timeline[0].time) return startNumber;
+  const last = timeline[n - 1];
+  if (target >= last.time + last.duration) return startNumber + n - 1;
+  let lo = 0;
+  let hi = n - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const seg = timeline[mid];
+    if (target < seg.time) hi = mid - 1;
+    else if (target >= seg.time + seg.duration) lo = mid + 1;
+    else return startNumber + mid;
   }
-  return startNumber + timeline.length - 1;
+  // 어느 세그먼트 범위에도 정확히 안 들어가는 경우(드물게 갭) — 직전 세그먼트로 클램프.
+  return startNumber + Math.max(0, hi);
 }
 
 // Returns true when segStart falls in the interior of a skip range relative
