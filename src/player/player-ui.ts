@@ -1263,6 +1263,17 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
 
   let autoSkipAc: AbortController | null = null;
   let pendingAutoSkipKey: string | null = null;
+  // 자동스킵이 일으킨 내부 seek는 사용자 seek로 오인하면 안 된다. 직전 시각을 기록해
+  // seeking 핸들러에서 작은 윈도우 안의 seek는 internal로 본다.
+  let internalSeekAt = 0;
+  // 사용자가 OP/ED 안으로 직접 seek한 경우 일정 시간 자동스킵 보류 → 일부러 보고 싶을 수도.
+  let lastUserSeekIntoSkipAt = 0;
+  let lastUserSeekTargetKind: "opening" | "ending" | null = null;
+  const INTERNAL_SEEK_WINDOW_MS = 250;
+  const USER_SEEK_GRACE_MS = 3000;
+  // 잔여 시간이 이보다 작으면 자동스킵을 생략한다. 거의 끝난 구간을 굳이 seek하면
+  // 재초기화 부담만 만들고 종종 마지막 프레임이 깜빡인다.
+  const MIN_REMAINING_FOR_SKIP_SECONDS = 1;
 
   function cancelScheduledAutoSkip(): void {
     autoSkipAc?.abort();
@@ -1279,9 +1290,14 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
     return Math.max(0, time);
   }
 
+  function performInternalSeek(target: number): void {
+    internalSeekAt = Date.now();
+    video.currentTime = target;
+  }
+
   function skipTo(time: number): void {
     cancelScheduledAutoSkip();
-    video.currentTime = normalizeSkipTarget(time);
+    performInternalSeek(normalizeSkipTarget(time));
   }
 
   function scheduleAutoSkip(
@@ -1291,6 +1307,18 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   ): void {
     const target = normalizeSkipTarget(seg.end);
     if (target <= currentTime + AUTO_SKIP_EPSILON_SECONDS) return;
+
+    // 잔여 1초 미만이면 자연 재생/ended에 맡긴다.
+    if (target - currentTime < MIN_REMAINING_FOR_SKIP_SECONDS) return;
+    if (seg.end - currentTime < MIN_REMAINING_FOR_SKIP_SECONDS) return;
+
+    // 사용자가 방금 이 구간으로 직접 seek했다면 일정 시간 자동스킵 보류.
+    if (
+      lastUserSeekTargetKind === kind &&
+      Date.now() - lastUserSeekIntoSkipAt < USER_SEEK_GRACE_MS
+    ) {
+      return;
+    }
 
     const dur = video.duration;
     const nearEndEntry =
@@ -1307,8 +1335,14 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
       if (ac.signal.aborted) return;
       autoSkipAc = null;
       pendingAutoSkipKey = null;
+      // 타이머 도중 사용자가 자동스킵을 꺼버렸을 수 있다.
+      if (!autoSkip) return;
       const t = video.currentTime;
-      if (t >= seg.start && t < seg.end) video.currentTime = target;
+      if (t < seg.start || t >= seg.end) return;
+      // 잔여 재확인 — 일시정지 등으로 시간이 흘러 더 의미 없어진 경우.
+      const freshTarget = normalizeSkipTarget(seg.end);
+      if (freshTarget - t < MIN_REMAINING_FOR_SKIP_SECONDS) return;
+      performInternalSeek(freshTarget);
     }, delaySeconds * 1000);
     ac.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
   }
@@ -1332,7 +1366,26 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   if (video.readyState >= 1 && isFinite(video.duration)) renderTimelineMarkers();
   else video.addEventListener("loadedmetadata", renderTimelineMarkers, { once: true, signal });
 
-  video.addEventListener("seeking", cancelScheduledAutoSkip, { signal });
+  video.addEventListener(
+    "seeking",
+    () => {
+      cancelScheduledAutoSkip();
+      // 우리 자동스킵이 트리거한 seek는 사용자 의도와 무관하다.
+      if (Date.now() - internalSeekAt < INTERNAL_SEEK_WINDOW_MS) return;
+      // 사용자가 OP/ED 구간 안으로 직접 seek했다면 일정 시간 자동스킵 보류.
+      const t = video.currentTime;
+      let landed: "opening" | "ending" | null = null;
+      if (markers!.opening && t >= markers!.opening.start && t < markers!.opening.end) landed = "opening";
+      else if (markers!.ending && t >= markers!.ending.start && t < markers!.ending.end) landed = "ending";
+      if (landed) {
+        lastUserSeekIntoSkipAt = Date.now();
+        lastUserSeekTargetKind = landed;
+      } else {
+        lastUserSeekTargetKind = null;
+      }
+    },
+    { signal },
+  );
   video.addEventListener("ended", cancelScheduledAutoSkip, { signal });
 
   // localStorage read는 timeupdate(최대 60Hz) 핫 패스에서 부담이라 캐시한다.

@@ -107,7 +107,7 @@ const _DEBUG_PLAYER =
     }
   })();
 function plog(...args: unknown[]): void {
-  if (_DEBUG_PLAYER) plog(...args);
+  if (_DEBUG_PLAYER) console.log(...args);
 }
 
 interface XmlNode {
