@@ -191,12 +191,12 @@ class Player {
   // 원래 의도 위치로 자동 점프해 UX 챙기는 작은 상태머신.
   //   idle: 복구 진행 중 아님
   //   snapped: 키프레임 스냅 직후 — 디코더가 충분히 진행하면 원위치로 seek 예약
-  //   attempted: pull-back을 시도했음 — 또 디코드 에러 나면 원위치에서 75ms씩 후퇴 재시도
-  //   givenup: 후퇴 재시도도 모두 실패 — 같은 area의 추가 디코드 에러는 무시(루프 방지)
+  //   attempted: pull-back을 시도했음 — 또 에러 나면 즉시 givenup (재시도는 같은 seek
+  //     경로라 같은 FFmpeg EOF 버그를 다시 트리거해 dead time만 키운다)
+  //   givenup: pull-back 실패 — 같은 area의 추가 디코드 에러는 무시(루프 방지)
   _decodeRecoveryState: "idle" | "snapped" | "attempted" | "givenup";
   _decodeRecoveryOriginalTarget: number | null;
   _decodeRecoverySnapTarget: number | null;
-  _decodeRecoveryAttempts: number;
 
   static _readBufferPref(key: string, fallback: number): number {
     const ls = typeof localStorage !== "undefined" ? localStorage : null;
@@ -293,20 +293,18 @@ class Player {
     this._decodeRecoveryState = "idle";
     this._decodeRecoveryOriginalTarget = null;
     this._decodeRecoverySnapTarget = null;
-    this._decodeRecoveryAttempts = 0;
   }
 
   _clearDecodeRecovery(): void {
     this._decodeRecoveryState = "idle";
     this._decodeRecoveryOriginalTarget = null;
     this._decodeRecoverySnapTarget = null;
-    this._decodeRecoveryAttempts = 0;
   }
 
   // timeupdate / _recordGoodTime에서 호출. snap 상태에서 디코더가 키프레임을 충분히
   // 소화했다 싶을 때(snap+0.5초 이상 진행) 원래 의도 위치로 한 번 점프한다.
   // 실패해서 또 디코드 에러가 나면 _handleVideoError가 "attempted" 상태를 감지해
-  // 결함 구간으로 판단, forward skip으로 도망간다(루프 방지).
+  // 즉시 givenup으로 전환 (재시도는 같은 seek 경로라 같은 FFmpeg EOF 버그를 또 트리거).
   _maybePullToOriginalTarget(t: number): void {
     if (this._decodeRecoveryState === "idle") return;
     const orig = this._decodeRecoveryOriginalTarget;
@@ -327,6 +325,18 @@ class Player {
     // 디코더 warm-up: 스냅 직후 곧바로 점프하면 또 EOF 날 수 있다. 0.2초면 키프레임이
     // 소화되기엔 충분(0.5초는 사용자가 체감하기엔 너무 김).
     if (t < snap + 0.2) return;
+    // Gap heuristic: snap과 origin이 멀면 pull-back은 위험만 크다.
+    // pull-back은 seek 경로라 자주 같은 FFmpeg EOF 버그를 다시 트리거하는데, 그 때
+    // 복구하려면 reinit(~1-2초 dead time)이 든다. 반면 그냥 자연 재생에 맡기면 같은
+    // 시간 안에 origin까지 도달하면서 사용자는 중간 콘텐츠를 보게 된다(dead time 0).
+    // 작은 갭(<2초)에선 pull-back이 즉시 보상이 있어 시도할 가치 있음.
+    if (orig - snap > 2) {
+      console.log(
+        `[PLAYER] decode recovery: gap ${(orig - snap).toFixed(3)}s too large for pull-back, letting natural playback proceed`,
+      );
+      this._clearDecodeRecovery();
+      return;
+    }
     this._decodeRecoveryState = "attempted";
     console.log(
       `[PLAYER] decode recovery pull-to-original ${t.toFixed(3)}s -> ${orig.toFixed(3)}s`,
@@ -2361,15 +2371,15 @@ class Player {
         }
       }
 
-      // Pull-back retry / givenup: attempted 상태에서는 forward skip(결함 구간을 지나쳐 도망)을
-      // 하지 않고, 원래 target에서 75ms씩 뒤로 빼면서 재시도한다. snap+0.1초까지 가도 안 되면
-      // givenup으로 전환 — 더 시도하지 않고 snap에서 재생(루프 방지).
-      // givenup 상태에서 같은 area의 추가 디코드 에러는 그냥 무시(이미 포기한 상태이므로 reinit
-      // 폭주만 만든다).
+      // Pull-back via seek 실패 → forward skip(콘텐츠 잘림)도 -75ms 재시도(같은 seek 경로
+      // 재트리거로 reinit 폭주, ~5초 dead time)도 둘 다 나쁘다. snap으로 reinit 한 번 하고
+      // 자연 재생에 맡긴다(자연 재생 디코드는 seek 경로와 달리 같은 EOF 버그 회피 가능 —
+      // 실측됨). 사용자는 snap부터 콘텐츠를 보게 됨.
+      // givenup 상태에서 같은 area의 추가 디코드 에러는 무시(reinit 폭주만 만든다).
       if (code === 3 /* MEDIA_ERR_DECODE */ && this._decodeRecoveryState === "givenup") {
         const orig = this._decodeRecoveryOriginalTarget;
         if (orig !== null && Math.abs(ct - orig) < 5) {
-          console.warn(`[PLAYER] decode error at ${ct.toFixed(3)}s — given up after pull-back retries, ignoring`);
+          console.warn(`[PLAYER] decode error at ${ct.toFixed(3)}s — given up after pull-back, ignoring`);
           return;
         }
         this._clearDecodeRecovery();
@@ -2379,30 +2389,15 @@ class Player {
         const orig = this._decodeRecoveryOriginalTarget;
         const snap = this._decodeRecoverySnapTarget;
         if (orig !== null && snap !== null) {
-          this._decodeRecoveryAttempts++;
-          const MAX_PULLBACK_ATTEMPTS = 4;
-          const target = orig - this._decodeRecoveryAttempts * 0.075;
-          if (this._decodeRecoveryAttempts > MAX_PULLBACK_ATTEMPTS || target <= snap + 0.1) {
-            console.warn(
-              `[PLAYER] pull-back retries exhausted at origin ${orig.toFixed(3)}s — giving up at snap ${snap.toFixed(3)}s`,
-            );
-            this._decodeRecoveryState = "givenup";
-            this._decodeRecoveryAttempts = 0;
-            this._errorStreak = 0;
-            this._lastErrorTime = snap;
-            this._reinitMediaSource(snap).catch((e) =>
-              console.error("[PLAYER] givenup snap reinit failed:", e),
-            );
-            return;
-          }
           console.warn(
-            `[PLAYER] pull-back attempt ${this._decodeRecoveryAttempts}: origin ${orig.toFixed(3)}s -75ms*N -> ${target.toFixed(3)}s`,
+            `[PLAYER] pull-back to ${orig.toFixed(3)}s failed (Firefox FFmpeg seek-path EOF bug); reverting to snap ${snap.toFixed(3)}s`,
           );
+          this._decodeRecoveryState = "givenup";
           this._errorStreak = 0;
-          this._lastErrorTime = target;
+          this._lastErrorTime = snap;
           if (this._isFirefox) this._emitCompatibilityWarning("decode");
-          this._reinitMediaSource(target).catch((e) =>
-            console.error("[PLAYER] pull-back retry reinit failed:", e),
+          this._reinitMediaSource(snap).catch((e) =>
+            console.error("[PLAYER] givenup snap reinit failed:", e),
           );
           return;
         }
@@ -2500,7 +2495,6 @@ class Player {
           this._decodeRecoveryState = "snapped";
           this._decodeRecoveryOriginalTarget = ct;
           this._decodeRecoverySnapTarget = snapped;
-          this._decodeRecoveryAttempts = 0;
         }
         ct = snapped;
       }
