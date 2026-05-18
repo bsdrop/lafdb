@@ -187,6 +187,16 @@ class Player {
   _queuedSeekTime: number | null;
   _lastExplicitTargetTime: number;
   _lastExplicitTargetAt: number;
+  // Firefox FFmpeg non-keyframe seek 시 키프레임으로 스냅한 뒤 디코더가 안정되면
+  // 원래 의도 위치로 자동 점프해 UX 챙기는 작은 상태머신.
+  //   idle: 복구 진행 중 아님
+  //   snapped: 키프레임 스냅 직후 — 디코더가 충분히 진행하면 원위치로 seek 예약
+  //   attempted: pull-back을 시도했음 — 또 디코드 에러 나면 원위치에서 75ms씩 후퇴 재시도
+  //   givenup: 후퇴 재시도도 모두 실패 — 같은 area의 추가 디코드 에러는 무시(루프 방지)
+  _decodeRecoveryState: "idle" | "snapped" | "attempted" | "givenup";
+  _decodeRecoveryOriginalTarget: number | null;
+  _decodeRecoverySnapTarget: number | null;
+  _decodeRecoveryAttempts: number;
 
   static _readBufferPref(key: string, fallback: number): number {
     const ls = typeof localStorage !== "undefined" ? localStorage : null;
@@ -280,6 +290,49 @@ class Player {
     this._queuedSeekTime = null;
     this._lastExplicitTargetTime = -1;
     this._lastExplicitTargetAt = 0;
+    this._decodeRecoveryState = "idle";
+    this._decodeRecoveryOriginalTarget = null;
+    this._decodeRecoverySnapTarget = null;
+    this._decodeRecoveryAttempts = 0;
+  }
+
+  _clearDecodeRecovery(): void {
+    this._decodeRecoveryState = "idle";
+    this._decodeRecoveryOriginalTarget = null;
+    this._decodeRecoverySnapTarget = null;
+    this._decodeRecoveryAttempts = 0;
+  }
+
+  // timeupdate / _recordGoodTime에서 호출. snap 상태에서 디코더가 키프레임을 충분히
+  // 소화했다 싶을 때(snap+0.5초 이상 진행) 원래 의도 위치로 한 번 점프한다.
+  // 실패해서 또 디코드 에러가 나면 _handleVideoError가 "attempted" 상태를 감지해
+  // 결함 구간으로 판단, forward skip으로 도망간다(루프 방지).
+  _maybePullToOriginalTarget(t: number): void {
+    if (this._decodeRecoveryState === "idle") return;
+    const orig = this._decodeRecoveryOriginalTarget;
+    // 원래 target을 충분히 지나 안정 재생 중이면 더 추적할 필요 없음.
+    if (orig !== null && t >= orig + 5) {
+      this._clearDecodeRecovery();
+      return;
+    }
+    if (this._decodeRecoveryState !== "snapped") return;
+    const snap = this._decodeRecoverySnapTarget;
+    if (snap === null || orig === null) return;
+    if (this._recovering || this._reinitInProgress || this.seekInProgress) return;
+    if (this._pendingResumeTime !== null) return;
+    if (t >= orig - 0.1) {
+      this._clearDecodeRecovery();
+      return;
+    }
+    // 디코더 warm-up: 스냅 직후 곧바로 점프하면 또 EOF 날 수 있다. 0.2초면 키프레임이
+    // 소화되기엔 충분(0.5초는 사용자가 체감하기엔 너무 김).
+    if (t < snap + 0.2) return;
+    this._decodeRecoveryState = "attempted";
+    console.log(
+      `[PLAYER] decode recovery pull-to-original ${t.toFixed(3)}s -> ${orig.toFixed(3)}s`,
+    );
+    this._markInternalSeek();
+    this._seekTo(orig);
   }
 
   get _currentTime(): number {
@@ -439,6 +492,7 @@ class Player {
       this._lastKnownGoodTime = t;
       this._lastKnownGoodAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     }
+    this._maybePullToOriginalTarget(t);
   }
 
   _play(): void {
@@ -2124,6 +2178,9 @@ class Player {
       return;
     }
 
+    // 사용자 의지로 다른 곳으로 seek했다면 진행 중인 decode 복구는 더 이상 유효하지 않다.
+    this._clearDecodeRecovery();
+
     if (seekTime < 0.5 && this._expectBrowserResetUntil && Date.now() < this._expectBrowserResetUntil) {
       this._expectBrowserResetUntil = 0;
       console.log(`[PLAYER] seek to ${seekTime.toFixed(3)}s ignored (browser reset on src attach)`);
@@ -2304,6 +2361,53 @@ class Player {
         }
       }
 
+      // Pull-back retry / givenup: attempted 상태에서는 forward skip(결함 구간을 지나쳐 도망)을
+      // 하지 않고, 원래 target에서 75ms씩 뒤로 빼면서 재시도한다. snap+0.1초까지 가도 안 되면
+      // givenup으로 전환 — 더 시도하지 않고 snap에서 재생(루프 방지).
+      // givenup 상태에서 같은 area의 추가 디코드 에러는 그냥 무시(이미 포기한 상태이므로 reinit
+      // 폭주만 만든다).
+      if (code === 3 /* MEDIA_ERR_DECODE */ && this._decodeRecoveryState === "givenup") {
+        const orig = this._decodeRecoveryOriginalTarget;
+        if (orig !== null && Math.abs(ct - orig) < 5) {
+          console.warn(`[PLAYER] decode error at ${ct.toFixed(3)}s — given up after pull-back retries, ignoring`);
+          return;
+        }
+        this._clearDecodeRecovery();
+        // 다른 area의 새 에러는 일반 경로로 처리.
+      }
+      if (code === 3 /* MEDIA_ERR_DECODE */ && this._decodeRecoveryState === "attempted") {
+        const orig = this._decodeRecoveryOriginalTarget;
+        const snap = this._decodeRecoverySnapTarget;
+        if (orig !== null && snap !== null) {
+          this._decodeRecoveryAttempts++;
+          const MAX_PULLBACK_ATTEMPTS = 4;
+          const target = orig - this._decodeRecoveryAttempts * 0.075;
+          if (this._decodeRecoveryAttempts > MAX_PULLBACK_ATTEMPTS || target <= snap + 0.1) {
+            console.warn(
+              `[PLAYER] pull-back retries exhausted at origin ${orig.toFixed(3)}s — giving up at snap ${snap.toFixed(3)}s`,
+            );
+            this._decodeRecoveryState = "givenup";
+            this._decodeRecoveryAttempts = 0;
+            this._errorStreak = 0;
+            this._lastErrorTime = snap;
+            this._reinitMediaSource(snap).catch((e) =>
+              console.error("[PLAYER] givenup snap reinit failed:", e),
+            );
+            return;
+          }
+          console.warn(
+            `[PLAYER] pull-back attempt ${this._decodeRecoveryAttempts}: origin ${orig.toFixed(3)}s -75ms*N -> ${target.toFixed(3)}s`,
+          );
+          this._errorStreak = 0;
+          this._lastErrorTime = target;
+          if (this._isFirefox) this._emitCompatibilityWarning("decode");
+          this._reinitMediaSource(target).catch((e) =>
+            console.error("[PLAYER] pull-back retry reinit failed:", e),
+          );
+          return;
+        }
+      }
+
       // 같은 위치에서 reinit 직후 또 에러 → +0.075 같은 미세 bump로는 못 빠져나간다.
       // 과거: _stopFetchLoops + scheduleStallCheck → stall watchdog가 3초 후 같은 위치에서
       // 다시 reinit → 같은 에러 → 무한루프 (사용자 보고: 중간에서 몇 초간 짧은 버퍼링이
@@ -2335,6 +2439,7 @@ class Player {
         );
         this._errorStreak = 0;
         this._lastErrorTime = skipTarget;
+        this._clearDecodeRecovery();
         this._reinitMediaSource(skipTarget).catch((e) =>
           console.error("[PLAYER] tight-loop forward-skip reinit failed:", e),
         );
@@ -2374,6 +2479,7 @@ class Player {
           // 만나 다시 루프. 앞으로(다음 세그먼트 경계) 건너뛴다.
           const fallbackTime = this._getForwardSkipTime(ct, duration as number);
           this._lastErrorTime = fallbackTime;
+          this._clearDecodeRecovery();
           console.error(
             `[PLAYER] repeated decode/network error near ${ct.toFixed(3)}s; forward-skipping to ${fallbackTime.toFixed(3)}s`,
           );
@@ -2388,7 +2494,15 @@ class Player {
       if (code === 3 /* MEDIA_ERR_DECODE */) {
         // Firefox FFmpeg의 non-keyframe seek 시 발생하는 EOF 에러는 키프레임 스냅으로
         // 자주 해결된다. +0.075 미세 bump는 같은 위치에 다시 떨어져 도움이 안 된다.
-        ct = this._getKeyframeRecoveryTime(ct);
+        const snapped = this._getKeyframeRecoveryTime(ct);
+        if (this._decodeRecoveryState === "idle" && snapped < ct - 0.25) {
+          // 사용자 의도 위치에서 벗어났다 → 안정 재생되면 다시 끌어오기 위해 기억.
+          this._decodeRecoveryState = "snapped";
+          this._decodeRecoveryOriginalTarget = ct;
+          this._decodeRecoverySnapTarget = snapped;
+          this._decodeRecoveryAttempts = 0;
+        }
+        ct = snapped;
       }
       this._lastErrorTime = ct;
       if (this._isFirefox && (code === 3 || this._errorStreak > 0)) {

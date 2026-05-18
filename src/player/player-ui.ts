@@ -943,58 +943,26 @@ function prefersNativeVideoFullscreen(): boolean {
   return /OculusBrowser|Quest|Meta Quest|Pico Browser/i.test(ua);
 }
 
-function togglePlayerFullscreen(): void {
-  const box = document.getElementById("video-box");
-  const video = document.getElementById("v");
-  if (!box) return;
-  if (document.fullscreenElement) {
-    // 일부 브라우저(특히 구버전 Firefox)는 fullscreen을 스택으로 관리해 한 번의
-    // exitFullscreen()이 한 레벨만 pop한다(box + video 둘 다 fs인 경우 video만 빠지고
-    // box는 남음). 사용자 의도는 "완전히 빠져나가기"이므로 루프로 비울 때까지 exit.
-    console.warn("[PLAYER] toggle exit fullscreen");
-    void exitAllFullscreen();
-    return;
-  }
-  const target = prefersNativeVideoFullscreen() && video ? video : box;
-  console.warn("[PLAYER] toggle request fullscreen on", target === video ? "video" : "box");
-  target.requestFullscreen?.()?.catch((e) => {
-    console.error("[PLAYER] requestFullscreen failed:", e);
-  });
-}
+// 두 이벤트 swap 사이의 최대 시간(ms). 같은 사용자 액션에서 발생하는 swap은
+// 대부분 같은 task에서 일어나지만, 일부 브라우저는 macrotask로 분리한다.
+const BOX_TO_VIDEO_SWAP_WINDOW_MS = 400;
 
-async function exitAllFullscreen(): Promise<void> {
-  let guard = 0;
-  while (document.fullscreenElement && guard++ < 4) {
-    try {
-      await document.exitFullscreen?.();
-    } catch (e) {
-      console.error("[PLAYER] exitFullscreen failed:", e);
-      break;
-    }
-  }
-}
+// fullscreen 상태머신.
+//   coerceInProgress: 우리가 일으킨 exit/request 진행 중 — fullscreenchange 핸들러는 swap 감지 건너뜀.
+//   lastWasBox / lastBoxExitAt: 박스에서 비디오로 swap(native 버튼 toggle)을 한/두 이벤트 패턴 모두에서 감지.
+//   coercionDisabled: 한 번이라도 NotAllowedError(유저 제스쳐 부재) 발생 → 세션 동안 강제 변환 중단.
+const fsState = {
+  coerceInProgress: false,
+  lastWasBox: false,
+  lastBoxExitAt: 0,
+  coercionDisabled: false,
+};
 
 function syncPlayerFullscreenClass(): void {
   const box = document.getElementById("video-box");
   if (!box) return;
   box.classList.toggle("is-box-fullscreen", document.fullscreenElement === box);
 }
-
-let fullscreenCoercionInProgress = false;
-// 직전 fullscreen element가 우리 박스였는지 기억한다.
-// 사용자가 박스-풀스크린 중 비디오의 native 풀스크린 버튼을 누르면 브라우저는
-// 박스 -> 비디오로 풀스크린 element를 swap한다(브라우저에 따라 1 이벤트 swap이거나
-// "box→null→video" 두 이벤트). 이 swap을 "exit 의도"로 해석한다
-// (사용자에게는 동일한 버튼이 toggle처럼 보여야 정상).
-// 두 이벤트 패턴을 처리하기 위해, fsEl=null 직후에도 일정 시간 동안 플래그를 유지한다.
-let lastFullscreenWasBox = false;
-let lastBoxExitAt = 0;
-// 두 이벤트 swap 사이의 최대 시간(ms). 같은 사용자 액션에서 발생하는 swap은
-// 대부분 같은 task에서 일어나지만, 일부 브라우저는 macrotask로 분리한다.
-const BOX_TO_VIDEO_SWAP_WINDOW_MS = 400;
-// 첫 coercion 시도에서 NotAllowedError(유저 제스쳐 부재) 등이 나오면 이 세션 동안
-// 더 이상 강제 변환을 시도하지 않는다. 다음 새로고침 전까지 native 풀스크린을 존중한다.
-let coercionDisabledForSession = false;
 
 function isUserGestureError(err: unknown): boolean {
   if (!err) return false;
@@ -1009,24 +977,55 @@ function isUserGestureError(err: unknown): boolean {
   );
 }
 
-async function forceBoxFullscreenFromNativeRequest(): Promise<void> {
-  if (coercionDisabledForSession) return;
+// 일부 브라우저(특히 구버전 Firefox)는 fullscreen을 스택으로 관리해 한 번의 exit가 한 레벨만 pop한다.
+// 사용자 의도는 "완전히 빠져나가기"이므로 비워질 때까지 반복.
+// asCoercion=true면 우리가 일으킨 exit으로 표시 — fullscreenchange 핸들러가 swap 감지를 건너뛴다.
+async function exitAllFullscreen(asCoercion: boolean): Promise<void> {
+  if (asCoercion) fsState.coerceInProgress = true;
+  try {
+    let guard = 0;
+    while (document.fullscreenElement && guard++ < 4) {
+      await document.exitFullscreen?.();
+    }
+  } catch (e) {
+    console.error("[PLAYER] exitFullscreen failed:", e);
+  } finally {
+    if (asCoercion) fsState.coerceInProgress = false;
+  }
+}
+
+function togglePlayerFullscreen(): void {
+  const box = document.getElementById("video-box");
+  const video = document.getElementById("v");
+  if (!box) return;
+  if (document.fullscreenElement) {
+    console.warn("[PLAYER] toggle exit fullscreen");
+    void exitAllFullscreen(false);
+    return;
+  }
+  const target = prefersNativeVideoFullscreen() && video ? video : box;
+  console.warn("[PLAYER] toggle request fullscreen on", target === video ? "video" : "box");
+  target.requestFullscreen?.()?.catch((e) => {
+    console.error("[PLAYER] requestFullscreen failed:", e);
+  });
+}
+
+// VR이 아닌 브라우저에서 비디오의 native fs 요청을 박스 fs로 강제 변환.
+async function coerceVideoFullscreenToBox(): Promise<void> {
+  if (fsState.coercionDisabled) return;
   const box = document.getElementById("video-box");
   if (!box) return;
   if (document.fullscreenElement === box) {
     syncPlayerFullscreenClass();
     return;
   }
-
-  fullscreenCoercionInProgress = true;
+  fsState.coerceInProgress = true;
   try {
-    if (document.fullscreenElement) {
-      await document.exitFullscreen?.();
-    }
+    if (document.fullscreenElement) await document.exitFullscreen?.();
     await box.requestFullscreen?.();
   } catch (err) {
     if (isUserGestureError(err)) {
-      coercionDisabledForSession = true;
+      fsState.coercionDisabled = true;
       console.warn(
         "[PLAYER] fullscreen coercion blocked (likely no user gesture);" +
           " disabling box-fullscreen coercion for the rest of this session.",
@@ -1035,24 +1034,7 @@ async function forceBoxFullscreenFromNativeRequest(): Promise<void> {
       console.error("[PLAYER] fullscreen coercion failed:", err);
     }
   } finally {
-    fullscreenCoercionInProgress = false;
-  }
-}
-
-async function exitFullscreenAfterNativeToggle(): Promise<void> {
-  fullscreenCoercionInProgress = true;
-  console.warn("[PLAYER] native fullscreen toggle → exiting all fullscreen levels");
-  try {
-    // 스택형 fullscreen(box → video push) 환경에서 한 번의 exit는 한 레벨만 pop한다.
-    // 사용자 의도는 "토글로 빠져나가기"이므로 비워질 때까지 반복.
-    let guard = 0;
-    while (document.fullscreenElement && guard++ < 4) {
-      await document.exitFullscreen?.();
-    }
-  } catch (e) {
-    console.error("[PLAYER] native fullscreen toggle exit failed:", e);
-  } finally {
-    fullscreenCoercionInProgress = false;
+    fsState.coerceInProgress = false;
   }
 }
 
@@ -1066,62 +1048,48 @@ document.addEventListener("fullscreenchange", () => {
   // 진단용 — 사용자가 fs 동작 보고할 때 어떤 경로로 갔는지 추적 가능하게.
   const fsLabel = fsEl === box ? "box" : fsEl === video ? "video" : fsEl ? "other" : "none";
   console.warn(
-    `[PLAYER] fullscreenchange: fsEl=${fsLabel} coerce=${fullscreenCoercionInProgress}` +
-      ` wasBox=${lastFullscreenWasBox} exitAt=${lastBoxExitAt ? Date.now() - lastBoxExitAt + "ms ago" : "0"}`,
+    `[PLAYER] fullscreenchange: fsEl=${fsLabel} coerce=${fsState.coerceInProgress}` +
+      ` wasBox=${fsState.lastWasBox} exitAt=${fsState.lastBoxExitAt ? Date.now() - fsState.lastBoxExitAt + "ms ago" : "0"}`,
   );
 
-  if (fullscreenCoercionInProgress) {
-    if (fsEl === box) {
-      lastFullscreenWasBox = true;
-      lastBoxExitAt = 0;
-    } else if (!fsEl) {
-      // coercion 자체가 일으킨 exit은 final로 본다(swap 후보 아님).
-      lastFullscreenWasBox = false;
-      lastBoxExitAt = 0;
-    }
+  if (fsState.coerceInProgress) {
+    if (fsEl === box) { fsState.lastWasBox = true; fsState.lastBoxExitAt = 0; }
+    else if (!fsEl) { fsState.lastWasBox = false; fsState.lastBoxExitAt = 0; }
     return;
   }
 
-  // Case 1: 한 이벤트로 box → video swap한 브라우저.
-  // Case 2: 직전 box 풀스크린이 swap 윈도우 내에 끝난 직후 video가 진입한 경우
-  //         (box→null→video 두 이벤트 패턴). 둘 다 native 버튼이 toggle 의도로 눌린 케이스.
+  // 박스→비디오 swap(native fs 버튼)이 한/두 이벤트로 도착 — 둘 다 toggle 의도로 해석.
   const recentBoxExit =
-    !lastFullscreenWasBox && lastBoxExitAt > 0 && Date.now() - lastBoxExitAt <= BOX_TO_VIDEO_SWAP_WINDOW_MS;
-  if (video && fsEl === video && (lastFullscreenWasBox || recentBoxExit)) {
+    !fsState.lastWasBox && fsState.lastBoxExitAt > 0 &&
+    Date.now() - fsState.lastBoxExitAt <= BOX_TO_VIDEO_SWAP_WINDOW_MS;
+  if (video && fsEl === video && (fsState.lastWasBox || recentBoxExit)) {
     console.warn("[PLAYER] detected box→video swap (native fs button); exiting");
-    lastFullscreenWasBox = false;
-    lastBoxExitAt = 0;
-    void exitFullscreenAfterNativeToggle();
+    fsState.lastWasBox = false;
+    fsState.lastBoxExitAt = 0;
+    void exitAllFullscreen(true);
     return;
   }
 
   if (fsEl === box) {
-    lastFullscreenWasBox = true;
-    lastBoxExitAt = 0;
+    fsState.lastWasBox = true;
+    fsState.lastBoxExitAt = 0;
     return;
   }
 
   if (!fsEl) {
-    // 박스에서 막 빠져나온 경우라면 swap 윈도우 동안 플래그를 살려둔다.
-    // 사용자가 직접 종료(Esc/우리 버튼)했다면 그대로 false 처리하면 되지만,
-    // 두 이벤트 swap 패턴을 놓치지 않으려면 일정 시간 대기가 필요.
-    if (lastFullscreenWasBox) {
-      lastBoxExitAt = Date.now();
-      lastFullscreenWasBox = false;
+    // 박스에서 막 빠져나왔다면 두 이벤트 swap 패턴을 위해 윈도우 동안 마커 유지.
+    if (fsState.lastWasBox) {
+      fsState.lastBoxExitAt = Date.now();
+      fsState.lastWasBox = false;
     } else {
-      lastBoxExitAt = 0;
+      fsState.lastBoxExitAt = 0;
     }
     return;
   }
 
-  // 다른 element가 풀스크린에 들어간 경우. VR 브라우저에서는 native 시네마 모드를
-  // 유지하기 위해 box로의 강제 변환을 건너뛴다.
-  if (prefersNativeVideoFullscreen()) {
-    return;
-  }
-  if (fsEl !== box) {
-    void forceBoxFullscreenFromNativeRequest();
-  }
+  // 다른 element 풀스크린: VR은 native cinema 모드 유지, 일반 브라우저는 박스로 강제 변환.
+  if (prefersNativeVideoFullscreen()) return;
+  if (fsEl !== box) void coerceVideoFullscreenToBox();
 });
 
 function setupFullscreenButton(): void {
@@ -1840,6 +1808,19 @@ function setupAutoplay(epId: string): void {
       video._prevWebkitMode === "picture-in-picture")
       onLeavePiP();
     video._prevWebkitMode = video.webkitPresentationMode;
+  }, { signal });
+
+  // Firefox tail decode 에러로 끝부분에서 finalize되면 video.error가 set되고
+  // play가 멈춰 ended/timeupdate 둘 다 안 발화 → autoplay-next가 영원히 트리거 안 됨
+  // (사용자 보고: 24:01/24:01에서 다음 화로 안 넘어가고 버퍼링 스피너만 도는 증상).
+  // 끝 근처에서 에러가 나면 ended로 간주하고 다음 화 진행.
+  video.addEventListener("error", () => {
+    if (autoplayTriggered) return;
+    const dur = video.duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    if (dur - video.currentTime < 2) {
+      requestAutoplayNext("video error near end");
+    }
   }, { signal });
 
   loadEpList();
