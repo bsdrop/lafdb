@@ -14,7 +14,7 @@ function getCurrentMirrorRootHost(): string | null {
   // If we are on a known laftel domain, we don't have a mirror root to apply to others
   if (host.endsWith(".laftel.net") || host === "laftel.net") return null;
   // Strip common subdomains to get the root
-  return host.replace(/^(?:www|app|mediacloud|streaming-bp|thumbnail)\./, "");
+  return host.replace(/^(?:api|mediacloud|streaming-bp|thumbnail)\./, "");
 }
 
 function isI2PHost(hostname: string): boolean {

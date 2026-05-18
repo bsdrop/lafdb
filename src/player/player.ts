@@ -1832,6 +1832,43 @@ class Player {
     return safe;
   }
 
+  // Firefox FFmpeg에서 non-keyframe seek 시 "avcodec_send_packet error: End of file"가
+  // 잘 난다. 디코더가 키프레임 없이 sample을 받으면 EOF로 오해하는 버그. 세그먼트
+  // 시작점(거의 항상 SAP/키프레임)으로 스냅하면 디코더가 받아들이고 그대로 재생을 이어간다.
+  _getKeyframeRecoveryTime(time: number): number {
+    const videoTrack = this._getVideoTrackForResume();
+    if (!videoTrack?.timeline?.length) return Math.max(0, time);
+    const segNum = this.timeToSegmentNumber(videoTrack, time);
+    const range = this.segmentNumberToTimeRange(videoTrack, segNum);
+    if (!range) return Math.max(0, time);
+    const snap = Math.max(0, range.start + 0.01);
+    if (Math.abs(snap - time) >= 0.25) {
+      console.warn(`[PLAYER] decode recovery keyframe snap ${time.toFixed(3)}s -> ${snap.toFixed(3)}s`);
+    }
+    return snap;
+  }
+
+  // 같은 위치에서 reinit 직후 또 에러가 났다면 (positional decode bug 가능성 농후) 미세
+  // bump으로는 절대 못 빠져나간다. 다음 세그먼트(다음 키프레임) 시작으로 점프해 결함
+  // 구간을 통째로 건너뛴다. duration 너머는 절대 가지 않게 cap.
+  _getForwardSkipTime(time: number, duration: number): number {
+    const videoTrack = this._getVideoTrackForResume();
+    let target: number;
+    if (videoTrack?.timeline?.length) {
+      const segNum = this.timeToSegmentNumber(videoTrack, time);
+      const nextRange =
+        this.segmentNumberToTimeRange(videoTrack, segNum + 1) ??
+        this.segmentNumberToTimeRange(videoTrack, segNum);
+      target = nextRange ? Math.max(time + 0.05, nextRange.start + 0.01) : time + 4;
+    } else {
+      target = time + 4;
+    }
+    if (Number.isFinite(duration) && duration > 0) {
+      target = Math.min(target, Math.max(0, duration - 0.1));
+    }
+    return Math.max(0, target);
+  }
+
   _stopFetchLoops(reason: string): void {
     this.generation++;
     for (const ac of this.abortControllers) ac.abort();
@@ -2267,17 +2304,40 @@ class Player {
         }
       }
 
-      // 같은 지점에서 매우 짧은 간격으로 다시 에러가 나면 재초기화 폭주만 막고,
-      // 디코더가 이미 망가진 상태라면 nudge보다 watchdog에 복구를 맡긴다.
+      // 같은 위치에서 reinit 직후 또 에러 → +0.075 같은 미세 bump로는 못 빠져나간다.
+      // 과거: _stopFetchLoops + scheduleStallCheck → stall watchdog가 3초 후 같은 위치에서
+      // 다시 reinit → 같은 에러 → 무한루프 (사용자 보고: 중간에서 몇 초간 짧은 버퍼링이
+      // 반복되는 증상). 다음 세그먼트 경계(다음 키프레임)로 forward skip해서 결함 구간을
+      // 통째로 건너뛴다.
       if (
         this._lastReinitAt > 0 &&
         now - this._lastReinitAt < 1500 &&
         this._lastReinitTime !== null &&
         Math.abs(ct - this._lastReinitTime) < 1.0
       ) {
-        this._stopFetchLoops("throttled media error");
-        console.warn(`[PLAYER] throttling immediate reinit loop at ${ct.toFixed(3)}s`);
-        this._scheduleStallCheck();
+        const skipTarget = this._getForwardSkipTime(ct, duration as number);
+        if (Math.abs(skipTarget - this._lastReinitTime) < 0.05) {
+          // 마지막 세그먼트 등으로 더 앞으로 못 가는 경우. 무한 시도 회피 — 그대로 finalize.
+          console.error(
+            `[PLAYER] tight reinit loop at ${ct.toFixed(3)}s and no forward skip available; finalizing`,
+          );
+          this._clearStallWatchdog();
+          this._stopFetchLoops("tight loop terminal");
+          try {
+            if (this.ms && this.ms.readyState === "open") this.ms.endOfStream();
+          } catch (e) {
+            console.error("[PLAYER] endOfStream() during tight-loop terminal failed:", (e as Error).message);
+          }
+          return;
+        }
+        console.warn(
+          `[PLAYER] tight reinit loop at ${ct.toFixed(3)}s, forward-skipping to ${skipTarget.toFixed(3)}s`,
+        );
+        this._errorStreak = 0;
+        this._lastErrorTime = skipTarget;
+        this._reinitMediaSource(skipTarget).catch((e) =>
+          console.error("[PLAYER] tight-loop forward-skip reinit failed:", e),
+        );
         return;
       }
 
@@ -2310,10 +2370,12 @@ class Player {
             }
             return;
           }
-          const fallbackTime = Math.max(0, Math.min(this._lastKnownGoodTime ?? 0, ct - 1));
+          // 중간에서 N회 반복 → backward(lastKnownGood-1)로 가면 같은 결함 지점을 또
+          // 만나 다시 루프. 앞으로(다음 세그먼트 경계) 건너뛴다.
+          const fallbackTime = this._getForwardSkipTime(ct, duration as number);
           this._lastErrorTime = fallbackTime;
           console.error(
-            `[PLAYER] repeated decode/network error near ${ct.toFixed(3)}s; reinitializing from ${fallbackTime.toFixed(3)}s`,
+            `[PLAYER] repeated decode/network error near ${ct.toFixed(3)}s; forward-skipping to ${fallbackTime.toFixed(3)}s`,
           );
           this._reinitMediaSource(fallbackTime).catch((e) =>
             console.error("[PLAYER] repeated-error fallback reinit failed:", e),
@@ -2324,7 +2386,9 @@ class Player {
         this._errorStreak = 0;
       }
       if (code === 3 /* MEDIA_ERR_DECODE */) {
-        ct = this._getDecodeRecoveryTime(ct);
+        // Firefox FFmpeg의 non-keyframe seek 시 발생하는 EOF 에러는 키프레임 스냅으로
+        // 자주 해결된다. +0.075 미세 bump는 같은 위치에 다시 떨어져 도움이 안 된다.
+        ct = this._getKeyframeRecoveryTime(ct);
       }
       this._lastErrorTime = ct;
       if (this._isFirefox && (code === 3 || this._errorStreak > 0)) {
