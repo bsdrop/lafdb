@@ -153,7 +153,11 @@ class Player {
   _lastKnownGoodTime: number | null;
   _lastKnownGoodAt: number;
   _expectBrowserResetUntil: number;
-  _internalSeek: boolean;
+  // 우리가 일으킨 programmatic seek은 사용자 seek로 오인되면 안 된다. 단일 boolean으로 두면
+  // 한 번의 seeking 이벤트에서 소비돼버려, 같은 액션이 두 개의 seeking 이벤트로 분리되는
+  // 브라우저(특히 Firefox/Safari)에서 두 번째 이벤트가 user seek로 처리되는 버그가 있었다.
+  // performance.now() 기준 만료 시각을 저장해 윈도우 동안의 모든 seeking 이벤트를 internal로 본다.
+  _internalSeek: number;
   _gapCandidateStart: number;
   _reinitInProgress: boolean;
   _endOfStreamCalled: boolean;
@@ -244,7 +248,7 @@ class Player {
     this._lastKnownGoodAt = 0;
 
     this._expectBrowserResetUntil = 0;
-    this._internalSeek = false;
+    this._internalSeek = 0;
     this._gapCandidateStart = -1;
     this._reinitInProgress = false;
     this._endOfStreamCalled = false;
@@ -332,6 +336,17 @@ class Player {
   _clearPendingResumeTime(): void {
     this._pendingResumeTime = null;
     this._pendingResumeSetAt = 0;
+  }
+
+  // INTERNAL_SEEK_WINDOW_MS 동안의 seeking 이벤트는 우리가 일으킨 것으로 본다.
+  // 250ms는 두 단계 swap을 일으키는 브라우저에서도 충분하면서, 사용자가 곧바로
+  // 후속 scrub하는 동작과 겹치지 않을 정도의 보수적인 값.
+  static INTERNAL_SEEK_WINDOW_MS = 250;
+  _markInternalSeek(durationMs: number = Player.INTERNAL_SEEK_WINDOW_MS): void {
+    this._internalSeek = this._now() + durationMs;
+  }
+  _isInternalSeekActive(): boolean {
+    return this._internalSeek > this._now();
   }
 
   _rememberExplicitTarget(time: number): void {
@@ -823,7 +838,7 @@ class Player {
         console.error("[PLAYER] endOfStream() during stall finalize failed:", (e as Error).message);
       }
       if (this._video) {
-        this._internalSeek = true;
+        this._markInternalSeek();
         this._video.currentTime = Math.max(0, duration - 0.001);
       }
       return;
@@ -854,7 +869,7 @@ class Player {
         if (Math.abs(this._gapCandidateStart - gapStart) <= Player.AUTO_TIME_EPSILON) {
           console.warn(`[PLAYER] Gap detected, jumping to ${gapStart.toFixed(3)}s`);
           this._gapCandidateStart = -1;
-          this._internalSeek = true;
+          this._markInternalSeek();
           this._seekTo(gapStart);
           this._emitGapJump();
         } else {
@@ -924,7 +939,7 @@ class Player {
             `[PLAYER] decoder stall (buffer ok), nudging back 0.06s to ${nudgeTarget.toFixed(3)}s (nudge ${this._nudgeCount}/${Player.NUDGE_MAX})`,
           );
           this._stallCheckCount = 0;
-          this._internalSeek = true;
+          this._markInternalSeek();
           this._seekTo(nudgeTarget);
           this._scheduleStallCheck();
           return;
@@ -1622,7 +1637,9 @@ class Player {
     console.log(`[PLAYER] _startFetchLoopsInner gen=${gen}`);
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
-      track.inflight.clear();
+      // inflight를 무조건 clear하면 _handleSeeking에서 보존한(아직 다운로드 중인)
+      // 세그먼트가 새 fetchLoop에 의해 중복 fetch된다. 이미 진행 중인 segNum은 보존하고,
+      // 호출 직전에 _reinitMediaSource/_handleSeeking이 자체 정리(abort/clear)를 책임진다.
       this._pruneAppended(track);
     }
     for (const track of this.tracks) {
@@ -1647,11 +1664,18 @@ class Player {
     try {
       const duration = this._video?.duration ?? (this.ms && Number.isFinite(this.ms.duration) ? this.ms.duration : NaN);
 
-      // 경계 직전에서 바로 재생하면 다시 stall 나므로,
-      // 요청 시점보다 조금 앞(250ms)까지 버퍼가 찼는지 확인한다.
-      const readyThrough = Number.isFinite(duration)
-        ? Math.min(requestedTime + 0.25, Math.max(requestedTime, duration - 0.01))
-        : requestedTime + 0.25;
+      // 경계 직전에서 바로 재생하면 다시 stall 나므로, 요청 시점보다 조금 앞(250ms)까지
+      // 버퍼가 찼는지 확인한다. 단, 끝(duration-0.5초 이내)이면 미래 버퍼가 존재할 수
+      // 없으므로 그대로 requestedTime만 요구한다(과거 readyThrough가 duration 너머를
+      // 가리켜 영원히 버퍼링하던 버그 회피).
+      let readyThrough: number;
+      if (Number.isFinite(duration) && duration > 0 && duration - requestedTime <= 0.5) {
+        readyThrough = requestedTime;
+      } else if (Number.isFinite(duration) && duration > 0) {
+        readyThrough = Math.min(requestedTime + 0.25, duration - 0.01);
+      } else {
+        readyThrough = requestedTime + 0.25;
+      }
 
       // No time-based deadline: wait as long as the network and decoder need.
       // Exit conditions are reinit (generation change), MediaSource swap, or destroy —
@@ -1659,6 +1683,26 @@ class Player {
       // saved progress and confuses the user; better to remain paused until ready.
       while (true) {
         if (generation !== this.generation || mediaSource !== this.ms || this._destroyed) {
+          return;
+        }
+        // 사용자가 다른 위치로 seek했거나 큐에 다른 target이 들어왔다면 옛 위치에서
+        // 더 기다릴 이유가 없다. 새 target은 reinit/seekTimeout이 알아서 처리한다.
+        if (
+          this._queuedSeekTime != null &&
+          Math.abs(this._queuedSeekTime - requestedTime) > Player.AUTO_TIME_EPSILON
+        ) {
+          console.log(
+            `[PLAYER] _resumeWhenBuffered: queued seek diverges (${this._queuedSeekTime.toFixed(3)} vs ${requestedTime.toFixed(3)}), bailing`,
+          );
+          return;
+        }
+        if (
+          this._pendingResumeTime != null &&
+          Math.abs(this._pendingResumeTime - requestedTime) > Player.AUTO_TIME_EPSILON
+        ) {
+          console.log(
+            `[PLAYER] _resumeWhenBuffered: pendingResume diverges (${this._pendingResumeTime.toFixed(3)} vs ${requestedTime.toFixed(3)}), bailing`,
+          );
           return;
         }
 
@@ -1679,7 +1723,7 @@ class Player {
 
       console.log(`[PLAYER] Resuming at ${requestedTime.toFixed(3)}s`);
       this._setPendingResumeTime(requestedTime);
-      this._internalSeek = true;
+      this._markInternalSeek();
       this._seekTo(requestedTime);
 
       if (autoPlay) this._play();
@@ -2038,8 +2082,7 @@ class Player {
       console.log(`[PLAYER] seeking ignored (video ended) at ${seekTime.toFixed(3)}s`);
       return;
     }
-    if (this._internalSeek) {
-      this._internalSeek = false;
+    if (this._isInternalSeekActive()) {
       console.log(`[PLAYER] internal seek to ${seekTime.toFixed(3)}s, ignoring`);
       return;
     }
@@ -2052,7 +2095,7 @@ class Player {
 
     const normalizedSeekTime = this._getSeekPlaybackTime(seekTime);
     if (normalizedSeekTime !== seekTime && this._video) {
-      this._internalSeek = true;
+      this._markInternalSeek();
       this._seekTo(normalizedSeekTime);
       seekTime = normalizedSeekTime;
     }
@@ -2065,21 +2108,45 @@ class Player {
     this.seekInProgress = true;
     this._clearStallWatchdog();
 
-    this.generation++;
-    for (const ac of this.abortControllers) ac.abort();
-    this.abortControllers.clear();
-    // seek에서는 기존 MediaSource / SourceBuffer를 그대로 쓴다.
-    // 이전 generation의 append 결과만 무시되도록 token만 올린다.
+    // 새 seek 위치가 모든 트랙의 기존 버퍼 안쪽이면 fetch loop를 죽이지 않고
+    // 진행 중인 fetch도 새 keep window와 겹치는 한 그대로 둔다(스크럽으로 잠깐 점프했다가
+    // 같은 범위로 돌아오는 사용자 동작에서 같은 세그먼트를 두 번 받지 않게 한다).
+    // 버퍼 밖으로 나가는 큰 seek은 seekTimeout이 버퍼를 비우므로 모두 abort + gen bump.
+    const isInBufferSeekAll =
+      this.tracks.length > 0 && this.tracks.every((t) => this._trackTimeInBuffer(t, seekTime));
+
+    if (!isInBufferSeekAll) {
+      this.generation++;
+      for (const ac of this.abortControllers) ac.abort();
+      this.abortControllers.clear();
+    }
+
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
-      for (const [, ac] of track.inflightAcs) ac.abort();
-      track.inflightAcs.clear();
-      track.inflight.clear();
-      this._bumpTrackSbToken(track);
+      if (!isInBufferSeekAll) {
+        for (const [, ac] of track.inflightAcs) ac.abort();
+        track.inflightAcs.clear();
+        track.inflight.clear();
+        this._bumpTrackSbToken(track);
+        continue;
+      }
+      const keepStart = Math.max(0, seekTime - this.BUFFER_BEHIND_KEEP);
+      const keepEnd = seekTime + this.BUFFER_AHEAD_MAX;
+      for (const [segNum, ac] of [...track.inflightAcs]) {
+        const range = this.segmentNumberToTimeRange(track, segNum);
+        const inKeep = !!range && range.end >= keepStart && range.start <= keepEnd;
+        if (!inKeep) {
+          ac.abort();
+          track.inflightAcs.delete(segNum);
+          track.inflight.delete(segNum);
+        }
+        // inKeep: AC/inflight 그대로 유지. gen/token도 안 올렸으므로 append가 정상 커밋됨.
+      }
     }
 
     clearTimeout(this._seekTimeout!);
     const seekGeneration = this.generation;
+    const skipFetchLoopRestart = isInBufferSeekAll;
     this._seekTimeout = setTimeout(async () => {
       if (this._destroyed || seekGeneration !== this.generation) return;
       this.seekInProgress = false;
@@ -2132,7 +2199,9 @@ class Player {
         }
       }
 
-      this._startFetchLoopsInner();
+      // In-buffer seek은 기존 fetch loop가 살아 있으므로 재시작하지 않는다(중복 loop 방지).
+      // 살아 있는 loop는 다음 iteration에서 _currentTime 변화를 보고 자연스럽게 새 위치 앞으로 fetch한다.
+      if (!skipFetchLoopRestart) this._startFetchLoopsInner();
       if (this._destroyed || seekGeneration !== this.generation) return;
       this._stallCheckCount = 0;
       this._stallSnapshotTime = null;
@@ -2191,7 +2260,7 @@ class Player {
             console.error("[PLAYER] endOfStream() during error finalize failed:", (e as Error).message);
           }
           if (this._video) {
-            this._internalSeek = true;
+            this._markInternalSeek();
             this._video.currentTime = Math.max(0, duration - 0.001);
           }
           return;
@@ -2215,10 +2284,33 @@ class Player {
       if (this._lastErrorTime !== undefined && Math.abs(ct - this._lastErrorTime) < 2) {
         this._errorStreak = (this._errorStreak || 0) + 1;
         if (this._errorStreak >= Player.DECODE_RECOVERY_MAX_RETRIES) {
+          this._errorStreak = 0;
           const nearEndFallback =
             Number.isFinite(duration) && duration > 0 && duration - ct <= Player.FIREFOX_TAIL_DECODE_EOF_SECONDS + 2;
-          const fallbackTime = nearEndFallback ? 0 : Math.max(0, Math.min(this._lastKnownGoodTime ?? 0, ct - 1));
-          this._errorStreak = 0;
+          if (nearEndFallback) {
+            // 끝 근처에서 같은 위치 디코드 에러가 반복되면 과거에는 fallback=0으로 reinit해서
+            // 사용자가 갑자기 처음부터 재생되는 버그가 있었다. 끝부분이 망가졌다면 그대로
+            // 재생을 종료하는 게 사용자 입장에서 합리적(되감기는 사용자가 의도해야 한다).
+            console.error(
+              `[PLAYER] repeated decode/network error near end (ct=${ct.toFixed(3)}/dur=${(duration as number).toFixed(3)}); finalizing playback`,
+            );
+            this._clearStallWatchdog();
+            this._stopFetchLoops("repeated near-end media error");
+            try {
+              if (this.ms && this.ms.readyState === "open") this.ms.endOfStream();
+            } catch (e) {
+              console.error(
+                "[PLAYER] endOfStream() during repeated-error finalize failed:",
+                (e as Error).message,
+              );
+            }
+            if (this._video && Number.isFinite(duration) && (duration as number) > 0) {
+              this._markInternalSeek();
+              this._video.currentTime = Math.max(0, (duration as number) - 0.001);
+            }
+            return;
+          }
+          const fallbackTime = Math.max(0, Math.min(this._lastKnownGoodTime ?? 0, ct - 1));
           this._lastErrorTime = fallbackTime;
           console.error(
             `[PLAYER] repeated decode/network error near ${ct.toFixed(3)}s; reinitializing from ${fallbackTime.toFixed(3)}s`,
