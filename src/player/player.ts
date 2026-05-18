@@ -183,6 +183,8 @@ class Player {
   _queuedSeekTime: number | null;
   _lastExplicitTargetTime: number;
   _lastExplicitTargetAt: number;
+  _resumeOriginalTarget: number | null;
+  _resumeRecoveryAttempts: number;
 
   static _readBufferPref(key: string, fallback: number): number {
     const ls = typeof localStorage !== "undefined" ? localStorage : null;
@@ -276,6 +278,8 @@ class Player {
     this._queuedSeekTime = null;
     this._lastExplicitTargetTime = -1;
     this._lastExplicitTargetAt = 0;
+    this._resumeOriginalTarget = null;
+    this._resumeRecoveryAttempts = 0;
   }
 
   get _currentTime(): number {
@@ -423,6 +427,28 @@ class Player {
     if (t > 0.5) {
       this._lastKnownGoodTime = t;
       this._lastKnownGoodAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+      this._maybePullToOriginalResume(t);
+    }
+  }
+
+  // _recordGoodTime이 호출될 때마다 점검:
+  //   - 원본에 충분히 가까이 도달했으면 resume 상태 클리어.
+  //   - keyframe(snap) 위치에서 처음 frame이 잡혔으면 원본으로 silent pull.
+  _maybePullToOriginalResume(t: number): void {
+    const original = this._resumeOriginalTarget;
+    if (original == null) return;
+    const drift = original - t;
+    if (Math.abs(drift) < 0.2) {
+      // 원본(또는 bump된 근사) 도달 — resume 종료.
+      this._resumeOriginalTarget = null;
+      this._resumeRecoveryAttempts = 0;
+      return;
+    }
+    // 스냅 직후이고 원본이 앞쪽에 있을 때만 pull (한 번만).
+    if (this._resumeRecoveryAttempts === 1 && drift > 0.2) {
+      console.log(`[PLAYER] resume auto-pull ${t.toFixed(3)}s -> ${original.toFixed(3)}s`);
+      this._internalSeek = true;
+      this._seekTo(original);
     }
   }
 
@@ -1603,6 +1629,13 @@ class Player {
       this._setPendingResumeTime(resumeTime);
       this.lastSeekTime = resumeTime;
       this._rememberExplicitTarget(resumeTime);
+      // 사용자가 의도한 원래 시각을 별도로 기억해둔다.
+      // 디코드 실패로 keyframe 스냅이 일어나더라도 _recordGoodTime에서 자동으로 여기로 당겨준다.
+      // 이미 같은 resume 시도 중이면(reinit 등) 기존 카운터/타겟을 유지한다.
+      if (this._resumeOriginalTarget == null) {
+        this._resumeOriginalTarget = resumeTime;
+        this._resumeRecoveryAttempts = 0;
+      }
     }
 
     this._startFetchLoopsInner();
@@ -1783,9 +1816,79 @@ class Player {
   }
 
   _getDecodeRecoveryTime(time: number): number {
+    // 재생 중(이미 _lastKnownGoodTime이 잡힘) transient decode glitch용.
+    // Resume 컨텍스트는 _handleResumeDecodeError에서 별도 처리.
     const safe = Math.max(0, time + Player.AUTO_TIME_EPSILON);
     console.warn(`[PLAYER] decode recovery ${time.toFixed(3)}s -> ${safe.toFixed(3)}s`);
     return safe;
+  }
+
+  // Resume 컨텍스트(_resumeOriginalTarget != null) 디코드 에러 처리.
+  // attempts=0: keyframe(현재 segment 시작)으로 스냅 → reinit. attempts=1.
+  //             스냅에서 프레임이 잡히면 _recordGoodTime이 자동으로 원본으로 pull.
+  // attempts>=1: pull 실패 / 그 외 → 원본에서 -75ms씩 누적 bump.
+  //              drift > 0.2s면 포기(pause + player:resume-failed 이벤트).
+  // 처리했으면 true.
+  _handleResumeDecodeError(time: number): boolean {
+    const original = this._resumeOriginalTarget;
+    if (original == null) return false;
+
+    if (this._resumeRecoveryAttempts === 0) {
+      const track = this._getVideoTrackForResume();
+      if (track?.timeline?.length) {
+        const segNum = this.timeToSegmentNumber(track, time);
+        const range = this.segmentNumberToTimeRange(track, segNum);
+        if (range && range.start < time - Player.AUTO_TIME_EPSILON) {
+          const segStart = Math.max(0, range.start);
+          this._resumeRecoveryAttempts = 1;
+          console.warn(
+            `[PLAYER] resume recovery (snap to keyframe): -> seg ${segNum} @ ${segStart.toFixed(3)}s`,
+          );
+          this._lastErrorTime = segStart;
+          this._reinitMediaSource(segStart).catch((e) =>
+            console.error("[PLAYER] snap reinit failed:", e),
+          );
+          return true;
+        }
+      }
+      // 스냅 못 잡으면 곧장 bump.
+    }
+
+    this._resumeRecoveryAttempts++;
+    const bumpIdx = this._resumeRecoveryAttempts - 1;
+    const driftSec = bumpIdx * Player.AUTO_TIME_EPSILON;
+    const MAX_DRIFT = 0.2;
+    if (driftSec > MAX_DRIFT) {
+      console.error(
+        `[PLAYER] resume recovery exhausted (drift ${(driftSec * 1000).toFixed(0)}ms > ${MAX_DRIFT * 1000}ms);` +
+          ` giving up at original ${original.toFixed(3)}s`,
+      );
+      this._resumeOriginalTarget = null;
+      this._resumeRecoveryAttempts = 0;
+      this._stopFetchLoops("resume failed");
+      if (this._video) {
+        try {
+          this._video.pause();
+        } catch (e) {
+          console.error("[PLAYER] pause after resume failure failed:", e);
+        }
+      }
+      try {
+        self.dispatchEvent(new CustomEvent("player:resume-failed", { detail: { time: original } }));
+      } catch (e) {
+        console.error("[PLAYER] player:resume-failed dispatch failed:", e);
+      }
+      return true;
+    }
+    const target = Math.max(0, original - driftSec);
+    console.warn(
+      `[PLAYER] resume recovery (bump #${bumpIdx}): ${original.toFixed(3)}s -${(driftSec * 1000).toFixed(0)}ms -> ${target.toFixed(3)}s`,
+    );
+    this._lastErrorTime = target;
+    this._reinitMediaSource(target).catch((e) =>
+      console.error("[PLAYER] bump reinit failed:", e),
+    );
+    return true;
   }
 
   _stopFetchLoops(reason: string): void {
@@ -2043,6 +2146,12 @@ class Player {
       console.log(`[PLAYER] internal seek to ${seekTime.toFixed(3)}s, ignoring`);
       return;
     }
+    // 사용자가 직접 seek했다면 resume 컨텍스트 종료(자동 pull/bump 더 이상 안 함).
+    if (this._resumeOriginalTarget != null) {
+      console.log(`[PLAYER] user seek during resume; clearing resume state`);
+      this._resumeOriginalTarget = null;
+      this._resumeRecoveryAttempts = 0;
+    }
 
     if (seekTime < 0.5 && this._expectBrowserResetUntil && Date.now() < this._expectBrowserResetUntil) {
       this._expectBrowserResetUntil = 0;
@@ -2198,6 +2307,13 @@ class Player {
         }
       }
 
+      // Resume(원본 시각이 살아있는 상태) 컨텍스트 디코드 에러는 별도 처리:
+      // 1차는 keyframe 스냅, 그 다음은 원본에서 -75ms씩 누적 bump, drift > 0.2s면 포기.
+      // 일반 errorStreak/throttle 분기는 0초 fallback으로 떨어지는 케이스가 있어 회피한다.
+      if (code === 3 && this._resumeOriginalTarget != null) {
+        if (this._handleResumeDecodeError(ct)) return;
+      }
+
       // 같은 지점에서 매우 짧은 간격으로 다시 에러가 나면 재초기화 폭주만 막고,
       // 디코더가 이미 망가진 상태라면 nudge보다 watchdog에 복구를 맡긴다.
       if (
@@ -2285,6 +2401,8 @@ class Player {
     this._queuedSeekTime = null;
     this._recovering = false;
     this._reinitInProgress = false;
+    this._resumeOriginalTarget = null;
+    this._resumeRecoveryAttempts = 0;
     if (this._objectUrl) {
       try {
         URL.revokeObjectURL(this._objectUrl);
