@@ -964,9 +964,15 @@ function syncPlayerFullscreenClass(): void {
 let fullscreenCoercionInProgress = false;
 // 직전 fullscreen element가 우리 박스였는지 기억한다.
 // 사용자가 박스-풀스크린 중 비디오의 native 풀스크린 버튼을 누르면 브라우저는
-// 박스 -> 비디오로 풀스크린 element를 swap한다. 이 swap을 "exit 의도"로 해석한다
+// 박스 -> 비디오로 풀스크린 element를 swap한다(브라우저에 따라 1 이벤트 swap이거나
+// "box→null→video" 두 이벤트). 이 swap을 "exit 의도"로 해석한다
 // (사용자에게는 동일한 버튼이 toggle처럼 보여야 정상).
+// 두 이벤트 패턴을 처리하기 위해, fsEl=null 직후에도 일정 시간 동안 플래그를 유지한다.
 let lastFullscreenWasBox = false;
+let lastBoxExitAt = 0;
+// 두 이벤트 swap 사이의 최대 시간(ms). 같은 사용자 액션에서 발생하는 swap은
+// 대부분 같은 task에서 일어나지만, 일부 브라우저는 macrotask로 분리한다.
+const BOX_TO_VIDEO_SWAP_WINDOW_MS = 400;
 // 첫 coercion 시도에서 NotAllowedError(유저 제스쳐 부재) 등이 나오면 이 세션 동안
 // 더 이상 강제 변환을 시도하지 않는다. 다음 새로고침 전까지 native 풀스크린을 존중한다.
 let coercionDisabledForSession = false;
@@ -1033,28 +1039,45 @@ document.addEventListener("fullscreenchange", () => {
   const fsEl = document.fullscreenElement;
 
   if (fullscreenCoercionInProgress) {
-    // coercion으로 인한 swap도 lastFullscreenWasBox 추적은 그대로 갱신해두면
-    // 다음 사용자 액션이 일관되게 동작한다.
-    if (fsEl === box) lastFullscreenWasBox = true;
-    else if (!fsEl) lastFullscreenWasBox = false;
+    if (fsEl === box) {
+      lastFullscreenWasBox = true;
+      lastBoxExitAt = 0;
+    } else if (!fsEl) {
+      // coercion 자체가 일으킨 exit은 final로 본다(swap 후보 아님).
+      lastFullscreenWasBox = false;
+      lastBoxExitAt = 0;
+    }
     return;
   }
 
-  // 박스 풀스크린 중 native 비디오 풀스크린 버튼을 누른 경우 = exit 의도.
-  // 기존 동작(다시 박스로 강제 복귀)은 Quest에서 빠져나갈 방법을 없애 사용자를 가둔다.
-  if (lastFullscreenWasBox && video && fsEl === video) {
+  // Case 1: 한 이벤트로 box → video swap한 브라우저.
+  // Case 2: 직전 box 풀스크린이 swap 윈도우 내에 끝난 직후 video가 진입한 경우
+  //         (box→null→video 두 이벤트 패턴). 둘 다 native 버튼이 toggle 의도로 눌린 케이스.
+  const recentBoxExit =
+    !lastFullscreenWasBox && lastBoxExitAt > 0 && Date.now() - lastBoxExitAt <= BOX_TO_VIDEO_SWAP_WINDOW_MS;
+  if (video && fsEl === video && (lastFullscreenWasBox || recentBoxExit)) {
     lastFullscreenWasBox = false;
+    lastBoxExitAt = 0;
     void exitFullscreenAfterNativeToggle();
     return;
   }
 
   if (fsEl === box) {
     lastFullscreenWasBox = true;
+    lastBoxExitAt = 0;
     return;
   }
 
   if (!fsEl) {
-    lastFullscreenWasBox = false;
+    // 박스에서 막 빠져나온 경우라면 swap 윈도우 동안 플래그를 살려둔다.
+    // 사용자가 직접 종료(Esc/우리 버튼)했다면 그대로 false 처리하면 되지만,
+    // 두 이벤트 swap 패턴을 놓치지 않으려면 일정 시간 대기가 필요.
+    if (lastFullscreenWasBox) {
+      lastBoxExitAt = Date.now();
+      lastFullscreenWasBox = false;
+    } else {
+      lastBoxExitAt = 0;
+    }
     return;
   }
 
