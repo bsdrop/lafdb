@@ -242,59 +242,6 @@ window.addEventListener("player:play-blocked", () => {
   showAutoplayPrompt();
 });
 
-window.addEventListener("player:resume-failed", ((e: Event) => {
-  const detail = (e as CustomEvent<{ time?: number }>).detail;
-  showResumeFailedBanner(detail?.time ?? 0);
-}) as EventListener);
-
-function showResumeFailedBanner(time: number): void {
-  if (document.getElementById("player-resume-failed-banner")) return;
-  const box = document.getElementById("video-box");
-  if (!box) return;
-  const banner = document.createElement("div");
-  banner.id = "player-resume-failed-banner";
-  banner.style.cssText = [
-    "position:absolute",
-    "left:12px",
-    "right:12px",
-    "bottom:12px",
-    "z-index:40",
-    "display:flex",
-    "flex-direction:column",
-    "gap:10px",
-    "padding:14px 16px",
-    "border:1px solid #7c3d12",
-    "border-radius:12px",
-    "background:rgba(24,24,27,.92)",
-    "color:#fdba74",
-    'font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
-    "box-shadow:0 10px 30px rgba(0,0,0,.45)",
-  ].join(";");
-  const t = Math.max(0, Math.floor(time));
-  const hh = Math.floor(t / 3600);
-  const mm = Math.floor((t % 3600) / 60);
-  const ss = t % 60;
-  const stamp = hh > 0
-    ? `${hh}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
-    : `${mm}:${String(ss).padStart(2, "0")}`;
-  banner.innerHTML = `
-<p style="margin:0;">기록 위치(${stamp})에서 재생을 시작할 수 없습니다. 디코더가 이 부근을 거부하고 있어 자동 복구를 중단했습니다.</p>
-<div style="display:flex;gap:8px;flex-wrap:wrap;">
-  <button id="player-resume-retry" style="padding:7px 14px;border-radius:8px;border:1px solid #a3e635;background:#a3e635;color:#000;font:600 13px inherit;cursor:pointer;">처음부터 재생</button>
-  <button id="player-resume-dismiss" style="padding:7px 14px;border-radius:8px;border:1px solid #3f3f46;background:transparent;color:#d4d4d8;font:13px inherit;cursor:pointer;">닫기</button>
-</div>`;
-  box.appendChild(banner);
-  document.getElementById("player-resume-retry")?.addEventListener("click", () => {
-    banner.remove();
-    const p = new URLSearchParams(location.hash.slice(1));
-    p.set("t", "0");
-    history.replaceState(history.state, "", "#" + p.toString());
-    // route handler가 hashchange로 다시 시작.
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
-  }, { once: true });
-  document.getElementById("player-resume-dismiss")?.addEventListener("click", () => banner.remove(), { once: true });
-}
-
 async function startPlayer(
   mpdUrl: string,
   kid: string | null,
