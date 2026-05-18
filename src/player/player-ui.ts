@@ -492,6 +492,53 @@ const params = new URLSearchParams(location.hash.slice(1));
 let epId = params.get("epId");
 const itemId = params.get("itemId");
 
+// Per-episode "where we intended to resume" tracking.
+// Until the video has actually reached that position (or the user has explicitly seeked),
+// we refuse to save progress/hash — this prevents transient 0-position playback during
+// reinit/buffering from clobbering a much-larger saved value. Adapts to any network/device
+// speed because the gate is "did currentTime reach the target", not a hardcoded delay.
+const _initialResumeTargets = new Map<string, number>();
+const _passedResume = new Set<string>();
+
+function captureInitialResumeTarget(targetEpId: string | null): void {
+  if (!targetEpId || _initialResumeTargets.has(targetEpId)) return;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const tParam = p.get("t");
+  let target = 0;
+  if (tParam !== null) {
+    target = parseShareTime(tParam) ?? 0;
+  } else {
+    const saved = WatchHistory.getProgress(targetEpId)?.t;
+    if (typeof saved === "number") target = saved;
+  }
+  _initialResumeTargets.set(targetEpId, target);
+  if (!(target > 0)) _passedResume.add(targetEpId);
+}
+
+function markPastResumeIfReached(targetEpId: string | null, currentTime: number): void {
+  if (!targetEpId || _passedResume.has(targetEpId)) return;
+  const target = _initialResumeTargets.get(targetEpId);
+  if (target === undefined || !(target > 0) || currentTime >= target - 1) {
+    _passedResume.add(targetEpId);
+  }
+}
+
+function markPastResumeOnSeek(targetEpId: string | null, currentTime: number): void {
+  if (!targetEpId || _passedResume.has(targetEpId)) return;
+  const target = _initialResumeTargets.get(targetEpId) ?? 0;
+  // Ignore the initial-state "seeked at 0" before we've ever reached the target.
+  // A real landing seek will be at currentTime ≈ target; a user seek will be > 0.
+  if (currentTime <= 0 && target > 1) return;
+  _passedResume.add(targetEpId);
+}
+
+function isResumeStillPending(targetEpId: string | null): boolean {
+  if (!targetEpId) return false;
+  return _initialResumeTargets.has(targetEpId) && !_passedResume.has(targetEpId);
+}
+
+captureInitialResumeTarget(epId);
+
 let _currentEpTitle = "";
 let _currentEpHistoryLabel = "";
 let _currentItemId: string | null = itemId ?? null;
@@ -595,6 +642,7 @@ window.addEventListener("hashchange", () => {
     }
     console.log("[UI] Episode changed, refreshing UI for:", newEpId);
     epId = newEpId;
+    captureInitialResumeTarget(newEpId);
     initUIForEpisode(newEpId);
   }
 });
@@ -816,25 +864,26 @@ let playingEpId: string | null = null;
   function save(): void {
     const savedEpId = playingEpId;
     if (!savedEpId || savedEpId !== epId) return;
+    // Hold off on writes while the player is still trying to reach the resume target.
+    // Without this, a transient currentTime=0 during reinit/buffering would overwrite
+    // a saved position like 600s with 0/near-zero.
+    if (isResumeStillPending(savedEpId)) return;
     const t = video.currentTime;
     if (!t || t < 1) return;
-    // TODO: FIXME: This is SHIT!!!!!!!!!!!!!!
-    // Don't let a near-zero position overwrite a much-larger saved position
-    // (happens when the player fails to seek to resumeTime and plays from 0)
-    if (t < 16) {
-      const existing = WatchHistory.getProgress(savedEpId);
-      if (existing?.t && existing.t > 32) return;
-    }
     WatchHistory.saveProgress(savedEpId, t, video.duration, _currentItemId, _currentEpTitle);
   }
 
   video.addEventListener("playing", () => { playingEpId = epId; });
-  video.addEventListener("timeupdate", () => { // TODO: FIXME: hmm........
+  video.addEventListener("timeupdate", () => {
+    markPastResumeIfReached(epId, video.currentTime);
     const now = Date.now();
     if (now - lastSaved < 5000) return;
     lastSaved = now;
     save();
   });
+  // Any seeked event means either we landed at the resume target or the user
+  // intervened — in both cases the initial-resume phase is over.
+  video.addEventListener("seeked", () => { markPastResumeOnSeek(epId, video.currentTime); });
   video.addEventListener("pause", save);
   video.addEventListener("ended", save);
   window.addEventListener("beforeunload", save);
@@ -1197,8 +1246,12 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
     const wasPlaying = !video.paused;
     video.currentTime = ratio * dur;
     if (ratio * dur < 1) {
-      saveHash(0);
+      // Explicit user reset to start: strip t= from the URL and clear saved progress.
+      const p = new URLSearchParams(location.hash.slice(1));
+      p.delete("t");
+      history.replaceState(history.state, "", "#" + p.toString());
       WatchHistory.clearProgress(epId!);
+      if (epId) _passedResume.add(epId);
     }
     if (wasPlaying) video.play().catch((err) => console.error("[PLAYER] timeline resume play failed:", err));
   }
@@ -1239,12 +1292,14 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   function saveHash(ct: number): void {
     // stop updating hash once episode has changed (e.g. Player.destroy pause fires with stale currentTime)
     if (epId !== initEpId) return;
+    // Don't clobber the URL's t= while we're still seeking toward the resume target.
+    // Otherwise a slow start with currentTime=0 would delete a valid t= from a share link.
+    if (isResumeStillPending(initEpId)) return;
+    // Ignore auto-save attempts at 0/near-zero — those are never the user's intent
+    // (the explicit "rewind to start" path clears progress directly, not through here).
+    if (!ct || ct < 1) return;
     const p = new URLSearchParams(location.hash.slice(1));
-    if (!ct || ct < 1) {
-      p.delete("t");
-    } else {
-      p.set("t", Math.floor(ct).toString());
-    }
+    p.set("t", Math.floor(ct).toString());
     // preserve history.state so share sheet pushState entry isn't clobbered
     history.replaceState(history.state, "", "#" + p.toString());
   }
@@ -1261,15 +1316,6 @@ function setupMarkers(markers: MarkerData | null | undefined): void {
   });
 })();
 
-function saveHash(ct: number): void {
-  const p = new URLSearchParams(location.hash.slice(1));
-  if (!ct || ct < 1) {
-    p.delete("t");
-  } else {
-    p.set("t", Math.floor(ct).toString());
-  }
-  history.replaceState(history.state, "", "#" + p.toString());
-}
 
 function shouldResetNearEndProgress(epId: string | number): boolean {
   if (!autoSkip) return false;

@@ -290,8 +290,10 @@ class Player {
       const vct = this._video.currentTime;
       if (this._pendingResumeTime != null) {
         if (this._maybeClearPendingResume(vct)) return vct;
-        else return this._pendingResumeTime;
+        return this._pendingResumeTime;
       }
+      if (vct > 0) return vct;
+      if (this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
       return vct;
     }
     return this._ct;
@@ -306,24 +308,22 @@ class Player {
     return this._video ? this._video.videoHeight : this._vh;
   }
 
+  // Authoritative "what position should we resume to" calculation.
+  // Priority: not-yet-reached pendingResume > live video time > last known good > raw fallback.
+  // Never returns a misleading 0 just because the video element hasn't seeked yet.
   _safeCurrentTime(): number {
     if (this._video) {
       const vct = this._video.currentTime;
-      if (this._pendingResumeTime != null) {
-        if (!this._maybeClearPendingResume(vct)) return this._pendingResumeTime;
+      if (this._pendingResumeTime != null && !this._maybeClearPendingResume(vct)) {
+        return this._pendingResumeTime;
       }
-      if (vct === 0 && this._lastKnownGoodTime !== null && this._lastKnownGoodTime > 1) {
-        return this._lastKnownGoodTime;
-      }
+      if (vct > 0) return vct;
+      if (this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
       return vct;
     }
-    const age = (typeof performance !== "undefined" ? performance.now() : Date.now()) - this._ctUpdatedAt;
-    if (age > 2000 && this._lastKnownGoodTime !== null) {
-      return this._lastKnownGoodTime;
-    }
-    if (this._ct === 0 && this._lastKnownGoodTime !== null && this._lastKnownGoodTime > 1) {
-      return this._lastKnownGoodTime;
-    }
+    if (this._pendingResumeTime != null) return this._pendingResumeTime;
+    if (this._ct > 0) return this._ct;
+    if (this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
     return this._ct;
   }
 
@@ -346,22 +346,11 @@ class Player {
     this._lastExplicitTargetAt = this._now();
   }
 
-  _isPendingResumeStale(): boolean {
-    if (this._pendingResumeTime == null) return false;
-    if (this._resumeInProgress || this._hasInflightSegments()) return false;
-    return this._now() - this._pendingResumeSetAt > Player.PENDING_RESUME_TIMEOUT_MS;
-  }
-
   _maybeClearPendingResume(videoTime: number): boolean {
     if (this._pendingResumeTime == null) return true;
-    if (Math.abs(videoTime - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
-      this._clearPendingResumeTime();
-      return true;
-    }
-    if (this._isPendingResumeStale()) {
-      console.warn(
-        `[PLAYER] pending resume ${this._pendingResumeTime.toFixed(3)}s expired at ct=${videoTime.toFixed(3)}s`,
-      );
+    // Cleared once the video has reached or passed the target.
+    // No time-based expiration: slow networks must be allowed to take as long as they need.
+    if (videoTime >= this._pendingResumeTime - Player.AUTO_TIME_EPSILON) {
       this._clearPendingResumeTime();
       return true;
     }
@@ -756,7 +745,6 @@ class Player {
   static AUTO_TIME_EPSILON = 0.075;
   static FIREFOX_TAIL_DECODE_EOF_SECONDS = 3;
   static NUDGE_MAX = 2;
-  static PENDING_RESUME_TIMEOUT_MS = 3000;
   static DECODE_RECOVERY_MAX_RETRIES = 3;
 
   _getVideoSb(): SourceBuffer | null {
@@ -793,15 +781,9 @@ class Player {
       return;
     }
     if (this._pendingResumeTime != null) {
-      if (this._isPendingResumeStale()) {
-        console.warn(
-          `[PLAYER] pending resume ${this._pendingResumeTime.toFixed(3)}s did not settle; falling back to actual media time`,
-        );
-        this._clearPendingResumeTime();
-      } else {
-        this._scheduleStallCheck();
-        return;
-      }
+      // Still seeking toward the resume target — defer stall watchdog to avoid spurious reinits at vct=0.
+      this._scheduleStallCheck();
+      return;
     }
     if (this._video?.ended) {
       this._clearStallWatchdog();
@@ -921,13 +903,8 @@ class Player {
 
     if (this._stallCheckCount >= strikeLimit) {
       this._stallCheckCount = 0;
-      const resumeAt = this._safeCurrentTime();
-      if (resumeAt < 1 && this._lastKnownGoodTime !== null) {
-        console.warn(
-          `[PLAYER] stall: ct=${resumeAt} looks bad, using lastKnownGood=${this._lastKnownGoodTime.toFixed(2)}`,
-        );
-      }
-      const safeResume = resumeAt < 1 && this._lastKnownGoodTime !== null ? this._lastKnownGoodTime : resumeAt;
+      // _safeCurrentTime already enforces pendingResume > vct > lastKnownGood priority.
+      const safeResume = this._safeCurrentTime();
 
       if (ahead < Player.STALL_BUF_MIN) {
         console.warn(`[PLAYER] stall confirmed (no buffer), reinit from ${safeResume.toFixed(2)}s`);
@@ -971,8 +948,8 @@ class Player {
     this._scheduleStallCheck();
   }
 
-  _nudgeDecoder(ct: number): void {
-    const retryResume = ct < 1 && this._lastKnownGoodTime !== null ? this._lastKnownGoodTime : Math.max(0, ct);
+  _nudgeDecoder(_ct: number): void {
+    const retryResume = this._safeCurrentTime();
     console.warn(`[PLAYER] nudge path disabled, reinitializing from ${retryResume.toFixed(3)}s`);
     this._nudgeCount = 0;
     this._reinitMediaSource(retryResume).catch((e) => console.error("[PLAYER] nudge fallback reinit failed:", e));
@@ -1679,16 +1656,17 @@ class Player {
         ? Math.min(requestedTime + 0.25, Math.max(requestedTime, duration - 0.01))
         : requestedTime + 0.25;
 
-      const deadline = Date.now() + 10000;
-
-      while (Date.now() < deadline) {
+      // No time-based deadline: wait as long as the network and decoder need.
+      // Exit conditions are reinit (generation change), MediaSource swap, or destroy —
+      // never "we waited too long, just play from wherever". Playing from 0 corrupts
+      // saved progress and confuses the user; better to remain paused until ready.
+      while (true) {
         if (generation !== this.generation || mediaSource !== this.ms || this._destroyed) {
           return;
         }
 
         const videoSb = this._getVideoSb();
-        const videoEnd = videoSb ? this.getBufferedEnd(videoSb, requestedTime) : requestedTime;
-
+        const videoEnd = videoSb ? this.getBufferedEnd(videoSb, requestedTime) : -Infinity;
         const audioEnd = audioTrack ? this._bufferedEndForTrack(audioTrack, requestedTime) : Number.POSITIVE_INFINITY;
 
         const videoReady = !!videoSb && videoEnd >= readyThrough - 0.01;
@@ -1702,33 +1680,10 @@ class Player {
         return;
       }
 
-      const videoSb = this._getVideoSb();
-      if (!videoSb) {
-        return;
-      }
-
-      const videoEnd = this.getBufferedEnd(videoSb, requestedTime);
-      const audioEnd = audioTrack ? this._bufferedEndForTrack(audioTrack, requestedTime) : Number.POSITIVE_INFINITY;
-      const sharedEnd = Math.min(videoEnd, audioEnd);
-
-      let safeSeekTime = requestedTime;
-
-      // 아직 requestedTime을 완전히 커버 못했으면
-      // 공유 버퍼 안쪽으로 아주 살짝만 물러난다.
-      if (sharedEnd <= requestedTime + 0.02) {
-        safeSeekTime = Math.min(
-          requestedTime,
-          Math.max(0, Math.max(requestedTime - Player.AUTO_TIME_EPSILON, sharedEnd)),
-        );
-        console.warn(
-          `[PLAYER] resume target ${requestedTime.toFixed(3)}s not fully buffered; fallback to ${safeSeekTime.toFixed(3)}s`,
-        );
-      }
-
-      console.log(`[PLAYER] Resuming at ${safeSeekTime.toFixed(3)}s`);
-      this._setPendingResumeTime(safeSeekTime);
+      console.log(`[PLAYER] Resuming at ${requestedTime.toFixed(3)}s`);
+      this._setPendingResumeTime(requestedTime);
       this._internalSeek = true;
-      this._seekTo(safeSeekTime);
+      this._seekTo(requestedTime);
 
       if (autoPlay) this._play();
     } finally {
