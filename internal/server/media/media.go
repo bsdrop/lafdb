@@ -163,7 +163,7 @@ func isAllowedMediaPathByte(b byte) bool {
 		return true
 	case b >= '0' && b <= '9':
 		return true
-	case b == '/', b == '-', b == '.':
+	case b == '/', b == '-', b == '.', b == '_':
 		return true
 	default:
 		return false

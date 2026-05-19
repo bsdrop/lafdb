@@ -86,6 +86,7 @@ function showError(msg: string): void {
   console.error("player-init.ts:showError: ", msg);
   const box = document.getElementById("video-box");
   if (!box) return;
+  clearErrors();
   const overlay = document.createElement("div");
   overlay.className = "error-overlay";
   overlay.style.cssText =
@@ -259,6 +260,11 @@ window.addEventListener("player:compat-warning", ((e: Event) => {
 window.addEventListener("player:play-blocked", () => {
   showAutoplayPrompt();
 });
+
+window.addEventListener("player:error", ((e: Event) => {
+  const detail = (e as CustomEvent<{ message?: string }>).detail;
+  showError(detail?.message ?? "재생을 시작할 수 없습니다.");
+}) as EventListener);
 
 async function startPlayer(
   mpdUrl: string,

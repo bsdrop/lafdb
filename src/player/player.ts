@@ -92,6 +92,18 @@ interface WorkerMessage {
   qualityPrefBps?: string;
 }
 
+type NonRetriableError = Error & { nonRetriable: true };
+
+function makeNonRetriableError(message: string): NonRetriableError {
+  const err = new Error(message) as NonRetriableError;
+  err.nonRetriable = true;
+  return err;
+}
+
+function isNonRetriableError(err: unknown): err is NonRetriableError {
+  return !!err && typeof err === "object" && (err as { nonRetriable?: boolean }).nonRetriable === true;
+}
+
 const ANONYMOUS_NETWORK_CODEC_MESSAGE =
   "현재 브라우저에서 H.264/AAC 재생을 지원하지 않습니다. Brave의 Tor 비공개 창을 사용하시거나, 로컬 프록시를 통해 일반 브라우저로 접속해주시기 바랍니다.";
 
@@ -197,6 +209,7 @@ class Player {
   _decodeRecoveryState: "idle" | "snapped" | "attempted" | "givenup";
   _decodeRecoveryOriginalTarget: number | null;
   _decodeRecoverySnapTarget: number | null;
+  _fatalMediaErrorShown: boolean;
 
   static _readBufferPref(key: string, fallback: number): number {
     const ls = typeof localStorage !== "undefined" ? localStorage : null;
@@ -293,6 +306,7 @@ class Player {
     this._decodeRecoveryState = "idle";
     this._decodeRecoveryOriginalTarget = null;
     this._decodeRecoverySnapTarget = null;
+    this._fatalMediaErrorShown = false;
   }
 
   _clearDecodeRecovery(): void {
@@ -494,6 +508,26 @@ class Player {
       }
     } catch (e) {
       console.error("[PLAYER] gap jump dispatch failed:", e);
+    }
+  }
+
+  _buildFatalMediaHttpMessage(kind: string, status: number): string | null {
+    if (status === 404 || status === 408 || status === 410 || status === 429) return null;
+    if (status >= 400 && status < 500) return `${kind} HTTP ${status}`;
+    return null;
+  }
+
+  _emitFatalMediaError(message: string): void {
+    if (this._fatalMediaErrorShown) return;
+    this._fatalMediaErrorShown = true;
+    try {
+      if (IS_WORKER) {
+        (self as unknown as DedicatedWorkerGlobalScope).postMessage({ type: "error", message });
+      } else {
+        self.dispatchEvent(new CustomEvent("player:error", { detail: { message } }));
+      }
+    } catch (e) {
+      console.error("[PLAYER] fatal media error dispatch failed:", e);
     }
   }
 
@@ -1458,7 +1492,14 @@ class Player {
           const resp = await fetch(track.initUrl, {
             signal: AbortSignal.timeout(Player.INIT_FETCH_TIMEOUT_MS),
           });
-          if (!resp.ok) throw new Error(`Init fetch HTTP ${resp.status}`);
+          if (!resp.ok) {
+            const message = this._buildFatalMediaHttpMessage("Init fetch", resp.status);
+            if (message) {
+              this._emitFatalMediaError(message);
+              throw makeNonRetriableError(message);
+            }
+            throw new Error(`Init fetch HTTP ${resp.status}`);
+          }
           const raw = new Uint8Array(await resp.arrayBuffer());
           track.initData = this.stripDrmSignaling(raw, track.type);
           console.log(`[${track.type.toUpperCase()}] Init fetched (${track.initData.byteLength}B)`);
@@ -1469,6 +1510,7 @@ class Player {
           console.warn(
             `[${track.type.toUpperCase()}] Init fetch attempt ${attempt + 1} failed: ${(e as Error).message}`,
           );
+          if (isNonRetriableError(e)) break;
         }
       }
       if (lastErr) throw lastErr;
@@ -1579,13 +1621,21 @@ class Player {
           const resp = await fetch(mpdUrl, {
             signal: AbortSignal.timeout(Player.INIT_FETCH_TIMEOUT_MS),
           });
-          if (!resp.ok) throw new Error(`MPD fetch HTTP ${resp.status}`);
+          if (!resp.ok) {
+            const message = this._buildFatalMediaHttpMessage("MPD fetch", resp.status);
+            if (message) {
+              this._emitFatalMediaError(message);
+              throw makeNonRetriableError(message);
+            }
+            throw new Error(`MPD fetch HTTP ${resp.status}`);
+          }
           mpdText = await resp.text();
           lastErr = null;
           break;
         } catch (e) {
           lastErr = e as Error;
           console.warn(`[PLAYER] MPD fetch attempt ${attempt + 1} failed: ${(e as Error).message}`);
+          if (isNonRetriableError(e)) break;
         }
       }
       if (lastErr) throw lastErr;
@@ -2098,6 +2148,13 @@ class Player {
         if (!resp.ok) {
           if (resp.status === 404 || resp.status === 410) {
             track.appended.add(segNum);
+            track.inflight.delete(segNum);
+            return;
+          }
+          const message = this._buildFatalMediaHttpMessage(`${track.type.toUpperCase()} seg ${segNum}`, resp.status);
+          if (message) {
+            this._emitFatalMediaError(message);
+            this._stopFetchLoops(`fatal media HTTP ${resp.status}`);
             track.inflight.delete(segNum);
             return;
           }
