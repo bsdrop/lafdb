@@ -266,6 +266,11 @@ window.addEventListener("player:error", ((e: Event) => {
   showError(detail?.message ?? "재생을 시작할 수 없습니다.");
 }) as EventListener);
 
+window.addEventListener("api:server-error", ((e: Event) => {
+  const detail = (e as CustomEvent<{ message?: string }>).detail;
+  showError(detail?.message ?? "API HTTP 5xx");
+}) as EventListener);
+
 async function startPlayer(
   mpdUrl: string,
   kid: string | null,

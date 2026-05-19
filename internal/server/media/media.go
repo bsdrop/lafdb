@@ -170,16 +170,16 @@ func isAllowedMediaPathByte(b byte) bool {
 	}
 }
 
-func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int) {
+func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int, string) {
 	rawPath = stripURLParams(rawPath)
 	if len(rawPath) > maxMediaPathnameRunes {
-		return "", http.StatusRequestURITooLong
+		return "", http.StatusRequestURITooLong, "pathname too long"
 	}
 	if strings.HasSuffix(rawPath, "/") {
-		return "", fiber.StatusBadRequest
+		return "", fiber.StatusBadRequest, "trailing slash"
 	}
 	if rawPath == "" || strings.HasPrefix(rawPath, "/") {
-		return "", fiber.StatusBadRequest
+		return "", fiber.StatusBadRequest, "empty or leading slash"
 	}
 
 	// Strip host if it's the first component (e.g. "thumbnail.laftel.net/items/...")
@@ -194,17 +194,17 @@ func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int) {
 
 	for i := 0; i < len(rawPath); i++ {
 		if !isAllowedMediaPathByte(rawPath[i]) {
-			return "", fiber.StatusBadRequest
+			return "", fiber.StatusBadRequest, fmt.Sprintf("disallowed byte %q at offset %d", rawPath[i], i)
 		}
 	}
 
 	normalized := path.Clean(rawPath)
 	if normalized != rawPath || normalized == "." || strings.HasPrefix(normalized, "..") || strings.HasPrefix(normalized, "/") {
-		return "", fiber.StatusBadRequest
+		return "", fiber.StatusBadRequest, fmt.Sprintf("path clean mismatch: normalized=%q", normalized)
 	}
 
 	if len(normalized) <= 10 {
-		return "", fiber.StatusBadRequest
+		return "", fiber.StatusBadRequest, "normalized path too short"
 	}
 
 	hasDigit := false
@@ -215,15 +215,18 @@ func normalizeMediaPath(rawPath string, cfg mediaCfg) (string, int) {
 		}
 	}
 	if !hasDigit {
-		return "", fiber.StatusBadRequest
+		return "", fiber.StatusBadRequest, "path has no digits"
 	}
 
-	return normalized, 0
+	return normalized, 0, ""
 }
 
 func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
-	normalized, status := normalizeMediaPath(rawPath, cfg)
+	normalized, status, reason := normalizeMediaPath(rawPath, cfg)
 	if status != 0 {
+		if status == fiber.StatusBadRequest || status == http.StatusRequestURITooLong {
+			log.Printf("media reject %s host=%q path=%q reason=%s", prefix, c.Hostname(), rawPath, reason)
+		}
 		switch status {
 		case http.StatusRequestURITooLong:
 			return c.Status(status).SendString("Pathname Too Long")
