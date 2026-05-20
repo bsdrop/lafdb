@@ -1,6 +1,6 @@
 declare const ManagedMediaSource: (typeof MediaSource & { canConstructInDedicatedWorker?: boolean }) | undefined;
 
-(function () {
+function runCompatNotice(): void {
   const ua = navigator.userAgent || "";
   const isAndroid = ua.includes("Android");
   const host = location.hostname.toLowerCase().replace(/\.+$/g, "");
@@ -60,4 +60,10 @@ declare const ManagedMediaSource: (typeof MediaSource & { canConstructInDedicate
     },
     { once: true },
   );
-})();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", runCompatNotice, { once: true });
+} else {
+  runCompatNotice();
+}

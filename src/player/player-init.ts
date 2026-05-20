@@ -41,7 +41,13 @@ const MS: typeof MediaSource | undefined =
 const I2P_UNSUPPORTED_BROWSER_MESSAGE =
   "이 브라우저는 WebCrypto 또는 MediaSource 지원이 부족합니다. i2pd 내장 브라우저류 대신 Cromite, Brave 같은 일반 브라우저에 I2P 프록시를 설정해 접속해주시기 바랍니다.";
 
-if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
+if (localStorage.getItem("cv_auto") === "yes") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => document.body.classList.add("cv-auto"), { once: true });
+  } else {
+    document.body.classList.add("cv-auto");
+  }
+}
 
 function isI2PHost(): boolean {
   const host = location.hostname.toLowerCase().replace(/\.+$/g, "");

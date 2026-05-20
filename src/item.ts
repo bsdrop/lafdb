@@ -5,7 +5,13 @@ import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
 import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "./shared/ext";
 import { copyToClipboard, mountShareSheet } from "./shared/share-sheet";
 
-if (localStorage.getItem("cv_auto") === "yes") document.body.classList.add("cv-auto");
+if (localStorage.getItem("cv_auto") === "yes") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => document.body.classList.add("cv-auto"), { once: true });
+  } else {
+    document.body.classList.add("cv-auto");
+  }
+}
 function getRouteParams() {
   const params = new URLSearchParams(location.hash.slice(1));
   return {
