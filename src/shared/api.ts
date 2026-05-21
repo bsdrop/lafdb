@@ -21,7 +21,7 @@ function emitAPIServerError(url: string, status: number, statusText: string): vo
       }),
     );
   } catch {
-    // FIXME: ERROR SWALLOWING IS 중범죄!!!!!!!!!!!1 ignore event dispatch failures
+    // TODO: FIXME: ERROR SWALLOWING IS 중범죄!!!!!!!!!!!1 but still ignores event dispatch failures
   }
 }
 

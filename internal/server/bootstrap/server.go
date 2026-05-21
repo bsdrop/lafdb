@@ -246,7 +246,9 @@ func Run() {
 					scheme = "http"
 				}
 			}
-			c.Set("Content-Security-Policy", buildCFCSP(c.Get(fiber.HeaderHost), scheme, c.Path()))
+			if csp := buildCFCSP(c.Get(fiber.HeaderHost), scheme, c.Path()); csp != "" {
+				c.Set("Content-Security-Policy", csp)
+			}
 		}
 		c.Set("Access-Control-Allow-Origin", "*")
 		c.Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
@@ -347,6 +349,13 @@ func stripPort(host string) string {
 // The apex domain of the incoming Host header is used for the CDN wildcard so
 // no hostnames are hardcoded
 func buildCFCSP(host, scheme, path string) string {
+	if isAnonymousNetworkHost(host) {
+		// Anonymous-network browsers are often CSP-incomplete or buggy.
+		// The Cloudflare-oriented policy below can block same-origin scripts/media
+		// on .i2p/.onion even when the directives look valid, so skip it there.
+		return ""
+	}
+
 	origin := scheme + "://" + host
 
 	bareHost := host
@@ -407,4 +416,10 @@ func buildCFCSP(host, scheme, path string) string {
 		fontSrc +
 		"object-src 'none'; " +
 		"frame-ancestors 'none';"
+}
+
+func isAnonymousNetworkHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(stripPort(host)))
+	host = strings.TrimRight(host, ".")
+	return strings.HasSuffix(host, ".i2p") || strings.HasSuffix(host, ".onion")
 }

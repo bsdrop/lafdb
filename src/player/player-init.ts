@@ -39,7 +39,7 @@ const MS: typeof MediaSource | undefined =
       : undefined;
 
 const I2P_UNSUPPORTED_BROWSER_MESSAGE =
-  "이 브라우저는 WebCrypto 또는 MediaSource 지원이 부족합니다. i2pd 내장 브라우저류 대신 Cromite, Brave 같은 일반 브라우저에 I2P 프록시를 설정해 접속해주시기 바랍니다.";
+  "이 브라우저는 WebCrypto 또는 MediaSource 지원이 부족합니다. i2pd 내장 브라우저류 대신 Cromite, Trivalent, Brave와 같은 일반 브라우저에 I2P 프록시를 설정해 접속해주시기 바랍니다.";
 
 if (localStorage.getItem("cv_auto") === "yes") {
   if (document.readyState === "loading") {
@@ -259,7 +259,7 @@ window.addEventListener("player:compat-warning", ((e: Event) => {
   const detail = (e as CustomEvent<{ message?: string }>).detail;
   showCompatWarning(
     detail?.message ??
-      "Firefox에서는 재생 끊김 및 탐색 오작동이 자주 발생할 수 있습니다. 파일을 다운로드하여 재생하거나 Chrome 기반 브라우저를 이용해 다시 시청하시기를 권장합니다.",
+      "Firefox에서는 재생 끊김 및 탐색 오작동이 자주 발생할 수 있습니다. 파일을 다운로드하여 재생하거나 Chromium 기반 브라우저를 이용해 다시 시청하시기를 권장합니다.",
   );
 }) as EventListener);
 
@@ -535,7 +535,7 @@ async function handleRoute() {
   }
 
   if (!mpdParam && !epId) {
-    // TODO: notify user
+    // TODO: notify user?
     console.warn("[ROUTE] missing player route info; redirecting to index");
     location.replace("/");
     return;
@@ -563,7 +563,7 @@ async function handleRoute() {
         apiFetch<any>(`/api/episodes/v3/${epId}`),
       ]);
       // 페치 도중 다른 화로 이동했으면 이 결과는 버림
-      // t= param은 setupTimeSync가 fetch 중 추가할 수 있으므로 비교에서 제외
+      // AI가 한 소리인데 뭐라고 했느지 모르겠음 ---> t= param은 setupTimeSync가 fetch 중 추가할 수 있으므로 비교에서 제외
       if (hashCoreKey(location.hash) !== hashCoreKey(expectedHash)) {
         console.log("[ROUTE] Hash changed during fetch, aborting stale route:", expectedHash);
         return;

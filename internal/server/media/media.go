@@ -1,10 +1,12 @@
 package media
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -290,8 +292,7 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 	}
 
 	// Fetch from upstream
-	sourceURL := fmt.Sprintf("https://%s/%s", cfg.sourceHost, normalized)
-	resp, err := mediaHTTPClient.Get(sourceURL)
+	sourceURL, resp, err := fetchUpstreamMedia(normalized, cfg)
 	if err != nil {
 		log.Printf("media fetch %s: %v", sourceURL, err)
 		storeFailedURL(cleanPathname)
@@ -374,6 +375,31 @@ func serveMedia(c fiber.Ctx, prefix, rawPath string, cfg mediaCfg) error {
 		c.Set(fiber.HeaderCacheControl, "public, max-age=31536000, immutable")
 	}
 	return c.Send(body)
+}
+
+func fetchUpstreamMedia(normalized string, cfg mediaCfg) (string, *http.Response, error) {
+	sourceURL := fmt.Sprintf("https://%s/%s", cfg.sourceHost, normalized)
+	resp, err := mediaHTTPClient.Get(sourceURL)
+	if err == nil || !shouldFallbackToMediacloud(cfg, err) {
+		return sourceURL, resp, err
+	}
+
+	fallbackURL := fmt.Sprintf("https://%s/%s", mediaCfgs["mediacloud"].sourceHost, normalized)
+	log.Printf("media fetch fallback %s -> %s: %v", sourceURL, fallbackURL, err)
+	resp, fallbackErr := mediaHTTPClient.Get(fallbackURL)
+	return fallbackURL, resp, fallbackErr
+}
+
+func shouldFallbackToMediacloud(cfg mediaCfg, err error) bool {
+	if cfg.sourceHost != mediaCfgs["streaming-bp"].sourceHost {
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no such host")
 }
 
 func saveMediaStream(localPath string, first []byte, body io.Reader, expectedSize int64) error {
