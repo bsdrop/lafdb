@@ -1,5 +1,6 @@
 import { WatchHistory, updateEpisodeHistoryMeta } from "../watch-history";
 import { rewriteCdnUrl } from "../shared/cdn";
+import { attachCollapsibleToggle, buildCollapsibleContentHtml } from "../shared/collapsible";
 import { parseShareTime } from "../shared/time";
 import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "../shared/ext";
 import { copyToClipboard, mountShareSheet } from "../shared/share-sheet";
@@ -1859,10 +1860,46 @@ function renderWithTs(text: string): string {
 }
 
 function buildCommentTextHtml(content: string | undefined, isSpoiler: boolean): string {
-  const inner = renderWithTs(content ?? "");
-  if (!isSpoiler)
-    return `<div class="comment-text">${inner}</div>`;
-  return `<div class="comment-text"><span class="spoiler-block" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${inner}</span></div>`;
+  return buildCollapsibleContentHtml({
+    blockClass: "comment-text-block",
+    previewClass: "comment-more-btn-preview",
+    fullClass: "comment-more-btn-full",
+    toggleClass: "comment-more-btn",
+    label: "댓글",
+    content,
+    idPrefix: "comment-content",
+    renderContent: (text) => {
+      const inner = renderWithTs(text);
+      if (!isSpoiler) return `<div class="comment-text">${inner}</div>`;
+      return `<div class="comment-text"><span class="spoiler-block" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${inner}</span></div>`;
+    },
+  });
+}
+
+function attachCommentTextInteractions(root: ParentNode): void {
+  root.querySelectorAll(".spoiler-block").forEach((spoiler) => {
+    const spoilerEl = spoiler as HTMLElement;
+    if (spoilerEl.dataset["bound"] === "yes") return;
+    spoilerEl.dataset["bound"] = "yes";
+    const reveal = (e: Event) => {
+      if (spoilerEl.classList.contains("revealed")) return;
+      e.stopPropagation();
+      spoilerEl.classList.add("revealed");
+      spoilerEl.removeAttribute("tabindex");
+    };
+    spoilerEl.addEventListener("click", reveal);
+    spoilerEl.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
+        e.preventDefault();
+        reveal(e);
+      }
+    });
+  });
+
+  attachCollapsibleToggle(root, {
+    toggleSelector: ".comment-more-btn",
+    previewSelector: ".comment-more-btn-preview",
+  });
 }
 
 function toDate(s: string | undefined): Date | null {
@@ -1993,22 +2030,7 @@ function buildCommentEl(
     window.ShareLink?.copy(url, e.currentTarget as HTMLElement, { successText: "✓", resetText: "🔗" });
   });
 
-  const spoiler = el.querySelector(".spoiler-block");
-  if (spoiler) {
-    const reveal = (e: Event) => {
-      if (spoiler.classList.contains("revealed")) return;
-      e.stopPropagation();
-      spoiler.classList.add("revealed");
-      spoiler.removeAttribute("tabindex");
-    };
-    spoiler.addEventListener("click", reveal);
-    spoiler.addEventListener("keydown", (e) => {
-      if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
-        e.preventDefault();
-        reveal(e);
-      }
-    });
-  }
+  attachCommentTextInteractions(el);
 
   el.querySelector(".comment-date")?.addEventListener("click", () => {
     timePref = timePref === "relative" ? "absolute" : "relative";
@@ -2575,8 +2597,14 @@ function openCommentEdit(el: HTMLElement, comment: CommentData): void {
       el.style.display = "";
       comment.content = content;
       comment.is_spoiler = is_spoiler;
+      const textBlock = el.querySelector(".comment-text-block");
       const textEl = el.querySelector(".comment-text");
-      if (textEl) textEl.innerHTML = buildCommentTextHtml(content, is_spoiler).replace(/^<div[^>]*>|<\/div>$/g, "");
+      if (textBlock) {
+        textBlock.outerHTML = buildCommentTextHtml(content, is_spoiler);
+      } else if (textEl) {
+        textEl.outerHTML = buildCommentTextHtml(content, is_spoiler);
+      }
+      attachCommentTextInteractions(el);
       showInventoryGuideAfter(el, "반영이 늦으면 라프텔 댓글함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
     } else {
       errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");

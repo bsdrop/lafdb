@@ -828,6 +828,31 @@ select {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.comment-text-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.comment-more-btn {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+.comment-more-btn:hover {
+  color: var(--accent);
+}
+.comment-more-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
 .comment-footer {
   display: flex;
   align-items: center;

@@ -4,6 +4,7 @@ import { rewriteCdnUrl } from "./shared/cdn";
 import { WatchHistory, updateItemHistoryMeta } from "./watch-history";
 import { ensureExtStatus, extSend, getExtRoute, getMyName, initExt, isExtEnabled, isExtLoggedIn } from "./shared/ext";
 import { copyToClipboard, mountShareSheet } from "./shared/share-sheet";
+import { attachCollapsibleToggle, buildCollapsibleContentHtml } from "./shared/collapsible";
 
 if (localStorage.getItem("cv_auto") === "yes") {
   if (document.readyState === "loading") {
@@ -211,27 +212,48 @@ function showInventoryGuideAfter(el: HTMLElement, text: string): void {
 }
 
 function buildReviewBodyHtml(content: string | undefined, isSpoiler: boolean): string {
-  const safe = esc(content ?? "").replaceAll("\n", "<br>");
-  if (!safe.trim()) return "";
-  if (!isSpoiler) return `<p class="review-body">${safe}</p>`;
-  return `<p class="review-body"><span class="review-spoiler" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${safe}</span></p>`;
+  return buildCollapsibleContentHtml({
+    blockClass: "review-body-block",
+    previewClass: "review-more-btn-preview",
+    fullClass: "review-more-btn-full",
+    toggleClass: "review-more-btn",
+    label: "리뷰",
+    content,
+    idPrefix: "review-content",
+    renderContent: (text) => {
+    const safe = esc(text).replaceAll("\n", "<br>");
+    if (!safe.trim()) return "";
+    if (!isSpoiler) return `<p class="review-body">${safe}</p>`;
+    return `<p class="review-body"><span class="review-spoiler" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${safe}</span></p>`;
+    },
+  });
 }
 
 function attachRevealSpoiler(root: ParentNode): void {
-  const spoiler = root.querySelector(".review-spoiler");
-  if (!spoiler) return;
-  const reveal = (e: Event) => {
-    if (spoiler.classList.contains("revealed")) return;
-    e.stopPropagation();
-    spoiler.classList.add("revealed");
-    spoiler.removeAttribute("tabindex");
-  };
-  spoiler.addEventListener("click", reveal);
-  spoiler.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
-      e.preventDefault();
-      reveal(e);
-    }
+  root.querySelectorAll(".review-spoiler").forEach((spoiler) => {
+    const el = spoiler as HTMLElement;
+    if (el.dataset["bound"] === "yes") return;
+    el.dataset["bound"] = "yes";
+    const reveal = (e: Event) => {
+      if (el.classList.contains("revealed")) return;
+      e.stopPropagation();
+      el.classList.add("revealed");
+      el.removeAttribute("tabindex");
+    };
+    el.addEventListener("click", reveal);
+    el.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter" || (e as KeyboardEvent).key === " ") {
+        e.preventDefault();
+        reveal(e);
+      }
+    });
+  });
+}
+
+function attachReviewExpandButton(root: ParentNode): void {
+  attachCollapsibleToggle(root, {
+    toggleSelector: ".review-more-btn",
+    previewSelector: ".review-more-btn-preview",
   });
 }
 
@@ -742,6 +764,7 @@ ${hasContent ? buildReviewBodyHtml(r.content, isSpoiler) : ""}
         }
       }
       attachRevealSpoiler(el);
+      attachReviewExpandButton(el);
       container.appendChild(el);
     }
 
@@ -920,8 +943,11 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
       form.remove();
       el.style.display = "";
       // Refresh the review content in-place
+      const bodyBlock = el.querySelector(".review-body-block");
       const body = el.querySelector(".review-body");
-      if (body) {
+      if (bodyBlock) {
+        bodyBlock.outerHTML = buildReviewBodyHtml(content, isSpoiler);
+      } else if (body) {
         body.outerHTML = buildReviewBodyHtml(content, isSpoiler);
       } else if (content) {
         el.querySelector(".review-header")?.insertAdjacentHTML("afterend", buildReviewBodyHtml(content, isSpoiler));
@@ -929,6 +955,7 @@ function openReviewEdit(el: HTMLElement, rid: string, curScore: number, curConte
       const scoreEl = el.querySelector(".review-score");
       if (scoreEl) scoreEl.textContent = `★ ${score.toFixed(1)}`;
       attachRevealSpoiler(el);
+      attachReviewExpandButton(el);
       showInventoryGuideAfter(el, "반영이 늦으면 라프텔 리뷰함에서 다시 확인하거나 수정/삭제할 수 있습니다.");
     } else {
       errEl.textContent = "저장 실패: " + (res?.error ?? res?.status ?? "알 수 없는 오류");
