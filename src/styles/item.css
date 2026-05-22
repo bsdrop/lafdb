@@ -608,12 +608,23 @@ body {
   font-size: 13px;
   line-height: 1.7;
   color: #bbb;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .review-body-block {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+}
+.review-body-collapsible {
+  width: 100%;
+}
+.review-body-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .review-more-btn {
   appearance: none;

@@ -214,17 +214,16 @@ function showInventoryGuideAfter(el: HTMLElement, text: string): void {
 function buildReviewBodyHtml(content: string | undefined, isSpoiler: boolean): string {
   return buildCollapsibleContentHtml({
     blockClass: "review-body-block",
-    previewClass: "review-more-btn-preview",
-    fullClass: "review-more-btn-full",
+    contentClass: "review-body review-body-collapsible",
     toggleClass: "review-more-btn",
+    collapsedClass: "review-body-collapsed",
     label: "리뷰",
     content,
-    idPrefix: "review-content",
     renderContent: (text) => {
-    const safe = esc(text).replaceAll("\n", "<br>");
-    if (!safe.trim()) return "";
-    if (!isSpoiler) return `<p class="review-body">${safe}</p>`;
-    return `<p class="review-body"><span class="review-spoiler" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${safe}</span></p>`;
+      const safe = esc(text).replaceAll("\n", "<br>");
+      if (!safe.trim()) return "";
+      if (!isSpoiler) return safe;
+      return `<span class="review-spoiler" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${safe}</span>`;
     },
   });
 }
@@ -252,8 +251,10 @@ function attachRevealSpoiler(root: ParentNode): void {
 
 function attachReviewExpandButton(root: ParentNode): void {
   attachCollapsibleToggle(root, {
+    blockSelector: ".review-body-block",
+    contentSelector: ".review-body-collapsible",
     toggleSelector: ".review-more-btn",
-    previewSelector: ".review-more-btn-preview",
+    collapsedClass: "review-body-collapsed",
   });
 }
 

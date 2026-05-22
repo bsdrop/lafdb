@@ -834,6 +834,15 @@ select {
   align-items: flex-start;
   gap: 8px;
 }
+.comment-text-collapsible {
+  width: 100%;
+}
+.comment-text-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .comment-more-btn {
   appearance: none;
   border: none;

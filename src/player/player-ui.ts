@@ -1862,16 +1862,15 @@ function renderWithTs(text: string): string {
 function buildCommentTextHtml(content: string | undefined, isSpoiler: boolean): string {
   return buildCollapsibleContentHtml({
     blockClass: "comment-text-block",
-    previewClass: "comment-more-btn-preview",
-    fullClass: "comment-more-btn-full",
+    contentClass: "comment-text comment-text-collapsible",
     toggleClass: "comment-more-btn",
+    collapsedClass: "comment-text-collapsed",
     label: "댓글",
     content,
-    idPrefix: "comment-content",
     renderContent: (text) => {
       const inner = renderWithTs(text);
-      if (!isSpoiler) return `<div class="comment-text">${inner}</div>`;
-      return `<div class="comment-text"><span class="spoiler-block" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${inner}</span></div>`;
+      if (!isSpoiler) return inner;
+      return `<span class="spoiler-block" role="button" tabindex="0" title="스포일러 — 클릭하여 보기">${inner}</span>`;
     },
   });
 }
@@ -1897,8 +1896,10 @@ function attachCommentTextInteractions(root: ParentNode): void {
   });
 
   attachCollapsibleToggle(root, {
+    blockSelector: ".comment-text-block",
+    contentSelector: ".comment-text-collapsible",
     toggleSelector: ".comment-more-btn",
-    previewSelector: ".comment-more-btn-preview",
+    collapsedClass: "comment-text-collapsed",
   });
 }
 

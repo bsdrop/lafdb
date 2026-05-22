@@ -1,71 +1,91 @@
 const DEFAULT_COLLAPSE_LINE_LIMIT = 6;
-let collapsibleContentSeq = 0;
 
 interface BuildCollapsibleContentHtmlOptions {
   blockClass: string;
-  previewClass: string;
-  fullClass: string;
+  contentClass: string;
   toggleClass: string;
+  collapsedClass: string;
   label: string;
   content: string | undefined;
   renderContent: (text: string) => string;
-  idPrefix?: string;
   lineLimit?: number;
 }
 
 interface AttachCollapsibleToggleOptions {
+  blockSelector: string;
+  contentSelector: string;
   toggleSelector: string;
-  previewSelector: string;
+  collapsedClass: string;
 }
 
 export function buildCollapsibleContentHtml({
   blockClass,
-  previewClass,
-  fullClass,
+  contentClass,
   toggleClass,
+  collapsedClass,
   label,
   content,
   renderContent,
-  idPrefix = "collapsible-content",
   lineLimit = DEFAULT_COLLAPSE_LINE_LIMIT,
 }: BuildCollapsibleContentHtmlOptions): string {
-  const raw = content ?? "";
-  const lines = raw.split(/\r?\n/);
-  const previewText = lines.slice(0, lineLimit).join("\n");
-  const hidden = lines.length > lineLimit;
-  const previewHtml = renderContent(previewText);
-  if (!previewHtml.trim()) return "";
-
-  const contentId = `${idPrefix}-${++collapsibleContentSeq}`;
-  const fullHtml = hidden ? renderContent(raw) : "";
+  const innerHtml = renderContent(content ?? "");
+  if (!innerHtml.trim()) return "";
 
   return `
-<div class="${blockClass}">
-  <div class="${previewClass}">${previewHtml}</div>
-  ${hidden ? `<div class="${fullClass}" id="${contentId}" hidden>${fullHtml}</div>` : ""}
-  ${hidden
-    ? `<button class="${toggleClass}" type="button" aria-expanded="false" aria-controls="${contentId}" aria-label="${label} 전체 보기">더 보기</button>`
-    : ""}
+<div class="${blockClass}" data-collapse-lines="${lineLimit}">
+  <div class="${contentClass} ${collapsedClass}">${innerHtml}</div>
+  <button class="${toggleClass}" type="button" aria-expanded="false" aria-label="${label} 전체 보기" hidden>더 보기</button>
 </div>`;
 }
 
 export function attachCollapsibleToggle(
   root: ParentNode,
-  { toggleSelector, previewSelector }: AttachCollapsibleToggleOptions,
+  { blockSelector, contentSelector, toggleSelector, collapsedClass }: AttachCollapsibleToggleOptions,
 ): void {
+  const block = root.querySelector(blockSelector) as HTMLElement | null;
+  const content = root.querySelector(contentSelector) as HTMLElement | null;
   const btn = root.querySelector(toggleSelector) as HTMLButtonElement | null;
-  if (!btn || btn.dataset["bound"] === "yes") return;
-  btn.dataset["bound"] = "yes";
-  btn.addEventListener("click", () => {
-    const contentId = btn.getAttribute("aria-controls");
-    if (!contentId) return;
-    const full = root.querySelector(`#${CSS.escape(contentId)}`) as HTMLElement | null;
-    const preview = root.querySelector(previewSelector) as HTMLElement | null;
-    if (!full || !preview) return;
-    const expanded = btn.getAttribute("aria-expanded") === "true";
-    btn.setAttribute("aria-expanded", expanded ? "false" : "true");
-    btn.textContent = expanded ? "더 보기" : "접기";
-    full.hidden = expanded;
-    preview.hidden = !expanded;
+  if (!block || !content || !btn) return;
+
+  let expanded = btn.getAttribute("aria-expanded") === "true";
+
+  const syncButton = (): void => {
+    const wasExpanded = expanded;
+    if (!expanded) content.classList.add(collapsedClass);
+    const isOverflowed = content.scrollHeight - content.clientHeight > 1;
+    btn.hidden = !isOverflowed && !expanded;
+    if (!isOverflowed && !expanded) {
+      content.classList.remove(collapsedClass);
+      return;
+    }
+    content.classList.toggle(collapsedClass, !expanded);
+    if (wasExpanded) btn.hidden = false;
+  };
+
+  if (btn.dataset["bound"] !== "yes") {
+    btn.dataset["bound"] = "yes";
+    btn.addEventListener("click", () => {
+      expanded = btn.getAttribute("aria-expanded") !== "true";
+      btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+      btn.textContent = expanded ? "접기" : "더 보기";
+      syncButton();
+    });
+  }
+
+  if (block.dataset["collapseObserved"] !== "yes") {
+    block.dataset["collapseObserved"] = "yes";
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        syncButton();
+      });
+      observer.observe(content);
+    } else {
+      const handler = () => syncButton();
+      window.addEventListener("resize", handler, { passive: true });
+    }
+  }
+
+  requestAnimationFrame(() => {
+    syncButton();
   });
 }
