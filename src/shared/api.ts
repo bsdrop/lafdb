@@ -7,21 +7,21 @@ declare global {
 }
 
 function emitAPIServerError(url: string, status: number, statusText: string): void {
+  const pathname = new URL(url, globalThis.location?.href).pathname;
+  const event = new CustomEvent("api:server-error", {
+    detail: {
+      url,
+      pathname,
+      status,
+      statusText,
+      message: `API HTTP ${status}: ${pathname}`,
+    },
+  });
+
   try {
-    const pathname = new URL(url, globalThis.location?.href).pathname;
-    globalThis.dispatchEvent(
-      new CustomEvent("api:server-error", {
-        detail: {
-          url,
-          pathname,
-          status,
-          statusText,
-          message: `API HTTP ${status}: ${pathname}`,
-        },
-      }),
-    );
+    globalThis.dispatchEvent(event);
   } catch {
-    // TODO: FIXME: ERROR SWALLOWING IS 중범죄!!!!!!!!!!!1 but still ignores event dispatch failures
+    console.error("Failed to dispatch API server error event", event);
   }
 }
 

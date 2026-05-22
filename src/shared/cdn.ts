@@ -27,14 +27,14 @@ export function rewriteCdnUrl(url: string): string {
 
   let parsed: URL;
   try {
-    parsed = new URL(url, typeof location !== "undefined" ? location.href : "https://laftel.net/");
+    parsed = new URL(url, typeof location !== "undefined" ? location.href : "https://laftel.net/"); // TODO: AI가 쓴 로직 이해/검토
   } catch {
     return url;
   }
 
   const hostname = parsed.hostname.toLowerCase();
   const mirrorRoot = getCurrentMirrorRootHost();
-  const sourceMatch = hostname.match(/^(?<subdomain>.+?)\.(?:laftel|latfel)\.net$/);
+  const sourceMatch = hostname.match(/^(?<subdomain>.+?)\.(?:laftel|latfel)\.net$/); // TODO: FIXME: AI가 쓴 로직 이해/검토
 
   if (!sourceMatch?.groups?.subdomain) {
     return parsed.toString();
@@ -63,7 +63,7 @@ export function rewriteCdnUrl(url: string): string {
   // Fallback if we can't determine mirror root (e.g. not in browser or on localhost)
   // We keep it as .latfel.net or whatever the original was if it wasn't .laftel.net
   if (hostname.endsWith(".laftel.net")) {
-    parsed.hostname = `${subdomain}.latfel.net`;
+    parsed.hostname = `${subdomain}.latfel.net`; // TODO: FIXME: 하드코딩 wtf
   }
   return parsed.toString();
 }
