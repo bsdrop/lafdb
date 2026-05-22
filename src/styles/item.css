@@ -631,6 +631,7 @@ body {
   border: none;
   background: none;
   padding: 0;
+  margin-left: 0.25em;
   font: inherit;
   font-size: 13px;
   font-weight: 700;
