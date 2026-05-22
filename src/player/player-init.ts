@@ -54,24 +54,6 @@ function isI2PHost(): boolean {
   return host.endsWith(".i2p");
 }
 
-// mpdUrl을 처음 알게 되는 시점에 해당 CDN 호스트로 preconnect한다. DNS+TLS 핸드셰이크가
-// 첫 세그먼트 fetch 전에 끝나 있어 cold-start 100-300ms 절약. 같은 origin이면 생략.
-function preconnectCdn(url: string): void {
-  try {
-    const u = new URL(url, location.href);
-    const origin = `${u.protocol}//${u.host}`;
-    if (origin === location.origin) return;
-    if (document.querySelector(`link[rel="preconnect"][href="${origin}"]`)) return;
-    const link = document.createElement("link");
-    link.rel = "preconnect";
-    link.href = origin;
-    link.crossOrigin = "anonymous";
-    document.head.appendChild(link);
-  } catch (e) {
-    console.warn("[PLAYER] preconnect failed:", e);
-  }
-}
-
 function cleanupPreviousPlayer(): void {
   clearAutoplayPrompt();
   if (window._currentWorker) {
@@ -543,7 +525,6 @@ async function handleRoute() {
 
   if (mpdParam) {
     const mpdUrl = rewriteCDN(mpdParam);
-    preconnectCdn(mpdUrl);
     await startPlayer(mpdUrl, kidParam, keyParam, resumeTime);
     if (epId) {
       apiFetch<{ running_time?: string }>(`/api/episodes/v3/${epId}`)
@@ -574,7 +555,6 @@ async function handleRoute() {
         return;
       }
       const mpdUrl = rewriteCDN(info.dash_url);
-      preconnectCdn(mpdUrl);
       const kid = info.keys?.[0]?.key_id ?? "";
       const key = info.keys?.[0]?.key ?? "";
       const p = new URLSearchParams(location.hash.slice(1));

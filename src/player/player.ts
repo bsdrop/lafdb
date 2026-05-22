@@ -175,6 +175,7 @@ class Player {
   _endOfStreamCalled: boolean;
   _baseUrl: string;
   _onOnline: (() => void) | null;
+  _onlineDebounceTimer: ReturnType<typeof setTimeout> | null;
   _errorStreak: number;
   _lastErrorTime: number | undefined;
   _seekSettledAt: number | undefined;
@@ -277,6 +278,7 @@ class Player {
     this._endOfStreamCalled = false;
     this._baseUrl = "";
     this._onOnline = null;
+    this._onlineDebounceTimer = null;
     this._errorStreak = 0;
     this._lastErrorTime = undefined;
     this._seekSettledAt = undefined;
@@ -359,6 +361,16 @@ class Player {
     this._seekTo(orig);
   }
 
+  // vct=0은 두 종류가 있다.
+  //   (1) _attachMediaSource 직후 video.load()가 강제로 0으로 리셋한 transient 상태
+  //   (2) 사용자가 진짜로 0(또는 거의 0)으로 seek한 경우
+  // (1)에서만 _lastKnownGoodTime로 마스킹하고, (2)에서는 0을 그대로 반환해야
+  // fetch loop가 정확한 세그(0초 부근)를 받아온다. _expectBrowserResetUntil이
+  // (1)의 윈도우(1.5s)를 정의한다.
+  _shouldMaskZero(): boolean {
+    return this._expectBrowserResetUntil > 0 && Date.now() < this._expectBrowserResetUntil;
+  }
+
   get _currentTime(): number {
     if (this._video) {
       const vct = this._video.currentTime;
@@ -367,7 +379,7 @@ class Player {
         return this._pendingResumeTime;
       }
       if (vct > 0) return vct;
-      if (this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
+      if (this._shouldMaskZero() && this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
       return vct;
     }
     return this._ct;
@@ -384,7 +396,7 @@ class Player {
 
   // Authoritative "what position should we resume to" calculation.
   // Priority: not-yet-reached pendingResume > live video time > last known good > raw fallback.
-  // Never returns a misleading 0 just because the video element hasn't seeked yet.
+  // _shouldMaskZero()로 browser reset transient만 마스킹한다(_currentTime와 동일).
   _safeCurrentTime(): number {
     if (this._video) {
       const vct = this._video.currentTime;
@@ -392,7 +404,7 @@ class Player {
         return this._pendingResumeTime;
       }
       if (vct > 0) return vct;
-      if (this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
+      if (this._shouldMaskZero() && this._lastKnownGoodTime != null) return this._lastKnownGoodTime;
       return vct;
     }
     if (this._pendingResumeTime != null) return this._pendingResumeTime;
@@ -433,9 +445,12 @@ class Player {
 
   _maybeClearPendingResume(videoTime: number): boolean {
     if (this._pendingResumeTime == null) return true;
-    // Cleared once the video has reached or passed the target.
+    // 양방향 지원: target이 vct보다 앞(forward resume)이든 뒤(recovery 중 사용자가
+    // 작은 값으로 seek한 경우)든, 비디오가 target 근처에 도달했을 때만 클리어한다.
+    // 원래 코드의 `vct >= target - EPSILON`는 backward target(예: 0)에서 항상 참이
+    // 되어 즉시 클리어 → fallback이 옛 위치를 돌려주는 버그를 일으켰다.
     // No time-based expiration: slow networks must be allowed to take as long as they need.
-    if (videoTime >= this._pendingResumeTime - Player.AUTO_TIME_EPSILON) {
+    if (Math.abs(videoTime - this._pendingResumeTime) <= Player.AUTO_TIME_EPSILON) {
       this._clearPendingResumeTime();
       return true;
     }
@@ -796,12 +811,28 @@ class Player {
       self.removeEventListener("online", this._onOnline);
       this._onOnline = null;
     }
+    if (this._onlineDebounceTimer !== null) {
+      clearTimeout(this._onlineDebounceTimer);
+      this._onlineDebounceTimer = null;
+    }
+    // 셀룰러 핸드오버에서는 online이 짧게 여러 번 토글되므로 debounce.
+    // _fetchAndAppend가 waitOrOnline로 자체 회복하므로, 버퍼가 충분하면 reinit 불필요
+    // reinit은 stall(ahead < STALL_BUF_MIN) 상황에서만 의미가 있다.
     this._onOnline = () => {
       if (!this.started || this._recovering || this._destroyed) return;
-      console.warn("[PLAYER] network online, triggering immediate recovery");
-      this._reinitMediaSource(this._safeCurrentTime()).catch((e) =>
-        console.error("[PLAYER] online recovery failed:", e),
-      );
+      if (this._onlineDebounceTimer !== null) return;
+      this._onlineDebounceTimer = setTimeout(() => {
+        this._onlineDebounceTimer = null;
+        if (!this.started || this._recovering || this._destroyed) return;
+        const ct = this._safeCurrentTime();
+        const vsb = this._getVideoSb();
+        const ahead = vsb ? this.getBufferedEnd(vsb, ct) - ct : 0;
+        if (ahead >= Player.STALL_BUF_MIN) return;
+        console.warn("[PLAYER] network online + low buffer, triggering recovery"); // 이게 뭔 개짓거리니 AI야..
+        this._reinitMediaSource(this._safeCurrentTime()).catch((e) =>
+          console.error("[PLAYER] online recovery failed:", e),
+        );
+      }, 1500);
     };
     self.addEventListener("online", this._onOnline);
   }
@@ -1848,7 +1879,8 @@ class Player {
 
   _pruneAppended(track: Track): void {
     if (!track.sb || !track.timeline) return;
-    for (const segNum of [...track.appended]) {
+    const buffered = track.sb.buffered;
+    for (const segNum of track.appended) {
       const range = this.segmentNumberToTimeRange(track, segNum);
       if (!range) {
         track.appended.delete(segNum);
@@ -1857,8 +1889,8 @@ class Player {
       const mid = (range.start + range.end) / 2;
       let inBuffer = false;
       try {
-        for (let i = 0; i < track.sb.buffered.length; i++) {
-          if (track.sb.buffered.start(i) <= mid + 0.1 && track.sb.buffered.end(i) >= mid - 0.1) {
+        for (let i = 0; i < buffered.length; i++) {
+          if (buffered.start(i) <= mid + 0.1 && buffered.end(i) >= mid - 0.1) {
             inBuffer = true;
             break;
           }
@@ -2592,6 +2624,10 @@ class Player {
     if (this._onOnline) {
       self.removeEventListener("online", this._onOnline);
       this._onOnline = null;
+    }
+    if (this._onlineDebounceTimer !== null) {
+      clearTimeout(this._onlineDebounceTimer);
+      this._onlineDebounceTimer = null;
     }
     for (const track of this.tracks) {
       this._cancelTrackPrune(track);
